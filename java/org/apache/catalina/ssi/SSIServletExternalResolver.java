@@ -93,8 +93,7 @@ public class SSIServletExternalResolver implements SSIExternalResolver {
 
     @Override
     public void addVariableNames(Collection<String> variableNames) {
-        for (int i = 0; i < VARIABLE_NAMES.length; i++) {
-            String variableName = VARIABLE_NAMES[i];
+        for (String variableName : VARIABLE_NAMES) {
             String variableValue = getVariableValue(variableName);
             if (variableValue != null) {
                 variableNames.add(variableName);
@@ -322,11 +321,11 @@ public class SSIServletExternalResolver implements SSIExternalResolver {
                 retVal = req.getProtocol();
             } else if (nameParts[1].equals("SOFTWARE")) {
                 StringBuilder rv = new StringBuilder(context.getServerInfo());
-                rv.append(" ");
+                rv.append(' ');
                 rv.append(System.getProperty("java.vm.name"));
-                rv.append("/");
+                rv.append('/');
                 rv.append(System.getProperty("java.vm.version"));
-                rv.append(" ");
+                rv.append(' ');
                 rv.append(System.getProperty("os.name"));
                 retVal = rv.toString();
             }

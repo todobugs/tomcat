@@ -761,6 +761,30 @@ public interface Context extends Container, ContextBind {
     public String getContainerSciFilter();
 
 
+    /**
+     * @return the value of the parallel annotation scanning flag.  If true,
+     * it will dispatch scanning to the utility executor.
+     * @deprecated This method will be removed in Tomcat 11 onwards
+     */
+    @Deprecated
+    public default boolean isParallelAnnotationScanning() {
+        return getParallelAnnotationScanning();
+    }
+
+    /**
+     * @return the value of the parallel annotation scanning flag.  If true,
+     * it will dispatch scanning to the utility executor.
+     */
+    public boolean getParallelAnnotationScanning();
+
+    /**
+     * Set the parallel annotation scanning value.
+     *
+     * @param parallelAnnotationScanning new parallel annotation scanning flag
+     */
+    public void setParallelAnnotationScanning(boolean parallelAnnotationScanning);
+
+
     // --------------------------------------------------------- Public Methods
 
     /**
@@ -1867,4 +1891,81 @@ public interface Context extends Container, ContextBind {
      *         otherwise {@code false}
      */
     public boolean getCreateUploadTargets();
+
+
+    /**
+     * If this is <code>true</code>, every request that is associated with a
+     * session will cause the session's last accessed time to be updated
+     * regardless of whether or not the request explicitly accesses the session.
+     * If <code>org.apache.catalina.STRICT_SERVLET_COMPLIANCE</code> is set to
+     * <code>true</code>, the default of this setting will be <code>true</code>,
+     * else the default value will be <code>false</code>.
+     * @return the flag value
+     */
+    public boolean getAlwaysAccessSession();
+
+
+    /**
+     * Set the session access behavior.
+     * @param alwaysAccessSession the new flag value
+     */
+    public void setAlwaysAccessSession(boolean alwaysAccessSession);
+
+
+    /**
+     * If this is <code>true</code> then the path passed to
+     * <code>ServletContext.getResource()</code> or
+     * <code>ServletContext.getResourceAsStream()</code> must start with
+     * &quot;/&quot;. If <code>false</code>, code like
+     * <code>getResource("myfolder/myresource.txt")</code> will work as Tomcat
+     * will prepend &quot;/&quot; to the provided path.
+     * If <code>org.apache.catalina.STRICT_SERVLET_COMPLIANCE</code> is set to
+     * <code>true</code>, the default of this setting will be <code>true</code>,
+     * else the default value will be <code>false</code>.
+     * @return the flag value
+     */
+    public boolean getContextGetResourceRequiresSlash();
+
+
+    /**
+     * Allow using <code>ServletContext.getResource()</code> or
+     * <code>ServletContext.getResourceAsStream()</code> without
+     * a leading &quot;/&quot;.
+     * @param contextGetResourceRequiresSlash the new flag value
+     */
+    public void setContextGetResourceRequiresSlash(boolean contextGetResourceRequiresSlash);
+
+
+    /**
+     * If this is <code>true</code> then any wrapped request or response
+     * object passed to an application dispatcher will be checked to ensure that
+     * it has wrapped the original request or response.
+     * If <code>org.apache.catalina.STRICT_SERVLET_COMPLIANCE</code> is set to
+     * <code>true</code>, the default of this setting will be <code>true</code>,
+     * else the default value will be <code>false</code>.
+     * @return the flag value
+     */
+    public boolean getDispatcherWrapsSameObject();
+
+
+    /**
+     * Allow disabling the object wrap check in the request dispatcher.
+     * @param dispatcherWrapsSameObject the new flag value
+     */
+    public void setDispatcherWrapsSameObject(boolean dispatcherWrapsSameObject);
+
+
+    /**
+     * @return <code>true</code> if the resources archive lookup will
+     * use a bloom filter.
+     */
+    public boolean getUseBloomFilterForArchives();
+
+    /**
+     * Set bloom filter flag value.
+     *
+     * @param useBloomFilterForArchives The new fast class path scan flag
+     */
+    public void setUseBloomFilterForArchives(boolean useBloomFilterForArchives);
+
 }

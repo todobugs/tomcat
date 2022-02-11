@@ -19,8 +19,13 @@ package org.apache.tomcat.util.compat;
 import java.io.File;
 import java.io.IOException;
 import java.lang.reflect.AccessibleObject;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
+import java.net.SocketAddress;
 import java.net.URL;
 import java.net.URLConnection;
+import java.nio.channels.ServerSocketChannel;
+import java.nio.channels.SocketChannel;
 import java.util.Deque;
 import java.util.jar.JarFile;
 
@@ -40,25 +45,53 @@ public class JreCompat {
 
     private static final JreCompat instance;
     private static final boolean graalAvailable;
+    private static final boolean jre16Available;
+    private static final boolean jre11Available;
     private static final boolean jre9Available;
     private static final StringManager sm = StringManager.getManager(JreCompat.class);
 
+    protected static final Method setApplicationProtocolsMethod;
+    protected static final Method getApplicationProtocolMethod;
+
     static {
-        // This is Tomcat 9 with a minimum Java version of Java 8.
+        boolean result = false;
+        try {
+            Class<?> nativeImageClazz = Class.forName("org.graalvm.nativeimage.ImageInfo");
+            result = Boolean.TRUE.equals(nativeImageClazz.getMethod("inImageCode").invoke(null));
+        } catch (ClassNotFoundException e) {
+            // Must be Graal
+        } catch (ReflectiveOperationException | IllegalArgumentException e) {
+            // Should never happen
+        }
+        graalAvailable = result || System.getProperty("org.graalvm.nativeimage.imagecode") != null;
+
+        // This is Tomcat 10 with a minimum Java version of Java 8.
         // Look for the highest supported JVM first
-        if (GraalCompat.isSupported()) {
-            instance = new GraalCompat();
-            graalAvailable = true;
-            jre9Available = Jre9Compat.isSupported();
+        if (Jre16Compat.isSupported()) {
+            instance = new Jre16Compat();
+            jre9Available = true;
+            jre16Available = true;
         } else if (Jre9Compat.isSupported()) {
             instance = new Jre9Compat();
-            graalAvailable = false;
             jre9Available = true;
+            jre16Available = false;
         } else {
             instance = new JreCompat();
-            graalAvailable = false;
             jre9Available = false;
+            jre16Available = false;
         }
+        jre11Available = instance.jarFileRuntimeMajorVersion() >= 11;
+
+        Method m1 = null;
+        Method m2 = null;
+        try {
+            m1 = SSLParameters.class.getMethod("setApplicationProtocols", String[].class);
+            m2 = SSLEngine.class.getMethod("getApplicationProtocol");
+        } catch (ReflectiveOperationException | IllegalArgumentException e) {
+            // Only the newest Java 8 have the ALPN API, so ignore
+        }
+        setApplicationProtocolsMethod = m1;
+        getApplicationProtocolMethod = m2;
     }
 
 
@@ -72,8 +105,23 @@ public class JreCompat {
     }
 
 
+    public static boolean isAlpnSupported() {
+        return setApplicationProtocolsMethod != null && getApplicationProtocolMethod != null;
+    }
+
+
     public static boolean isJre9Available() {
         return jre9Available;
+    }
+
+
+    public static boolean isJre11Available() {
+        return jre11Available;
+    }
+
+
+    public static boolean isJre16Available() {
+        return jre16Available;
     }
 
 
@@ -102,7 +150,15 @@ public class JreCompat {
      *                      connection
      */
     public void setApplicationProtocols(SSLParameters sslParameters, String[] protocols) {
-        throw new UnsupportedOperationException(sm.getString("jreCompat.noApplicationProtocols"));
+        if (setApplicationProtocolsMethod != null) {
+            try {
+                setApplicationProtocolsMethod.invoke(sslParameters, (Object) protocols);
+            } catch (IllegalAccessException | IllegalArgumentException | InvocationTargetException e) {
+                throw new UnsupportedOperationException(e);
+            }
+        } else {
+            throw new UnsupportedOperationException(sm.getString("jreCompat.noApplicationProtocols"));
+        }
     }
 
 
@@ -116,7 +172,15 @@ public class JreCompat {
      * @return The name of the negotiated protocol
      */
     public String getApplicationProtocol(SSLEngine sslEngine) {
-        throw new UnsupportedOperationException(sm.getString("jreCompat.noApplicationProtocol"));
+        if (getApplicationProtocolMethod != null) {
+            try {
+                return (String) getApplicationProtocolMethod.invoke(sslEngine);
+            } catch (IllegalAccessException | IllegalArgumentException | InvocationTargetException e) {
+                throw new UnsupportedOperationException(e);
+            }
+        } else {
+            throw new UnsupportedOperationException(sm.getString("jreCompat.noApplicationProtocol"));
+        }
     }
 
 
@@ -207,7 +271,7 @@ public class JreCompat {
      * @return {code true} if the AccessibleObject can be accessed otherwise
      *         {code false}
      */
-    public boolean canAcccess(Object base, AccessibleObject accessibleObject) {
+    public boolean canAccess(Object base, AccessibleObject accessibleObject) {
         // Java 8 doesn't support modules so default to true
         return true;
     }
@@ -224,4 +288,45 @@ public class JreCompat {
     public boolean isExported(Class<?> type) {
         return true;
     }
+
+
+    /**
+     * What is the module of the given class?
+     *
+     * @param type  The class to test
+     *
+     * @return Always {@code true} for Java 8. {@code true} if the enclosing
+     *         package is exported for Java 9+
+     */
+    public String getModuleName(Class<?> type) {
+        return "NO_MODULE_JAVA_8";
+    }
+
+
+    /**
+     * Return Unix domain socket address for given path.
+     * @param path The path
+     * @return the socket address
+     */
+    public SocketAddress getUnixDomainSocketAddress(String path) {
+        return null;
+    }
+
+
+    /**
+     * Create server socket channel using the Unix domain socket ProtocolFamily.
+     * @return the server socket channel
+     */
+    public ServerSocketChannel openUnixDomainServerSocketChannel() {
+        throw new UnsupportedOperationException(sm.getString("jreCompat.noUnixDomainSocket"));
+    }
+
+    /**
+     * Create socket channel using the Unix domain socket ProtocolFamily.
+     * @return the socket channel
+     */
+    public SocketChannel openUnixDomainSocketChannel() {
+        throw new UnsupportedOperationException(sm.getString("jreCompat.noUnixDomainSocket"));
+    }
+
 }

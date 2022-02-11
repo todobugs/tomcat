@@ -36,6 +36,9 @@
 
 <section name="Introduction">
 
+  <p><strong>Note: The APR/Native AJP Connector is deprecated and will be
+  removed in Tomcat 10.1.x onwards.</strong></p>
+
   <p>The <strong>AJP Connector</strong> element represents a
   <strong>Connector</strong> component that communicates with a web
   connector via the <code>AJP</code> protocol.  This is used for cases
@@ -113,6 +116,17 @@
       By default, DNS lookups are disabled.</p>
     </attribute>
 
+    <attribute name="encodedSolidusHandling" required="false">
+      <p>When set to <code>reject</code> request paths containing a
+      <code>%2f</code> sequence will be rejected with a 400 response. When set
+      to <code>decode</code> request paths containing a <code>%2f</code>
+      sequence will have that sequence decoded to <code>/</code> at the same
+      time other <code>%nn</code> sequences are decoded. When set to
+      <code>passthrough</code> request paths containing a <code>%2f</code>
+      sequence will be processed with the <code>%2f</code> sequence unchanged.
+      If not specified the default value is <code>reject</code>.</p>
+    </attribute>
+
     <attribute name="maxHeaderCount" required="false">
       <p>The maximum number of headers in a request that are allowed by the
       container. A request that contains more headers than the specified limit
@@ -182,20 +196,14 @@
         an <a href="http.html">HTTP connector</a> rather than an AJP connector
         will be configured.<br/>
         The standard protocol value for an AJP connector is <code>AJP/1.3</code>
-        which uses an auto-switching mechanism to select either a Java NIO based
-        connector or an APR/native based connector. If the
-        <code>PATH</code> (Windows) or <code>LD_LIBRARY_PATH</code> (on most unix
-        systems) environment variables contain the Tomcat native library, the
-        native/APR connector will be used. If the native library cannot be
-        found, the Java NIO based connector will be used.<br/>
-        To use an explicit protocol rather than rely on the auto-switching
-        mechanism described above, the following values may be used:<br/>
+        which uses a Java NIO based connector.<br/>
+        To use an explicit protocol, the following values may be used:<br/>
         <code>org.apache.coyote.ajp.AjpNioProtocol</code>
         - non blocking Java NIO connector.<br/>
         <code>org.apache.coyote.ajp.AjpNio2Protocol</code>
         - non blocking Java NIO2 connector.<br/>
         <code>org.apache.coyote.ajp.AjpAprProtocol</code>
-        - the APR/native connector.<br/>
+        - the APR/native connector (deprecated - will be removed in 10.1.x).<br/>
         Custom implementations may also be used.<br/>
         Take a look at our <a href="#Connector_Comparison">Connector
         Comparison</a> chart.
@@ -245,10 +253,7 @@
 
     <attribute name="URIEncoding" required="false">
       <p>This specifies the character encoding used to decode the URI bytes,
-      after %xx decoding the URL. If not specified, UTF-8 will be used unless
-      the <code>org.apache.catalina.STRICT_SERVLET_COMPLIANCE</code>
-      <a href="systemprops.html">system property</a> is set to <code>true</code>
-      in which case ISO-8859-1 will be used.</p>
+      after %xx decoding the URL. The default value is <code>UTF-8</code>.</p>
     </attribute>
 
     <attribute name="useBodyEncodingForURI" required="false">
@@ -290,9 +295,11 @@
   <attributes>
 
     <attribute name="acceptCount" required="false">
-      <p>The maximum queue length for incoming connection requests when
-      all possible request processing threads are in use.  Any requests
-      received when the queue is full will be refused.  The default
+      <p>The maximum length of the operating system provided queue for incoming
+      connection requests when <code>maxConnections</code> has been reached. The
+      operating system may ignore this setting and use a different size for the
+      queue. When this queue is full, the operating system may actively refuse
+      additional connections or those connections may time out. The default
       value is 100.</p>
     </attribute>
 
@@ -522,9 +529,11 @@
     <attribute name="tomcatAuthentication" required="false">
       <p>If set to <code>true</code>, the authentication will be done in Tomcat.
       Otherwise, the authenticated principal will be propagated from the native
-      webserver and used for authorization in Tomcat. Note that this principal
-      will have no roles associated with it.
-      The default value is <code>true</code>. If
+      webserver and used for authorization in Tomcat. </p>
+      <p>The web server must send the user principal (username) as a request
+      <i>attribute</i> named <code>REMOTE_USER</code>.</p>
+      <p>Note that this principal will have no roles associated with it.</p>
+      <p>The default value is <code>true</code>. If
       <code>tomcatAuthorization</code> is set to <code>true</code> this
       attribute has no effect.</p>
     </attribute>
@@ -789,6 +798,9 @@
 
   <subsection name="APR/native specific configuration">
 
+    <p><strong>Note: The APR/Native AJP Connector is deprecated and will be
+    removed in Tomcat 10.1.x onwards.</strong></p>
+
     <p>The APR/native implementation supports the following attributes in
     addition to the common Connector and AJP attributes listed above.</p>
 
@@ -849,7 +861,7 @@
         <th />
         <th style="text-align: center;">Java Nio Connector<br />NIO</th>
         <th style="text-align: center;">Java Nio2 Connector<br />NIO2</th>
-        <th style="text-align: center;">APR/native Connector<br />APR</th>
+        <th style="text-align: center;">APR/native Connector<br />APR<br />(deprecated)</th>
       </tr>
       <tr>
         <th>Classname</th>

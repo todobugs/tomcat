@@ -52,7 +52,7 @@ public class ReflectionUtil {
     }
 
     public static Class<?> forName(String name) throws ClassNotFoundException {
-        if (null == name || "".equals(name)) {
+        if (null == name || name.isEmpty()) {
             return null;
         }
         Class<?> c = forNamePrimitive(name);
@@ -428,14 +428,14 @@ public class ReflectionUtil {
         // If base is non-null, method may be static or non-static
         if (m == null ||
                 (Modifier.isPublic(type.getModifiers()) &&
-                        (jreCompat.canAcccess(base, m) || base != null && jreCompat.canAcccess(null, m)))) {
+                        (jreCompat.canAccess(base, m) || base != null && jreCompat.canAccess(null, m)))) {
             return m;
         }
-        Class<?>[] inf = type.getInterfaces();
+        Class<?>[] interfaces = type.getInterfaces();
         Method mp = null;
-        for (int i = 0; i < inf.length; i++) {
+        for (Class<?> iface : interfaces) {
             try {
-                mp = inf[i].getMethod(m.getName(), m.getParameterTypes());
+                mp = iface.getMethod(m.getName(), m.getParameterTypes());
                 mp = getMethod(mp.getDeclaringClass(), base, mp);
                 if (mp != null) {
                     return mp;
@@ -463,11 +463,11 @@ public class ReflectionUtil {
     private static final String paramString(Class<?>[] types) {
         if (types != null) {
             StringBuilder sb = new StringBuilder();
-            for (int i = 0; i < types.length; i++) {
-                if (types[i] == null) {
+            for (Class<?> type : types) {
+                if (type == null) {
                     sb.append("null, ");
                 } else {
-                    sb.append(types[i].getName()).append(", ");
+                    sb.append(type.getName()).append(", ");
                 }
             }
             if (sb.length() > 2) {

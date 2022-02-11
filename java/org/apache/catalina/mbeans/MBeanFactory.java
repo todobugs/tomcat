@@ -38,7 +38,6 @@ import org.apache.catalina.core.StandardHost;
 import org.apache.catalina.core.StandardService;
 import org.apache.catalina.loader.WebappLoader;
 import org.apache.catalina.realm.DataSourceRealm;
-import org.apache.catalina.realm.JDBCRealm;
 import org.apache.catalina.realm.JNDIRealm;
 import org.apache.catalina.realm.MemoryRealm;
 import org.apache.catalina.realm.UserDatabaseRealm;
@@ -172,8 +171,8 @@ public class MBeanFactory {
         String domain = oname.getDomain();
         if (container instanceof Server) {
             Service[] services = ((Server)container).findServices();
-            for (int i = 0; i < services.length; i++) {
-                service = (StandardService) services[i];
+            for (Service value : services) {
+                service = (StandardService) value;
                 if (domain.equals(service.getObjectName().getDomain())) {
                     break;
                 }
@@ -324,34 +323,6 @@ public class MBeanFactory {
 
 
     /**
-     * Create a new JDBC Realm.
-     *
-     * @param parent MBean Name of the associated parent component
-     * @param driverName JDBC driver name
-     * @param connectionName the user name for the connection
-     * @param connectionPassword the password for the connection
-     * @param connectionURL the connection URL to the database
-     * @return the object name of the created realm
-     *
-     * @exception Exception if an MBean cannot be created or registered
-     */
-    public String createJDBCRealm(String parent, String driverName,
-        String connectionName, String connectionPassword, String connectionURL)
-        throws Exception {
-
-        // Create a new JDBCRealm instance
-        JDBCRealm realm = new JDBCRealm();
-        realm.setDriverName(driverName);
-        realm.setConnectionName(connectionName);
-        realm.setConnectionPassword(connectionPassword);
-        realm.setConnectionURL(connectionURL);
-
-        // Add the new instance to its parent component
-        return addRealmToParent(parent, realm);
-    }
-
-
-    /**
      * Create a new JNDI Realm.
      *
      * @param parent MBean Name of the associated parent component
@@ -443,22 +414,28 @@ public class MBeanFactory {
                                              pname.getKeyProperty("host"));
         if(mserver.isRegistered(deployer)) {
             String contextName = context.getName();
-            mserver.invoke(deployer, "addServiced",
-                           new Object [] {contextName},
-                           new String [] {"java.lang.String"});
-            String configPath = (String)mserver.getAttribute(deployer,
-                                                             "configBaseName");
-            String baseName = context.getBaseName();
-            File configFile = new File(new File(configPath), baseName+".xml");
-            if (configFile.isFile()) {
-                context.setConfigFile(configFile.toURI().toURL());
+            Boolean result = (Boolean) mserver.invoke(deployer, "tryAddServiced",
+                    new Object [] {contextName},
+                    new String [] {"java.lang.String"});
+            if (result.booleanValue()) {
+                try {
+                    String configPath = (String)mserver.getAttribute(deployer, "configBaseName");
+                    String baseName = context.getBaseName();
+                    File configFile = new File(new File(configPath), baseName+".xml");
+                    if (configFile.isFile()) {
+                        context.setConfigFile(configFile.toURI().toURL());
+                    }
+                    mserver.invoke(deployer, "manageApp",
+                            new Object[] {context},
+                            new String[] {"org.apache.catalina.Context"});
+                } finally {
+                    mserver.invoke(deployer, "removeServiced",
+                            new Object [] {contextName},
+                            new String [] {"java.lang.String"});
+                }
+            } else {
+                throw new IllegalStateException(sm.getString("mBeanFactory.contextCreate.addServicedFail", contextName));
             }
-            mserver.invoke(deployer, "manageApp",
-                           new Object[] {context},
-                           new String[] {"org.apache.catalina.Context"});
-            mserver.invoke(deployer, "removeServiced",
-                           new Object [] {contextName},
-                           new String [] {"java.lang.String"});
         } else {
             log.warn(sm.getString("mBeanFactory.noDeployer", pname.getKeyProperty("host")));
             Service service = getService(pname);
@@ -469,7 +446,6 @@ public class MBeanFactory {
 
         // Return the corresponding MBean name
         return context.getObjectName().toString();
-
     }
 
 
@@ -692,25 +668,26 @@ public class MBeanFactory {
 
         Connector conns[] = service.findConnectors();
 
-        for (int i = 0; i < conns.length; i++) {
+        for (Connector conn : conns) {
             String connAddress = null;
-            Object objConnAddress = conns[i].getProperty("address");
+            Object objConnAddress = conn.getProperty("address");
             if (objConnAddress != null) {
                 connAddress = ((InetAddress) objConnAddress).getHostAddress();
             }
-            String connPort = ""+conns[i].getPortWithOffset();
+            String connPort = "" + conn.getPortWithOffset();
 
             if (address == null) {
                 // Don't combine this with outer if or we could get an NPE in
                 // 'else if' below
                 if (connAddress == null && port.equals(connPort)) {
-                    service.removeConnector(conns[i]);
-                    conns[i].destroy();
+                    service.removeConnector(conn);
+                    conn.destroy();
                     break;
                 }
-            } else if (address.equals(connAddress) && port.equals(connPort)) {
-                service.removeConnector(conns[i]);
-                conns[i].destroy();
+            }
+            else if (address.equals(connAddress) && port.equals(connPort)) {
+                service.removeConnector(conn);
+                conn.destroy();
                 break;
             }
         }
@@ -741,15 +718,22 @@ public class MBeanFactory {
                                              hostName);
         String pathStr = getPathStr(path);
         if(mserver.isRegistered(deployer)) {
-            mserver.invoke(deployer,"addServiced",
-                           new Object[]{pathStr},
-                           new String[] {"java.lang.String"});
-            mserver.invoke(deployer,"unmanageApp",
-                           new Object[] {pathStr},
-                           new String[] {"java.lang.String"});
-            mserver.invoke(deployer,"removeServiced",
-                           new Object[] {pathStr},
-                           new String[] {"java.lang.String"});
+            Boolean result = (Boolean) mserver.invoke(deployer,"tryAddServiced",
+                       new Object[]{pathStr},
+                       new String[] {"java.lang.String"});
+            if (result.booleanValue()) {
+                try {
+                    mserver.invoke(deployer,"unmanageApp",
+                            new Object[] {pathStr},
+                            new String[] {"java.lang.String"});
+                } finally {
+                    mserver.invoke(deployer,"removeServiced",
+                            new Object[] {pathStr},
+                            new String[] {"java.lang.String"});
+                }
+            } else {
+                throw new IllegalStateException(sm.getString("mBeanFactory.removeContext.addServicedFail", pathStr));
+            }
         } else {
             log.warn(sm.getString("mBeanFactory.noDeployer", hostName));
             Host host = (Host) engine.findChild(hostName);
@@ -764,7 +748,6 @@ public class MBeanFactory {
            }
 
         }
-
     }
 
 
@@ -876,10 +859,10 @@ public class MBeanFactory {
         ObjectName oname = new ObjectName(name);
         Container container = getParentContainerFromChild(oname);
         Valve[] valves = container.getPipeline().getValves();
-        for (int i = 0; i < valves.length; i++) {
-            ObjectName voname = ((JmxEnabled) valves[i]).getObjectName();
+        for (Valve valve : valves) {
+            ObjectName voname = ((JmxEnabled) valve).getObjectName();
             if (voname.equals(oname)) {
-                container.getPipeline().removeValve(valves[i]);
+                container.getPipeline().removeValve(valve);
             }
         }
     }

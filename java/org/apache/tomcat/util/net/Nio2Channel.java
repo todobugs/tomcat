@@ -248,11 +248,7 @@ public class Nio2Channel implements AsynchronousByteChannel {
         }
     };
 
-    static final Nio2Channel CLOSED_NIO2_CHANNEL = new ClosedNio2Channel();
-    public static class ClosedNio2Channel extends Nio2Channel {
-        public ClosedNio2Channel() {
-            super(SocketBufferHandler.EMPTY);
-        }
+    static final Nio2Channel CLOSED_NIO2_CHANNEL = new Nio2Channel(SocketBufferHandler.EMPTY) {
         @Override
         public void close() throws IOException {
         }
@@ -265,6 +261,10 @@ public class Nio2Channel implements AsynchronousByteChannel {
         }
         @Override
         public void free() {
+        }
+        @Override
+        protected ApplicationBufferHandler getAppReadBufHandler() {
+            return ApplicationBufferHandler.EMPTY;
         }
         @Override
         public void setAppReadBufHandler(ApplicationBufferHandler handler) {
@@ -304,5 +304,5 @@ public class Nio2Channel implements AsynchronousByteChannel {
         public String toString() {
             return "Closed Nio2Channel";
         }
-    }
+    };
 }

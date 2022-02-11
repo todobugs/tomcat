@@ -30,6 +30,7 @@ import jakarta.servlet.http.HttpServletResponse;
 import org.apache.coyote.AbstractProcessor;
 import org.apache.coyote.ActionCode;
 import org.apache.coyote.Adapter;
+import org.apache.coyote.ContinueResponseTiming;
 import org.apache.coyote.ErrorState;
 import org.apache.coyote.Request;
 import org.apache.coyote.RequestInfo;
@@ -266,6 +267,11 @@ public class Http11Processor extends AbstractProcessor {
                     }
                 }
 
+                // Process the Protocol component of the request line
+                // Need to know if this is an HTTP 0.9 request before trying to
+                // parse headers.
+                prepareRequestProtocol();
+
                 if (protocol.isPaused()) {
                     // 503 - Service unavailable
                     response.setStatus(503);
@@ -274,7 +280,8 @@ public class Http11Processor extends AbstractProcessor {
                     keptAlive = true;
                     // Set this every time in case limit has been changed via JMX
                     request.getMimeHeaders().setLimit(protocol.getMaxHeaderCount());
-                    if (!inputBuffer.parseHeaders()) {
+                    // Don't parse headers for HTTP/0.9
+                    if (!http09 && !inputBuffer.parseHeaders()) {
                         // We've read part of the request, don't recycle it
                         // instead associate it with the socket
                         openSocket = true;
@@ -329,7 +336,7 @@ public class Http11Processor extends AbstractProcessor {
                         InternalHttpUpgradeHandler upgradeHandler =
                                 upgradeProtocol.getInternalUpgradeHandler(
                                         socketWrapper, getAdapter(), cloneRequest(request));
-                        UpgradeToken upgradeToken = new UpgradeToken(upgradeHandler, null, null);
+                        UpgradeToken upgradeToken = new UpgradeToken(upgradeHandler, null, null, requestedProtocol);
                         action(ActionCode.UPGRADE, upgradeToken);
                         return SocketState.UPGRADING;
                     }
@@ -507,7 +514,7 @@ public class Http11Processor extends AbstractProcessor {
 
 
     private void checkExpectationAndResponseStatus() {
-        if (request.hasExpectation() &&
+        if (request.hasExpectation() && !isRequestBodyFullyRead() &&
                 (response.getStatus() < 200 || response.getStatus() > 299)) {
             // Client sent Expect: 100-continue but received a
             // non-2xx final response. Disable keep-alive (if enabled)
@@ -521,22 +528,35 @@ public class Http11Processor extends AbstractProcessor {
     }
 
 
-    /**
-     * After reading the request headers, we have to setup the request filters.
-     */
-    private void prepareRequest() throws IOException {
-
-        http11 = true;
-        http09 = false;
-        contentDelimitation = false;
-
-        if (protocol.isSSLEnabled()) {
-            request.scheme().setString("https");
+    private void checkMaxSwallowSize() {
+        // Parse content-length header
+        long contentLength = -1;
+        try {
+            contentLength = request.getContentLengthLong();
+        } catch (Exception e) {
+            // Ignore, an error here is already processed in prepareRequest
+            // but is done again since the content length is still -1
         }
+        if (contentLength > 0 && protocol.getMaxSwallowSize() > -1 &&
+                (contentLength - request.getBytesRead() > protocol.getMaxSwallowSize())) {
+            // There is more data to swallow than Tomcat will accept so the
+            // connection is going to be closed. Disable keep-alive which will
+            // trigger adding the "Connection: close" header if not already
+            // present.
+            keepAlive = false;
+        }
+    }
+
+
+    private void prepareRequestProtocol() {
+
         MessageBytes protocolMB = request.protocol();
         if (protocolMB.equals(Constants.HTTP_11)) {
+            http09 = false;
+            http11 = true;
             protocolMB.setString(Constants.HTTP_11);
         } else if (protocolMB.equals(Constants.HTTP_10)) {
+            http09 = false;
             http11 = false;
             keepAlive = false;
             protocolMB.setString(Constants.HTTP_10);
@@ -547,6 +567,7 @@ public class Http11Processor extends AbstractProcessor {
             keepAlive = false;
         } else {
             // Unsupported protocol
+            http09 = false;
             http11 = false;
             // Send 505; Unsupported HTTP version
             response.setStatus(505);
@@ -555,6 +576,19 @@ public class Http11Processor extends AbstractProcessor {
                 log.debug(sm.getString("http11processor.request.prepare")+
                           " Unsupported HTTP version \""+protocolMB+"\"");
             }
+        }
+    }
+
+
+    /**
+     * After reading the request headers, we have to setup the request filters.
+     */
+    private void prepareRequest() throws IOException {
+
+        contentDelimitation = false;
+
+        if (protocol.isSSLEnabled()) {
+            request.scheme().setString("https");
         }
 
         MimeHeaders headers = request.getMimeHeaders();
@@ -753,6 +787,7 @@ public class Http11Processor extends AbstractProcessor {
                 // so remove it.
                 headers.removeHeader("content-length");
                 request.setContentLength(-1);
+                keepAlive = false;
             } else {
                 inputBuffer.addActiveFilter(inputFilters[Constants.IDENTITY_FILTER]);
                 contentDelimitation = true;
@@ -890,15 +925,23 @@ public class Http11Processor extends AbstractProcessor {
 
         // FIXME: Add transfer encoding header
 
-        if ((entityBody) && (!contentDelimitation)) {
-            // Mark as close the connection after the request, and add the
-            // connection: close header
+        if ((entityBody) && (!contentDelimitation) || connectionClosePresent) {
+            // Disable keep-alive if:
+            // - there is a response body but way for the client to determine
+            //   the content length information; or
+            // - there is a "connection: close" header present
+            // This will cause the "connection: close" header to be added if it
+            // is not already present.
             keepAlive = false;
         }
 
         // This may disabled keep-alive to check before working out the
         // Connection header.
         checkExpectationAndResponseStatus();
+
+        // This may disable keep-alive if there is more body to swallow
+        // than the configuration allows
+        checkMaxSwallowSize();
 
         // If we know that the request is bad this early, add the
         // Connection: close header.
@@ -1122,16 +1165,21 @@ public class Http11Processor extends AbstractProcessor {
 
 
     @Override
-    protected final void ack() {
-        // Acknowledge request
-        // Send a 100 status back if it makes sense (response not committed
-        // yet, and client specified an expectation for 100-continue)
-        if (!response.isCommitted() && request.hasExpectation()) {
-            inputBuffer.setSwallowInput(true);
-            try {
-                outputBuffer.sendAck();
-            } catch (IOException e) {
-                setErrorState(ErrorState.CLOSE_CONNECTION_NOW, e);
+    protected final void ack(ContinueResponseTiming continueResponseTiming) {
+        // Only try and send the ACK for ALWAYS or if the timing of the request
+        // to send the ACK matches the current configuration.
+        if (continueResponseTiming == ContinueResponseTiming.ALWAYS ||
+                continueResponseTiming == protocol.getContinueResponseTimingInternal()) {
+            // Acknowledge request
+            // Send a 100 status back if it makes sense (response not committed
+            // yet, and client specified an expectation for 100-continue)
+            if (!response.isCommitted() && request.hasExpectation()) {
+                inputBuffer.setSwallowInput(true);
+                try {
+                    outputBuffer.sendAck();
+                } catch (IOException e) {
+                    setErrorState(ErrorState.CLOSE_CONNECTION_NOW, e);
+                }
             }
         }
     }

@@ -59,22 +59,6 @@ final class StandardHostValve extends ValveBase {
     private static final ClassLoader MY_CLASSLOADER =
             StandardHostValve.class.getClassLoader();
 
-    static final boolean STRICT_SERVLET_COMPLIANCE;
-
-    static final boolean ACCESS_SESSION;
-
-    static {
-        STRICT_SERVLET_COMPLIANCE = Globals.STRICT_SERVLET_COMPLIANCE;
-
-        String accessSession = System.getProperty(
-                "org.apache.catalina.core.StandardHostValve.ACCESS_SESSION");
-        if (accessSession == null) {
-            ACCESS_SESSION = STRICT_SERVLET_COMPLIANCE;
-        } else {
-            ACCESS_SESSION = Boolean.parseBoolean(accessSession);
-        }
-    }
-
     //------------------------------------------------------ Constructor
     public StandardHostValve() {
         super(true);
@@ -110,6 +94,10 @@ final class StandardHostValve extends ValveBase {
         // Select the Context to be used for this Request
         Context context = request.getContext();
         if (context == null) {
+            // Don't overwrite an existing error
+            if (!response.isError()) {
+                response.sendError(404);
+            }
             return;
         }
 
@@ -183,7 +171,7 @@ final class StandardHostValve extends ValveBase {
         } finally {
             // Access a session (if present) to update last accessed time, based
             // on a strict interpretation of the specification
-            if (ACCESS_SESSION) {
+            if (context.getAlwaysAccessSession()) {
                 request.getSession(false);
             }
 

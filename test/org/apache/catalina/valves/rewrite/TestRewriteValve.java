@@ -107,6 +107,18 @@ public class TestRewriteValve extends TomcatBaseTest {
     }
 
     @Test
+    public void testRewriteMap07() throws Exception {
+        doTestRewrite("RewriteMap mapa org.apache.catalina.valves.rewrite.TesterRewriteMapA foo bar\n" +
+                "RewriteRule /b/.* /c/${mapa:${mapa:a}}", "/b/a.html", "/c/aaaa");
+    }
+
+    @Test
+    public void testRewriteMap08() throws Exception {
+        doTestRewrite("RewriteMap lc int:tolower\n" +
+                "RewriteRule ^(.*) ${lc:$1}", "/C/AaA", "/c/aaa");
+    }
+
+    @Test
     public void testRewriteServerVar() throws Exception {
         doTestRewrite("RewriteRule /b/(.*).html$ /c%{SERVLET_PATH}", "/b/x.html", "/c/b/x.html");
     }
@@ -605,6 +617,15 @@ public class TestRewriteValve extends TomcatBaseTest {
         doTestRewrite("RewriteRule !^/c/.* /b/", "/c/d", "/c/d");
     }
 
+    @Test
+    public void testMultiLine001() throws Exception {
+        doTestRewrite("RewriteRule /dummy /anotherDummy [L]\nRewriteRule ^/a /c [L]", "/a", "/c");
+    }
+
+    @Test
+    public void testMultiLine002() throws Exception {
+        doTestRewrite("RewriteRule /dummy /a\nRewriteRule /a /c [L]", "/dummy", "/c");
+    }
 
     private void doTestRewrite(String config, String request, String expectedURI) throws Exception {
         doTestRewrite(config, request, expectedURI, null);

@@ -193,7 +193,7 @@ public final class Room {
                     TIMER_DELAY, TIMER_DELAY);
         }
 
-        // Send him the current number of players and the current room image.
+        // Send the current number of players and the current room image.
         String content = String.valueOf(players.size());
         p.sendRoomMessage(MessageType.IMAGE_MESSAGE, content);
 
@@ -371,9 +371,9 @@ public final class Room {
 
                 // Run the cached runnables.
                 if (cachedRunnables != null) {
-                    for (int i = 0; i < cachedRunnables.size(); i++) {
+                    for (Runnable cachedRunnable : cachedRunnables) {
                         if (!closed) {
-                            cachedRunnables.get(i).run();
+                            cachedRunnable.run();
                         }
                     }
                     cachedRunnables = null;

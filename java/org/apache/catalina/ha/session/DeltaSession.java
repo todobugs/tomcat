@@ -113,6 +113,11 @@ public class DeltaSession extends StandardSession implements Externalizable,Clus
         return createRequest(null, false);
     }
 
+    /*
+     * DeltaRequest instances are created via this protected method to enable
+     * sub-classes to over-ride the method to use custom DeltaRequest
+     * implementations.
+     */
     protected DeltaRequest createRequest(String sessionId, boolean recordAllActions) {
         return new DeltaRequest(sessionId, recordAllActions);
     }
@@ -320,7 +325,12 @@ public class DeltaSession extends StandardSession implements Externalizable,Clus
     @Override
     public void setId(String id, boolean notify) {
         super.setId(id, notify);
-        resetDeltaRequest();
+        lockInternal();
+        try {
+            deltaRequest.setSessionId(getIdInternal());
+        } finally{
+            unlockInternal();
+        }
     }
 
 
@@ -332,8 +342,7 @@ public class DeltaSession extends StandardSession implements Externalizable,Clus
      */
     @Override
     public void setId(String id) {
-        super.setId(id, true);
-        resetDeltaRequest();
+        setId(id, true);
     }
 
 
@@ -437,7 +446,7 @@ public class DeltaSession extends StandardSession implements Externalizable,Clus
         if (this.expiring) {
             return true;
         }
-        if (ACTIVITY_CHECK && accessCount.get() > 0) {
+        if (activityCheck && accessCount.get() > 0) {
             return true;
         }
         if (maxInactiveInterval > 0) {
@@ -553,7 +562,7 @@ public class DeltaSession extends StandardSession implements Externalizable,Clus
         StringBuilder sb = new StringBuilder();
         sb.append("DeltaSession[");
         sb.append(id);
-        sb.append("]");
+        sb.append(']');
         return sb.toString();
     }
 
@@ -934,12 +943,12 @@ public class DeltaSession extends StandardSession implements Externalizable,Clus
         String keys[] = keys();
         List<String> saveNames = new ArrayList<>();
         List<Object> saveValues = new ArrayList<>();
-        for (int i = 0; i < keys.length; i++) {
+        for (String key : keys) {
             Object value = null;
-            value = attributes.get(keys[i]);
-            if (value != null && !exclude(keys[i], value) &&
-                    isAttributeDistributable(keys[i], value)) {
-                saveNames.add(keys[i]);
+            value = attributes.get(key);
+            if (value != null && !exclude(key, value) &&
+                    isAttributeDistributable(key, value)) {
+                saveNames.add(key);
                 saveValues.add(value);
             }
         }
@@ -1011,7 +1020,11 @@ public class DeltaSession extends StandardSession implements Externalizable,Clus
     }
 
     protected void setAccessCount(int count) {
-        if ( accessCount == null && ACTIVITY_CHECK ) accessCount = new AtomicInteger();
-        if ( accessCount != null ) super.accessCount.set(count);
+        if (accessCount == null && activityCheck) {
+            accessCount = new AtomicInteger();
+        }
+        if (accessCount != null) {
+            accessCount.set(count);
+        }
     }
 }

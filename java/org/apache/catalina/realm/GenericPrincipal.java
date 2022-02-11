@@ -68,7 +68,7 @@ public class GenericPrincipal implements TomcatPrincipal, Serializable {
      * @param password  Unused
      * @param roles List of roles (must be Strings) possessed by this user
      *
-     * @deprecated This method will be removed in Tomcat 10.0.1 onwards
+     * @deprecated This method will be removed in Tomcat 11 onwards
      */
     @Deprecated
     public GenericPrincipal(String name, String password, List<String> roles) {
@@ -99,7 +99,7 @@ public class GenericPrincipal implements TomcatPrincipal, Serializable {
      * @param userPrincipal - the principal to be returned from the request
      *        getUserPrincipal call if not null; if null, this will be returned
      *
-     * @deprecated This method will be removed in Tomcat 10.0.1 onwards
+     * @deprecated This method will be removed in Tomcat 11 onwards
      */
     @Deprecated
     public GenericPrincipal(String name, String password, List<String> roles,
@@ -135,7 +135,7 @@ public class GenericPrincipal implements TomcatPrincipal, Serializable {
      * @param loginContext  - If provided, this will be used to log out the user
      *        at the appropriate time
      *
-     * @deprecated This method will be removed in Tomcat 10.0.1 onwards
+     * @deprecated This method will be removed in Tomcat 11 onwards
      */
     @Deprecated
     public GenericPrincipal(String name, String password, List<String> roles,
@@ -164,7 +164,7 @@ public class GenericPrincipal implements TomcatPrincipal, Serializable {
         if (roles == null) {
             this.roles = new String[0];
         } else {
-            this.roles = roles.toArray(new String[roles.size()]);
+            this.roles = roles.toArray(new String[0]);
             if (this.roles.length > 1) {
                 Arrays.sort(this.roles);
             }
@@ -187,7 +187,7 @@ public class GenericPrincipal implements TomcatPrincipal, Serializable {
      *        at the appropriate time
      * @param gssCredential - If provided, the user's delegated credentials
      *
-     * @deprecated This method will be removed in Tomcat 10.0.1 onwards
+     * @deprecated This method will be removed in Tomcat 11 onwards
      */
     @Deprecated
     public GenericPrincipal(String name, String password, List<String> roles,
@@ -284,9 +284,9 @@ public class GenericPrincipal implements TomcatPrincipal, Serializable {
     public String toString() {
         StringBuilder sb = new StringBuilder("GenericPrincipal[");
         sb.append(this.name);
-        sb.append("(");
-        for (int i = 0; i < roles.length; i++ ) {
-            sb.append( roles[i]).append(",");
+        sb.append('(');
+        for (String role : roles) {
+            sb.append(role).append(',');
         }
         sb.append(")]");
         return sb.toString();

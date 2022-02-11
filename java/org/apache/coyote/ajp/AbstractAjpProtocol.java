@@ -207,11 +207,17 @@ public abstract class AbstractAjpProtocol<S> extends AbstractProtocol<S> {
     private int packetSize = Constants.MAX_PACKET_SIZE;
     public int getPacketSize() { return packetSize; }
     public void setPacketSize(int packetSize) {
-        if(packetSize < Constants.MAX_PACKET_SIZE) {
+        if (packetSize < Constants.MAX_PACKET_SIZE) {
             this.packetSize = Constants.MAX_PACKET_SIZE;
         } else {
             this.packetSize = packetSize;
         }
+    }
+
+
+    @Override
+    public int getDesiredBufferSize() {
+        return getPacketSize() - Constants.SEND_HEAD_LEN;
     }
 
 
@@ -261,7 +267,7 @@ public abstract class AbstractAjpProtocol<S> extends AbstractProtocol<S> {
         if (getSecretRequired()) {
             String secret = getSecret();
             if (secret == null || secret.length() == 0) {
-                throw new IllegalArgumentException(sm.getString("ajpprotocol.nosecret"));
+                throw new IllegalArgumentException(sm.getString("ajpprotocol.noSecret"));
             }
         }
         super.start();

@@ -380,11 +380,11 @@ class Util {
     private static final String paramString(Class<?>[] types) {
         if (types != null) {
             StringBuilder sb = new StringBuilder();
-            for (int i = 0; i < types.length; i++) {
-                if (types[i] == null) {
+            for (Class<?> type : types) {
+                if (type == null) {
                     sb.append("null, ");
                 } else {
-                    sb.append(types[i].getName()).append(", ");
+                    sb.append(type.getName()).append(", ");
                 }
             }
             if (sb.length() > 2) {
@@ -545,14 +545,14 @@ class Util {
         // If base is non-null, method may be static or non-static
         if (m == null ||
                 (Modifier.isPublic(type.getModifiers()) &&
-                        (jreCompat.canAcccess(base, m) || base != null && jreCompat.canAcccess(null, m)))) {
+                        (jreCompat.canAccess(base, m) || base != null && jreCompat.canAccess(null, m)))) {
             return m;
         }
-        Class<?>[] inf = type.getInterfaces();
+        Class<?>[] interfaces = type.getInterfaces();
         Method mp = null;
-        for (int i = 0; i < inf.length; i++) {
+        for (Class<?> iface : interfaces) {
             try {
-                mp = inf[i].getMethod(m.getName(), m.getParameterTypes());
+                mp = iface.getMethod(m.getName(), m.getParameterTypes());
                 mp = getMethod(mp.getDeclaringClass(), base, mp);
                 if (mp != null) {
                     return mp;
@@ -601,7 +601,7 @@ class Util {
         Constructor<?> constructor = wrapper.unWrap();
 
         JreCompat jreCompat = JreCompat.getInstance();
-        if (!Modifier.isPublic(clazz.getModifiers()) || !jreCompat.canAcccess(null, constructor)) {
+        if (!Modifier.isPublic(clazz.getModifiers()) || !jreCompat.canAccess(null, constructor)) {
             throw new MethodNotFoundException(message(
                     null, "util.method.notfound", clazz, methodName,
                     paramString(paramTypes)));

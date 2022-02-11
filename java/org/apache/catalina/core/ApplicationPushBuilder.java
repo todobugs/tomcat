@@ -18,10 +18,10 @@ package org.apache.catalina.core;
 
 import java.nio.charset.Charset;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.Enumeration;
 import java.util.HashSet;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -140,21 +140,13 @@ public class ApplicationPushBuilder implements PushBuilder {
 
         // Cookies
         if (request.getCookies() != null) {
-            for (Cookie requestCookie : request.getCookies()) {
-                cookies.add(requestCookie);
-            }
+            cookies.addAll(Arrays.asList(request.getCookies()));
         }
         for (Cookie responseCookie : catalinaRequest.getResponse().getCookies()) {
             if (responseCookie.getMaxAge() < 0) {
                 // Path information not available so can only remove based on
                 // name.
-                Iterator<Cookie> cookieIterator = cookies.iterator();
-                while (cookieIterator.hasNext()) {
-                    Cookie cookie = cookieIterator.next();
-                    if (cookie.getName().equals(responseCookie.getName())) {
-                        cookieIterator.remove();
-                    }
-                }
+                cookies.removeIf(cookie -> cookie.getName().equals(responseCookie.getName()));
             } else {
                 cookies.add(new Cookie(responseCookie.getName(), responseCookie.getValue()));
             }
@@ -439,7 +431,7 @@ public class ApplicationPushBuilder implements PushBuilder {
             // However, if passed a Cookie with just a name and value set it
             // will generate an appropriate header for the Cookie header on the
             // pushed request.
-            result.append(cookieProcessor.generateHeader(cookie));
+            result.append(cookieProcessor.generateHeader(cookie, null));
         }
         return result.toString();
     }

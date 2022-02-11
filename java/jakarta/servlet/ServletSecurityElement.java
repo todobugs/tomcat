@@ -93,13 +93,13 @@ public class ServletSecurityElement extends HttpConstraintElement {
         List<HttpMethodConstraintElement> l = new ArrayList<>();
         HttpMethodConstraint[] constraints = annotation.httpMethodConstraints();
         if (constraints != null) {
-            for (int i = 0; i < constraints.length; i++) {
+            for (HttpMethodConstraint constraint : constraints) {
                 HttpMethodConstraintElement e =
-                    new HttpMethodConstraintElement(constraints[i].value(),
-                            new HttpConstraintElement(
-                                    constraints[i].emptyRoleSemantic(),
-                                    constraints[i].transportGuarantee(),
-                                    constraints[i].rolesAllowed()));
+                        new HttpMethodConstraintElement(constraint.value(),
+                                new HttpConstraintElement(
+                                        constraint.emptyRoleSemantic(),
+                                        constraint.transportGuarantee(),
+                                        constraint.rolesAllowed()));
                 l.add(e);
             }
         }
@@ -107,14 +107,12 @@ public class ServletSecurityElement extends HttpConstraintElement {
     }
 
     public Collection<HttpMethodConstraintElement> getHttpMethodConstraints() {
-        Collection<HttpMethodConstraintElement> result = new HashSet<>();
-        result.addAll(methodConstraints.values());
+        Collection<HttpMethodConstraintElement> result = new HashSet<>(methodConstraints.values());
         return result;
     }
 
     public Collection<String> getMethodNames() {
-        Collection<String> result = new HashSet<>();
-        result.addAll(methodConstraints.keySet());
+        Collection<String> result = new HashSet<>(methodConstraints.keySet());
         return result;
     }
 

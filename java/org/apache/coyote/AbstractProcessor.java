@@ -22,6 +22,7 @@ import java.nio.ByteBuffer;
 import java.util.Iterator;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 
 import jakarta.servlet.RequestDispatcher;
 
@@ -98,6 +99,9 @@ public abstract class AbstractProcessor extends AbstractProcessorLight implement
      * @param t The error which occurred
      */
     protected void setErrorState(ErrorState errorState, Throwable t) {
+        if (getLog().isDebugEnabled()) {
+            getLog().debug(sm.getString("abstractProcessor.setErrorState", errorState), t);
+        }
         // Use the return value to avoid processing more than one async error
         // in a single async cycle.
         boolean setError = response.setError();
@@ -389,7 +393,7 @@ public abstract class AbstractProcessor extends AbstractProcessorLight implement
             break;
         }
         case ACK: {
-            ack();
+            ack((ContinueResponseTiming) param);
             break;
         }
         case CLIENT_FLUSH: {
@@ -432,7 +436,7 @@ public abstract class AbstractProcessor extends AbstractProcessorLight implement
             break;
         }
         case DISABLE_SWALLOW_INPUT: {
-            // Aborted upload or similar.
+            // Cancelled upload or similar.
             // No point reading the remainder of the request.
             disableSwallowRequest();
             // This is an error state. Make sure it is marked as such.
@@ -444,6 +448,12 @@ public abstract class AbstractProcessor extends AbstractProcessorLight implement
         case REQ_HOST_ADDR_ATTRIBUTE: {
             if (getPopulateRequestAttributesFromSocket() && socketWrapper != null) {
                 request.remoteAddr().setString(socketWrapper.getRemoteAddr());
+            }
+            break;
+        }
+        case REQ_PEER_ADDR_ATTRIBUTE: {
+            if (getPopulateRequestAttributesFromSocket() && socketWrapper != null) {
+                request.peerAddr().setString(socketWrapper.getRemoteAddr());
             }
             break;
         }
@@ -619,6 +629,20 @@ public abstract class AbstractProcessor extends AbstractProcessorLight implement
             result.set(isTrailerFieldsSupported());
             break;
         }
+
+        // Identifiers associated with multiplexing protocols like HTTP/2
+        case CONNECTION_ID: {
+            @SuppressWarnings("unchecked")
+            AtomicReference<Object> result = (AtomicReference<Object>) param;
+            result.set(getConnectionID());
+            break;
+        }
+        case STREAM_ID: {
+            @SuppressWarnings("unchecked")
+            AtomicReference<Object> result = (AtomicReference<Object>) param;
+            result.set(getStreamID());
+            break;
+        }
         }
     }
 
@@ -707,7 +731,7 @@ public abstract class AbstractProcessor extends AbstractProcessorLight implement
     protected abstract void finishResponse() throws IOException;
 
 
-    protected abstract void ack();
+    protected abstract void ack(ContinueResponseTiming continueResponseTiming);
 
 
     protected abstract void flush() throws IOException;
@@ -776,6 +800,14 @@ public abstract class AbstractProcessor extends AbstractProcessorLight implement
                 sslO = sslSupport.getProtocol();
                 if (sslO != null) {
                     request.setAttribute(SSLSupport.PROTOCOL_VERSION_KEY, sslO);
+                }
+                sslO = sslSupport.getRequestedProtocols();
+                if (sslO != null) {
+                    request.setAttribute(SSLSupport.REQUESTED_PROTOCOL_VERSIONS_KEY, sslO);
+                }
+                sslO = sslSupport.getRequestedCiphers();
+                if (sslO != null) {
+                    request.setAttribute(SSLSupport.REQUESTED_CIPHERS_KEY, sslO);
                 }
                 request.setAttribute(SSLSupport.SESSION_MGR, sslSupport);
             }
@@ -951,6 +983,30 @@ public abstract class AbstractProcessor extends AbstractProcessorLight implement
      */
     protected boolean isTrailerFieldsSupported() {
         return false;
+    }
+
+
+    /**
+     * Protocols that support multiplexing (e.g. HTTP/2) should override this
+     * method and return the appropriate ID.
+     *
+     * @return The stream ID associated with this request or {@code null} if a
+     *         multiplexing protocol is not being used
+      */
+    protected Object getConnectionID() {
+        return null;
+    }
+
+
+    /**
+     * Protocols that support multiplexing (e.g. HTTP/2) should override this
+     * method and return the appropriate ID.
+     *
+     * @return The stream ID associated with this request or {@code null} if a
+     *         multiplexing protocol is not being used
+     */
+    protected Object getStreamID() {
+        return null;
     }
 
 

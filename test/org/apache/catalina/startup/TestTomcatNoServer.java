@@ -62,31 +62,28 @@ public class TestTomcatNoServer {
 
         Map<String,String> webXmlMimeMappings = webXmlDefaultFragment.getMimeMappings();
 
-        Set<String> embeddedExtensions = new HashSet<>();
-        embeddedExtensions.addAll(Arrays.asList(ctx.findMimeMappings()));
+        Set<String> embeddedExtensions = new HashSet<>(Arrays.asList(ctx.findMimeMappings()));
 
         // Find entries present in conf/web.xml that are missing in embedded
-        Set<String> missingInEmbedded = new HashSet<>();
-        missingInEmbedded.addAll(webXmlMimeMappings.keySet());
+        Set<String> missingInEmbedded = new HashSet<>(webXmlMimeMappings.keySet());
         missingInEmbedded.removeAll(embeddedExtensions);
         if (missingInEmbedded.size() > 0) {
             for (String missingExtension : missingInEmbedded) {
                 System.out.println("Missing in embedded: [" + missingExtension +
                         "]-[" + webXmlMimeMappings.get(missingExtension) + "]");
             }
-            Assert.fail("Embedded is missing [" + missingInEmbedded.size() + "] entires compared to conf/web.xml");
+            Assert.fail("Embedded is missing [" + missingInEmbedded.size() + "] entries compared to conf/web.xml");
         }
 
         // Find entries present in embedded that are missing in conf/web.xml
-        Set<String> missingInWebXml = new HashSet<>();
-        missingInWebXml.addAll(embeddedExtensions);
+        Set<String> missingInWebXml = new HashSet<>(embeddedExtensions);
         missingInWebXml.removeAll(webXmlMimeMappings.keySet());
         if (missingInWebXml.size() > 0) {
             for (String missingExtension : missingInWebXml) {
                 System.out.println("Missing in embedded: [" + missingExtension +
                         "]-[" + ctx.findMimeMapping(missingExtension) + "]");
             }
-            Assert.fail("Embedded is missing [" + missingInWebXml.size() + "] entires compared to conf/web.xml");
+            Assert.fail("Embedded is missing [" + missingInWebXml.size() + "] entries compared to conf/web.xml");
         }
     }
 }

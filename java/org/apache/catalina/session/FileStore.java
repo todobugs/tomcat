@@ -33,6 +33,8 @@ import org.apache.catalina.Context;
 import org.apache.catalina.Globals;
 import org.apache.catalina.Session;
 import org.apache.juli.logging.Log;
+import org.apache.juli.logging.LogFactory;
+import org.apache.tomcat.util.res.StringManager;
 
 /**
  * Concrete implementation of the <b>Store</b> interface that utilizes
@@ -42,6 +44,10 @@ import org.apache.juli.logging.Log;
  * @author Craig R. McClanahan
  */
 public final class FileStore extends StoreBase {
+
+    private static final Log log = LogFactory.getLog(FileStore.class);
+    private static final StringManager sm = StringManager.getManager(FileStore.class);
+
 
     // ----------------------------------------------------- Constants
 
@@ -156,8 +162,8 @@ public final class FileStore extends StoreBase {
     @Override
     public void clear() throws IOException {
         String[] keys = keys();
-        for (int i = 0; i < keys.length; i++) {
-            remove(keys[i]);
+        for (String key : keys) {
+            remove(key);
         }
     }
 
@@ -191,7 +197,7 @@ public final class FileStore extends StoreBase {
                 list.add (file.substring(0, file.length() - n));
             }
         }
-        return list.toArray(new String[list.size()]);
+        return list.toArray(new String[0]);
     }
 
 
@@ -336,11 +342,20 @@ public final class FileStore extends StoreBase {
      *    used in the file naming.
      */
     private File file(String id) throws IOException {
-        if (this.directory == null) {
+        File storageDir = directory();
+        if (storageDir == null) {
             return null;
         }
+
         String filename = id + FILE_EXT;
-        File file = new File(directory(), filename);
+        File file = new File(storageDir, filename);
+
+        // Check the file is within the storage directory
+        if (!file.getCanonicalFile().toPath().startsWith(storageDir.getCanonicalFile().toPath())) {
+            log.warn(sm.getString("fileStore.invalid", file.getPath(), id));
+            return null;
+        }
+
         return file;
     }
 }

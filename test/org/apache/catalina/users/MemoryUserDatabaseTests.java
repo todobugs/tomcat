@@ -21,6 +21,7 @@ import java.io.BufferedWriter;
 import java.io.File;
 import java.io.FileWriter;
 import java.security.Principal;
+import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Iterator;
 
@@ -175,11 +176,8 @@ public class MemoryUserDatabaseTests {
         assertPrincipalNames(new String[] { "testgroup", "othergroup"}, user.getGroups());
     }
 
-    private void assertPrincipalNames(String[] expectedNames, Iterator<? extends Principal> i)
-    {
-        HashSet<String> names = new HashSet<>(expectedNames.length);
-        for(String name : expectedNames)
-            names.add(name);
+    private void assertPrincipalNames(String[] expectedNames, Iterator<? extends Principal> i) {
+        HashSet<String> names = new HashSet<>(Arrays.asList(expectedNames));
 
         int j=0;
         while(i.hasNext()) {

@@ -57,13 +57,7 @@ public class RequestDumperFilter extends GenericFilter {
     private static final String NON_HTTP_RES_MSG =
         "Not available. Non-http response.";
 
-    private static final ThreadLocal<Timestamp> timestamp =
-            new ThreadLocal<Timestamp>() {
-        @Override
-        protected Timestamp initialValue() {
-            return new Timestamp();
-        }
-    };
+    private static final ThreadLocal<Timestamp> timestamp = ThreadLocal.withInitial(Timestamp::new);
 
     // Log must be non-static as loggers are created per class-loader and this
     // Filter may be used in multiple class loaders
@@ -120,9 +114,9 @@ public class RequestDumperFilter extends GenericFilter {
             doLog("       contextPath", hRequest.getContextPath());
             Cookie cookies[] = hRequest.getCookies();
             if (cookies != null) {
-                for (int i = 0; i < cookies.length; i++) {
-                    doLog("            cookie", cookies[i].getName() +
-                            "=" + cookies[i].getValue());
+                for (Cookie cookie : cookies) {
+                    doLog("            cookie", cookie.getName() +
+                            "=" + cookie.getValue());
                 }
             }
             Enumeration<String> hnames = hRequest.getHeaderNames();

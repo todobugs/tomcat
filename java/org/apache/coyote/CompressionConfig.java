@@ -160,7 +160,7 @@ public class CompressionConfig {
                 values.add(token);
             }
         }
-        result = values.toArray(new String[values.size()]);
+        result = values.toArray(new String[0]);
         compressibleMimeTypes = result;
         return result;
     }
@@ -309,8 +309,8 @@ public class CompressionConfig {
         if (value == null) {
             return false;
         }
-        for (int i = 0; i < sArray.length; i++) {
-            if (value.startsWith(sArray[i])) {
+        for (String s : sArray) {
+            if (value.startsWith(s)) {
                 return true;
             }
         }

@@ -42,6 +42,7 @@ import org.apache.catalina.LifecycleListener;
 import org.apache.catalina.Valve;
 import org.apache.catalina.loader.WebappClassLoaderBase;
 import org.apache.catalina.util.ContextName;
+import org.apache.catalina.valves.ErrorReportValve;
 import org.apache.juli.logging.Log;
 import org.apache.juli.logging.LogFactory;
 import org.apache.tomcat.util.ExceptionUtils;
@@ -88,6 +89,14 @@ public class StandardHost extends ContainerBase implements Host {
      */
     private String appBase = "webapps";
     private volatile File appBaseFile = null;
+
+
+    /**
+     * The legacy (Java EE) application root for this Host.
+     */
+    private String legacyAppBase = "webapps-javaee";
+    private volatile File legacyAppBaseFile = null;
+
 
     /**
      * The XML root for this Host.
@@ -208,19 +217,12 @@ public class StandardHost extends ContainerBase implements Host {
     }
 
 
-    /**
-     * Return the application root for this Host.  This can be an absolute
-     * pathname, a relative pathname, or a URL.
-     */
     @Override
     public String getAppBase() {
         return this.appBase;
     }
 
 
-    /**
-     * ({@inheritDoc}
-     */
     @Override
     public File getAppBaseFile() {
 
@@ -247,15 +249,8 @@ public class StandardHost extends ContainerBase implements Host {
     }
 
 
-    /**
-     * Set the application root for this Host.  This can be an absolute
-     * pathname, a relative pathname, or a URL.
-     *
-     * @param appBase The new application root
-     */
     @Override
     public void setAppBase(String appBase) {
-
         if (appBase.trim().equals("")) {
             log.warn(sm.getString("standardHost.problematicAppBase", getName()));
         }
@@ -263,6 +258,49 @@ public class StandardHost extends ContainerBase implements Host {
         this.appBase = appBase;
         support.firePropertyChange("appBase", oldAppBase, this.appBase);
         this.appBaseFile = null;
+    }
+
+
+    @Override
+    public String getLegacyAppBase() {
+        return this.legacyAppBase;
+    }
+
+
+    @Override
+    public File getLegacyAppBaseFile() {
+        if (legacyAppBaseFile != null) {
+            return legacyAppBaseFile;
+        }
+
+        File file = new File(getLegacyAppBase());
+
+        // If not absolute, make it absolute
+        if (!file.isAbsolute()) {
+            file = new File(getCatalinaBase(), file.getPath());
+        }
+
+        // Make it canonical if possible
+        try {
+            file = file.getCanonicalFile();
+        } catch (IOException ioe) {
+            // Ignore
+        }
+
+        this.legacyAppBaseFile = file;
+        return file;
+    }
+
+
+    @Override
+    public void setLegacyAppBase(String legacyAppBase) {
+        if (legacyAppBase.trim().equals("")) {
+            log.warn(sm.getString("standardHost.problematicLegacyAppBase", getName()));
+        }
+        String oldLegacyAppBase = this.legacyAppBase;
+        this.legacyAppBase = legacyAppBase;
+        support.firePropertyChange("legacyAppBase", oldLegacyAppBase, this.legacyAppBase);
+        this.legacyAppBaseFile = null;
     }
 
 
@@ -664,8 +702,8 @@ public class StandardHost extends ContainerBase implements Host {
 
         synchronized (aliasesLock) {
             // Skip duplicate aliases
-            for (int i = 0; i < aliases.length; i++) {
-                if (aliases[i].equals(alias))
+            for (String s : aliases) {
+                if (s.equals(alias))
                     return;
             }
             // Add this alias to the list
@@ -749,7 +787,7 @@ public class StandardHost extends ContainerBase implements Host {
             }
         }
 
-        return result.toArray(new String[result.size()]);
+        return result.toArray(new String[0]);
     }
 
     /**
@@ -827,7 +865,8 @@ public class StandardHost extends ContainerBase implements Host {
                     }
                 }
                 if(!found) {
-                    Valve valve =
+                    Valve valve = ErrorReportValve.class.getName().equals(errorValve) ?
+                        new ErrorReportValve() :
                         (Valve) Class.forName(errorValve).getConstructor().newInstance();
                     getPipeline().addValve(valve);
                 }

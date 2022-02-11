@@ -17,6 +17,7 @@
 package org.apache.tomcat.websocket.server;
 
 import java.io.IOException;
+import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.concurrent.CountDownLatch;
@@ -85,10 +86,7 @@ public class TestClose extends WebSocketBaseTest {
 
 
     public static void awaitOnClose(CloseCode... codes) {
-        Set<CloseCode> set = new HashSet<>();
-        for (CloseCode code : codes) {
-            set.add(code);
-        }
+        Set<CloseCode> set = new HashSet<>(Arrays.asList(codes));
         awaitOnClose(set);
     }
 

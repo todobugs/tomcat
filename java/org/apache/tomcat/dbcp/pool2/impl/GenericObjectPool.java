@@ -18,7 +18,6 @@ package org.apache.tomcat.dbcp.pool2.impl;
 
 import java.util.ArrayList;
 import java.util.HashSet;
-import java.util.Iterator;
 import java.util.Map;
 import java.util.NoSuchElementException;
 import java.util.Set;
@@ -26,6 +25,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 
+import org.apache.tomcat.dbcp.pool2.DestroyMode;
 import org.apache.tomcat.dbcp.pool2.ObjectPool;
 import org.apache.tomcat.dbcp.pool2.PoolUtils;
 import org.apache.tomcat.dbcp.pool2.PooledObject;
@@ -37,7 +37,7 @@ import org.apache.tomcat.dbcp.pool2.UsageTracking;
  * A configurable {@link ObjectPool} implementation.
  * <p>
  * When coupled with the appropriate {@link PooledObjectFactory},
- * <code>GenericObjectPool</code> provides robust pooling functionality for
+ * {@code GenericObjectPool} provides robust pooling functionality for
  * arbitrary objects.
  * </p>
  * <p>
@@ -55,11 +55,11 @@ import org.apache.tomcat.dbcp.pool2.UsageTracking;
  * returned before the configured
  * {@link AbandonedConfig#getRemoveAbandonedTimeout() removeAbandonedTimeout}.
  * Abandoned object removal can be configured to happen when
- * <code>borrowObject</code> is invoked and the pool is close to starvation, or
+ * {@code borrowObject} is invoked and the pool is close to starvation, or
  * it can be executed by the idle object evictor, or both. If pooled objects
  * implement the {@link org.apache.tomcat.dbcp.pool2.TrackedUse} interface,
  * their last use will be queried
- * using the <code>getLastUsed</code> method on that interface; otherwise
+ * using the {@code getLastUsed} method on that interface; otherwise
  * abandonment is determined by how long an object has been checked out from
  * the pool.
  * </p>
@@ -82,7 +82,7 @@ public class GenericObjectPool<T> extends BaseGenericObjectPool<T>
         implements ObjectPool<T>, GenericObjectPoolMXBean, UsageTracking<T> {
 
     /**
-     * Creates a new <code>GenericObjectPool</code> using defaults from
+     * Creates a new {@code GenericObjectPool} using defaults from
      * {@link GenericObjectPoolConfig}.
      *
      * @param factory The object factory to be used to create object instances
@@ -93,7 +93,7 @@ public class GenericObjectPool<T> extends BaseGenericObjectPool<T>
     }
 
     /**
-     * Creates a new <code>GenericObjectPool</code> using a specific
+     * Creates a new {@code GenericObjectPool} using a specific
      * configuration.
      *
      * @param factory   The object factory to be used to create object instances
@@ -120,7 +120,7 @@ public class GenericObjectPool<T> extends BaseGenericObjectPool<T>
     }
 
     /**
-     * Creates a new <code>GenericObjectPool</code> that tracks and destroys
+     * Creates a new {@code GenericObjectPool} that tracks and destroys
      * objects that are checked out, but never returned to the pool.
      *
      * @param factory   The object factory to be used to create object instances
@@ -360,7 +360,7 @@ public class GenericObjectPool<T> extends BaseGenericObjectPool<T>
      * If there is one or more idle instance available in the pool, then an
      * idle instance will be selected based on the value of {@link #getLifo()},
      * activated and returned. If activation fails, or {@link #getTestOnBorrow()
-     * testOnBorrow} is set to <code>true</code> and validation fails, the
+     * testOnBorrow} is set to {@code true} and validation fails, the
      * instance is destroyed and the next available instance is examined. This
      * continues until either a valid instance is returned or there are no more
      * idle instances available.
@@ -369,20 +369,20 @@ public class GenericObjectPool<T> extends BaseGenericObjectPool<T>
      * If there are no idle instances available in the pool, behavior depends on
      * the {@link #getMaxTotal() maxTotal}, (if applicable)
      * {@link #getBlockWhenExhausted()} and the value passed in to the
-     * <code>borrowMaxWaitMillis</code> parameter. If the number of instances
-     * checked out from the pool is less than <code>maxTotal,</code> a new
+     * {@code borrowMaxWaitMillis} parameter. If the number of instances
+     * checked out from the pool is less than {@code maxTotal,} a new
      * instance is created, activated and (if applicable) validated and returned
-     * to the caller. If validation fails, a <code>NoSuchElementException</code>
+     * to the caller. If validation fails, a {@code NoSuchElementException}
      * is thrown.
      * </p>
      * <p>
      * If the pool is exhausted (no available idle instances and no capacity to
      * create new ones), this method will either block (if
      * {@link #getBlockWhenExhausted()} is true) or throw a
-     * <code>NoSuchElementException</code> (if
+     * {@code NoSuchElementException} (if
      * {@link #getBlockWhenExhausted()} is false). The length of time that this
      * method will block when {@link #getBlockWhenExhausted()} is true is
-     * determined by the value passed in to the <code>borrowMaxWaitMillis</code>
+     * determined by the value passed in to the {@code borrowMaxWaitMillis}
      * parameter.
      * </p>
      * <p>
@@ -457,7 +457,7 @@ public class GenericObjectPool<T> extends BaseGenericObjectPool<T>
                     factory.activateObject(p);
                 } catch (final Exception e) {
                     try {
-                        destroy(p);
+                        destroy(p, DestroyMode.NORMAL);
                     } catch (final Exception e1) {
                         // Ignore - activation failure is more important
                     }
@@ -480,7 +480,7 @@ public class GenericObjectPool<T> extends BaseGenericObjectPool<T>
                     }
                     if (!validate) {
                         try {
-                            destroy(p);
+                            destroy(p, DestroyMode.NORMAL);
                             destroyedByBorrowValidationCount.incrementAndGet();
                         } catch (final Exception e) {
                             // Ignore - validation failure is more important
@@ -538,7 +538,7 @@ public class GenericObjectPool<T> extends BaseGenericObjectPool<T>
 
         if (getTestOnReturn() && !factory.validateObject(p)) {
             try {
-                destroy(p);
+                destroy(p, DestroyMode.NORMAL);
             } catch (final Exception e) {
                 swallowException(e);
             }
@@ -556,7 +556,7 @@ public class GenericObjectPool<T> extends BaseGenericObjectPool<T>
         } catch (final Exception e1) {
             swallowException(e1);
             try {
-                destroy(p);
+                destroy(p, DestroyMode.NORMAL);
             } catch (final Exception e) {
                 swallowException(e);
             }
@@ -577,7 +577,7 @@ public class GenericObjectPool<T> extends BaseGenericObjectPool<T>
         final int maxIdleSave = getMaxIdle();
         if (isClosed() || maxIdleSave > -1 && maxIdleSave <= idleObjects.size()) {
             try {
-                destroy(p);
+                destroy(p, DestroyMode.NORMAL);
             } catch (final Exception e) {
                 swallowException(e);
             }
@@ -606,7 +606,7 @@ public class GenericObjectPool<T> extends BaseGenericObjectPool<T>
      * {@inheritDoc}
      * <p>
      * Activation of this method decrements the active count and attempts to
-     * destroy the instance.
+     * destroy the instance, using the default (NORMAL) {@link DestroyMode}.
      * </p>
      *
      * @throws Exception             if an exception occurs destroying the
@@ -615,6 +615,23 @@ public class GenericObjectPool<T> extends BaseGenericObjectPool<T>
      */
     @Override
     public void invalidateObject(final T obj) throws Exception {
+        invalidateObject(obj, DestroyMode.NORMAL);
+    }
+
+    /**
+     * {@inheritDoc}
+     * <p>
+     * Activation of this method decrements the active count and attempts to
+     * destroy the instance, using the provided {@link DestroyMode}.
+     * </p>
+     *
+     * @throws Exception             if an exception occurs destroying the
+     *                               object
+     * @throws IllegalStateException if obj does not belong to this pool
+     * @since 2.9.0
+     */
+    @Override
+    public void invalidateObject(final T obj, final DestroyMode mode) throws Exception {
         final PooledObject<T> p = allObjects.get(new IdentityWrapper<>(obj));
         if (p == null) {
             if (isAbandonedConfig()) {
@@ -625,7 +642,7 @@ public class GenericObjectPool<T> extends BaseGenericObjectPool<T>
         }
         synchronized (p) {
             if (p.getState() != PooledObjectState.INVALID) {
-                destroy(p);
+                destroy(p, mode);
             }
         }
         ensureIdle(1, false);
@@ -656,7 +673,7 @@ public class GenericObjectPool<T> extends BaseGenericObjectPool<T>
 
         while (p != null) {
             try {
-                destroy(p);
+                destroy(p, DestroyMode.NORMAL);
             } catch (final Exception e) {
                 swallowException(e);
             }
@@ -776,7 +793,7 @@ public class GenericObjectPool<T> extends BaseGenericObjectPool<T>
                     }
 
                     if (evict) {
-                        destroy(underTest);
+                        destroy(underTest, DestroyMode.NORMAL);
                         destroyedByEvictorCount.incrementAndGet();
                     } else {
                         if (testWhileIdle) {
@@ -785,18 +802,18 @@ public class GenericObjectPool<T> extends BaseGenericObjectPool<T>
                                 factory.activateObject(underTest);
                                 active = true;
                             } catch (final Exception e) {
-                                destroy(underTest);
+                                destroy(underTest, DestroyMode.NORMAL);
                                 destroyedByEvictorCount.incrementAndGet();
                             }
                             if (active) {
                                 if (!factory.validateObject(underTest)) {
-                                    destroy(underTest);
+                                    destroy(underTest, DestroyMode.NORMAL);
                                     destroyedByEvictorCount.incrementAndGet();
                                 } else {
                                     try {
                                         factory.passivateObject(underTest);
                                     } catch (final Exception e) {
-                                        destroy(underTest);
+                                        destroy(underTest, DestroyMode.NORMAL);
                                         destroyedByEvictorCount.incrementAndGet();
                                     }
                                 }
@@ -927,16 +944,17 @@ public class GenericObjectPool<T> extends BaseGenericObjectPool<T>
      * Destroys a wrapped pooled object.
      *
      * @param toDestroy The wrapped pooled object to destroy
+     * @param mode DestroyMode context provided to the factory
      *
      * @throws Exception If the factory fails to destroy the pooled object
      *                   cleanly
      */
-    private void destroy(final PooledObject<T> toDestroy) throws Exception {
+    private void destroy(final PooledObject<T> toDestroy, final DestroyMode mode) throws Exception {
         toDestroy.invalidate();
         idleObjects.remove(toDestroy);
         allObjects.remove(new IdentityWrapper<>(toDestroy.getObject()));
         try {
-            factory.destroyObject(toDestroy);
+            factory.destroyObject(toDestroy, mode);
         } finally {
             destroyedCount.incrementAndGet();
             createCount.decrementAndGet();
@@ -1044,17 +1062,15 @@ public class GenericObjectPool<T> extends BaseGenericObjectPool<T>
      * Recovers abandoned objects which have been checked out but
      * not used since longer than the removeAbandonedTimeout.
      *
-     * @param ac The configuration to use to identify abandoned objects
+     * @param abandonedConfig The configuration to use to identify abandoned objects
      */
-    private void removeAbandoned(final AbandonedConfig ac) {
+    private void removeAbandoned(final AbandonedConfig abandonedConfig) {
         // Generate a list of abandoned objects to remove
         final long now = System.currentTimeMillis();
         final long timeout =
-                now - (ac.getRemoveAbandonedTimeout() * 1000L);
+                now - (abandonedConfig.getRemoveAbandonedTimeout() * 1000L);
         final ArrayList<PooledObject<T>> remove = new ArrayList<>();
-        final Iterator<PooledObject<T>> it = allObjects.values().iterator();
-        while (it.hasNext()) {
-            final PooledObject<T> pooledObject = it.next();
+        for (PooledObject<T> pooledObject : allObjects.values()) {
             synchronized (pooledObject) {
                 if (pooledObject.getState() == PooledObjectState.ALLOCATED &&
                         pooledObject.getLastUsedTime() <= timeout) {
@@ -1065,14 +1081,12 @@ public class GenericObjectPool<T> extends BaseGenericObjectPool<T>
         }
 
         // Now remove the abandoned objects
-        final Iterator<PooledObject<T>> itr = remove.iterator();
-        while (itr.hasNext()) {
-            final PooledObject<T> pooledObject = itr.next();
-            if (ac.getLogAbandoned()) {
-                pooledObject.printStackTrace(ac.getLogWriter());
+        for (PooledObject<T> pooledObject : remove) {
+            if (abandonedConfig.getLogAbandoned()) {
+                pooledObject.printStackTrace(abandonedConfig.getLogWriter());
             }
             try {
-                invalidateObject(pooledObject.getObject());
+                invalidateObject(pooledObject.getObject(), DestroyMode.ABANDONED);
             } catch (final Exception e) {
                 e.printStackTrace();
             }
@@ -1084,8 +1098,8 @@ public class GenericObjectPool<T> extends BaseGenericObjectPool<T>
 
     @Override
     public void use(final T pooledObject) {
-        final AbandonedConfig ac = this.abandonedConfig;
-        if (ac != null && ac.getUseUsageTracking()) {
+        final AbandonedConfig abandonedCfg = this.abandonedConfig;
+        if (abandonedCfg != null && abandonedCfg.getUseUsageTracking()) {
             final PooledObject<T> wrapper = allObjects.get(new IdentityWrapper<>(pooledObject));
             wrapper.use();
         }

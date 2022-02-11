@@ -23,6 +23,7 @@ import java.net.MalformedURLException;
 import java.net.URISyntaxException;
 import java.net.URL;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
@@ -80,7 +81,7 @@ public class StandardRoot extends LifecycleMBeanBase implements WebResourceRoot 
 
     private boolean trackLockedFiles = false;
     private final Set<TrackedWebResource> trackedResources =
-            Collections.newSetFromMap(new ConcurrentHashMap<TrackedWebResource,Boolean>());
+            Collections.newSetFromMap(new ConcurrentHashMap<>());
 
     // Constructs to make iteration over all WebResourceSets simpler
     private final List<WebResourceSet> mainResources = new ArrayList<>();
@@ -128,13 +129,11 @@ public class StandardRoot extends LifecycleMBeanBase implements WebResourceRoot 
             for (WebResourceSet webResourceSet : list) {
                 if (!webResourceSet.getClassLoaderOnly()) {
                     String[] entries = webResourceSet.list(path);
-                    for (String entry : entries) {
-                        result.add(entry);
-                    }
+                    result.addAll(Arrays.asList(entries));
                 }
             }
         }
-        return result.toArray(new String[result.size()]);
+        return result.toArray(new String[0]);
     }
 
 
@@ -337,7 +336,7 @@ public class StandardRoot extends LifecycleMBeanBase implements WebResourceRoot 
             result.add(main.getResource(path));
         }
 
-        return result.toArray(new WebResource[result.size()]);
+        return result.toArray(new WebResource[0]);
     }
 
     @Override
@@ -438,7 +437,7 @@ public class StandardRoot extends LifecycleMBeanBase implements WebResourceRoot 
 
     @Override
     public WebResourceSet[] getPreResources() {
-        return preResources.toArray(new WebResourceSet[preResources.size()]);
+        return preResources.toArray(new WebResourceSet[0]);
     }
 
     @Override
@@ -449,7 +448,7 @@ public class StandardRoot extends LifecycleMBeanBase implements WebResourceRoot 
 
     @Override
     public WebResourceSet[] getJarResources() {
-        return jarResources.toArray(new WebResourceSet[jarResources.size()]);
+        return jarResources.toArray(new WebResourceSet[0]);
     }
 
     @Override
@@ -460,11 +459,11 @@ public class StandardRoot extends LifecycleMBeanBase implements WebResourceRoot 
 
     @Override
     public WebResourceSet[] getPostResources() {
-        return postResources.toArray(new WebResourceSet[postResources.size()]);
+        return postResources.toArray(new WebResourceSet[0]);
     }
 
     protected WebResourceSet[] getClassResources() {
-        return classResources.toArray(new WebResourceSet[classResources.size()]);
+        return classResources.toArray(new WebResourceSet[0]);
     }
 
     protected void addClassResources(WebResourceSet webResourceSet) {

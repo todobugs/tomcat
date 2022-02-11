@@ -117,8 +117,7 @@ public class ImplicitObjectELResolver extends ELResolver {
     }
 
     @Override
-    @SuppressWarnings({ "unchecked", "rawtypes" }) // TCK signature test fails with generics
-    public Class getType(ELContext context, Object base, Object property) {
+    public Class<?> getType(ELContext context, Object base, Object property) {
         Objects.requireNonNull(context);
 
         if (base == null && property != null) {
@@ -162,12 +161,12 @@ public class ImplicitObjectELResolver extends ELResolver {
     public Iterator<FeatureDescriptor> getFeatureDescriptors(ELContext context, Object base) {
         List<FeatureDescriptor> feats = new ArrayList<>(SCOPE_NAMES.length);
         FeatureDescriptor feat;
-        for (int i = 0; i < SCOPE_NAMES.length; i++) {
+        for (String scopeName : SCOPE_NAMES) {
             feat = new FeatureDescriptor();
-            feat.setDisplayName(SCOPE_NAMES[i]);
+            feat.setDisplayName(scopeName);
             feat.setExpert(false);
             feat.setHidden(false);
-            feat.setName(SCOPE_NAMES[i]);
+            feat.setName(scopeName);
             feat.setPreferred(true);
             feat.setValue(RESOLVABLE_AT_DESIGN_TIME, Boolean.TRUE);
             feat.setValue(TYPE, String.class);
@@ -254,12 +253,11 @@ public class ImplicitObjectELResolver extends ELResolver {
                 this.cookie = new ScopeMap<Cookie>() {
                     @Override
                     protected Enumeration<String> getAttributeNames() {
-                        Cookie[] c = ((HttpServletRequest) page.getRequest())
-                                .getCookies();
-                        if (c != null) {
+                        Cookie[] cookies = ((HttpServletRequest) page.getRequest()).getCookies();
+                        if (cookies != null) {
                             Vector<String> v = new Vector<>();
-                            for (int i = 0; i < c.length; i++) {
-                                v.add(c[i].getName());
+                            for (Cookie cookie : cookies) {
+                                v.add(cookie.getName());
                             }
                             return v.elements();
                         }
@@ -268,12 +266,11 @@ public class ImplicitObjectELResolver extends ELResolver {
 
                     @Override
                     protected Cookie getAttribute(String name) {
-                        Cookie[] c = ((HttpServletRequest) page.getRequest())
-                                .getCookies();
-                        if (c != null) {
-                            for (int i = 0; i < c.length; i++) {
-                                if (name.equals(c[i].getName())) {
-                                    return c[i];
+                        Cookie[] cookies = ((HttpServletRequest) page.getRequest()).getCookies();
+                        if (cookies != null) {
+                            for (Cookie cookie : cookies) {
+                                if (name.equals(cookie.getName())) {
+                                    return cookie;
                                 }
                             }
                         }
@@ -323,7 +320,7 @@ public class ImplicitObjectELResolver extends ELResolver {
                             while (e.hasMoreElements()) {
                                 list.add(e.nextElement());
                             }
-                            return list.toArray(new String[list.size()]);
+                            return list.toArray(new String[0]);
                         }
                         return null;
                     }

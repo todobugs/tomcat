@@ -24,6 +24,9 @@ import java.io.InputStream;
 import java.net.MalformedURLException;
 import java.net.URI;
 import java.net.URL;
+import java.net.URLConnection;
+
+import org.apache.tomcat.util.buf.UriUtil;
 
 /**
  * Abstracts configuration file storage. Allows Tomcat embedding using the regular
@@ -39,16 +42,19 @@ public interface ConfigurationSource {
         protected final URI userDirUri = userDir.toURI();
         @Override
         public Resource getResource(String name) throws IOException {
-            File f = new File(name);
-            if (!f.isAbsolute()) {
-                f = new File(userDir, name);
-            }
-            if (f.isFile()) {
-                return new Resource(new FileInputStream(f), f.toURI());
+            if (!UriUtil.isAbsoluteURI(name)) {
+                File f = new File(name);
+                if (!f.isAbsolute()) {
+                    f = new File(userDir, name);
+                }
+                if (f.isFile()) {
+                    FileInputStream fis = new FileInputStream(f);
+                    return new Resource(fis, f.toURI());
+                }
             }
             URI uri = null;
             try {
-                uri = getURI(name);
+                uri = userDirUri.resolve(name);
             } catch (IllegalArgumentException e) {
                 throw new FileNotFoundException(name);
             }
@@ -61,12 +67,14 @@ public interface ConfigurationSource {
         }
         @Override
         public URI getURI(String name) {
-            File f = new File(name);
-            if (!f.isAbsolute()) {
-                f = new File(userDir, name);
-            }
-            if (f.isFile()) {
-                return f.toURI();
+            if (!UriUtil.isAbsoluteURI(name)) {
+                File f = new File(name);
+                if (!f.isAbsolute()) {
+                    f = new File(userDir, name);
+                }
+                if (f.isFile()) {
+                    return f.toURI();
+                }
             }
             return userDirUri.resolve(name);
         }
@@ -91,7 +99,15 @@ public interface ConfigurationSource {
         }
         public long getLastModified()
                 throws MalformedURLException, IOException {
-            return uri.toURL().openConnection().getLastModified();
+            URLConnection connection = null;
+            try {
+                connection = uri.toURL().openConnection();
+                return connection.getLastModified();
+            } finally {
+                if (connection != null) {
+                    connection.getInputStream().close();
+                }
+            }
         }
         @Override
         public void close() throws IOException {

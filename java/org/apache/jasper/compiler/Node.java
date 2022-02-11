@@ -36,7 +36,6 @@ import jakarta.servlet.jsp.tagext.TagVariableInfo;
 import jakarta.servlet.jsp.tagext.TryCatchFinally;
 import jakarta.servlet.jsp.tagext.VariableInfo;
 
-import org.apache.jasper.Constants;
 import org.apache.jasper.JasperException;
 import org.apache.jasper.compiler.tagplugin.TagPluginContext;
 import org.xml.sax.Attributes;
@@ -412,6 +411,8 @@ abstract class Node implements TagConstants {
 
         private final boolean isXmlSyntax;
 
+        private final String variablePrefix;
+
         // Source encoding of the page containing this Root
         private String pageEnc;
 
@@ -452,9 +453,10 @@ abstract class Node implements TagConstants {
         /*
          * Constructor.
          */
-        Root(Mark start, Node parent, boolean isXmlSyntax) {
+        Root(Mark start, Node parent, boolean isXmlSyntax, String variablePrefix) {
             super(start, parent);
             this.isXmlSyntax = isXmlSyntax;
+            this.variablePrefix = variablePrefix;
             this.qName = JSP_ROOT_ACTION;
             this.localName = ROOT_ACTION;
 
@@ -529,7 +531,7 @@ abstract class Node implements TagConstants {
          */
         public String nextTemporaryVariableName() {
             if (parentRoot == null) {
-                return Constants.TEMP_VARIABLE_NAME_PREFIX + (tempSequenceNumber++);
+                return variablePrefix + (tempSequenceNumber++);
             } else {
                 return parentRoot.nextTemporaryVariableName();
             }
@@ -1398,10 +1400,27 @@ abstract class Node implements TagConstants {
         }
     }
 
+
+    public abstract static class ChildInfoBase extends Node {
+
+        private final ChildInfo childInfo = new ChildInfo();
+
+        public ChildInfoBase(String qName, String localName, Attributes attrs,
+                Attributes nonTaglibXmlnsAttrs, Attributes taglibAttrs, Mark start,
+                Node parent) {
+            super(qName, localName, attrs, nonTaglibXmlnsAttrs, taglibAttrs, start, parent);
+        }
+
+        public ChildInfo getChildInfo() {
+            return childInfo;
+        }
+    }
+
+
     /**
      * Represents a custom tag
      */
-    public static class CustomTag extends Node {
+    public static class CustomTag extends ChildInfoBase {
 
         private final String uri;
 
@@ -1422,8 +1441,6 @@ abstract class Node implements TagConstants {
         private VariableInfo[] varInfos;
 
         private final int customNestingLevel;
-
-        private final ChildInfo childInfo;
 
         private final boolean implementsIterationTag;
 
@@ -1487,7 +1504,6 @@ abstract class Node implements TagConstants {
             this.tagFileInfo = null;
             this.tagHandlerClass = tagHandlerClass;
             this.customNestingLevel = makeCustomNestingLevel();
-            this.childInfo = new ChildInfo();
 
             this.implementsIterationTag = IterationTag.class
                     .isAssignableFrom(tagHandlerClass);
@@ -1529,7 +1545,6 @@ abstract class Node implements TagConstants {
             this.tagFileInfo = tagFileInfo;
             this.tagInfo = tagFileInfo.getTagInfo();
             this.customNestingLevel = makeCustomNestingLevel();
-            this.childInfo = new ChildInfo();
 
             this.implementsIterationTag = false;
             this.implementsBodyTag = false;
@@ -1564,10 +1579,6 @@ abstract class Node implements TagConstants {
 
         public JspAttribute[] getJspAttributes() {
             return jspAttrs;
-        }
-
-        public ChildInfo getChildInfo() {
-            return childInfo;
         }
 
         public void setTagData(TagData tagData) {
@@ -1718,9 +1729,9 @@ abstract class Node implements TagConstants {
             boolean result = false;
 
             TagAttributeInfo[] attributes = tagInfo.getAttributes();
-            for (int i = 0; i < attributes.length; i++) {
-                if (attributes[i].getName().equals(name)
-                        && attributes[i].isFragment()) {
+            for (TagAttributeInfo attribute : attributes) {
+                if (attribute.getName().equals(name)
+                        && attribute.isFragment()) {
                     result = true;
                     break;
                 }
@@ -1865,7 +1876,7 @@ abstract class Node implements TagConstants {
     /**
      * Represents a Named Attribute (&lt;jsp:attribute&gt;)
      */
-    public static class NamedAttribute extends Node {
+    public static class NamedAttribute extends ChildInfoBase {
 
         // A unique temporary variable name suitable for code generation
         private String temporaryVariableName;
@@ -1876,8 +1887,6 @@ abstract class Node implements TagConstants {
         // True if this attribute should be omitted from the output if
         // used with a <jsp:element>, otherwise false
         private JspAttribute omit;
-
-        private final ChildInfo childInfo;
 
         private final String name;
 
@@ -1899,7 +1908,6 @@ abstract class Node implements TagConstants {
                 // (if null or true, leave default of true)
                 trim = false;
             }
-            childInfo = new ChildInfo();
             name = this.getAttributeValue("name");
             if (name != null) {
                 // Mandatory attribute "name" will be checked in Validator
@@ -1928,10 +1936,6 @@ abstract class Node implements TagConstants {
 
         public String getPrefix() {
             return this.prefix;
-        }
-
-        public ChildInfo getChildInfo() {
-            return this.childInfo;
         }
 
         public boolean isTrim() {
@@ -1998,9 +2002,7 @@ abstract class Node implements TagConstants {
     /**
      * Represents a JspBody node (&lt;jsp:body&gt;)
      */
-    public static class JspBody extends Node {
-
-        private final ChildInfo childInfo;
+    public static class JspBody extends ChildInfoBase {
 
         public JspBody(Mark start, Node parent) {
             this(JSP_BODY_ACTION, null, null, start, parent);
@@ -2010,16 +2012,11 @@ abstract class Node implements TagConstants {
                 Attributes taglibAttrs, Mark start, Node parent) {
             super(qName, BODY_ACTION, null, nonTaglibXmlnsAttrs, taglibAttrs,
                     start, parent);
-            this.childInfo = new ChildInfo();
         }
 
         @Override
         public void accept(Visitor v) throws JasperException {
             v.visit(this);
-        }
-
-        public ChildInfo getChildInfo() {
-            return childInfo;
         }
     }
 

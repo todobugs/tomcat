@@ -82,6 +82,10 @@ public class PageContextImpl extends PageContext {
 
     private String errorPageURL;
 
+    private boolean limitBodyContentBuffer;
+
+    private int bodyContentTagBufferSize = Constants.DEFAULT_TAG_BUFFER_SIZE;
+
     // page-scope attributes
     private final transient HashMap<String, Object> attributes;
 
@@ -124,6 +128,12 @@ public class PageContextImpl extends PageContext {
         this.errorPageURL = errorPageURL;
         this.request = request;
         this.response = response;
+
+        limitBodyContentBuffer = Boolean.parseBoolean(config.getInitParameter("limitBodyContentBuffer"));
+        String bodyContentTagBufferSize = config.getInitParameter("bodyContentTagBufferSize");
+        if (bodyContentTagBufferSize != null) {
+            this.bodyContentTagBufferSize = Integer.parseInt(bodyContentTagBufferSize);
+        }
 
         // initialize application context
         this.applicationContext = JspApplicationContextImpl.getInstance(context);
@@ -510,10 +520,8 @@ public class PageContextImpl extends PageContext {
             out.clear();
             baseOut.clear();
         } catch (IOException ex) {
-            IllegalStateException ise = new IllegalStateException(Localizer.getMessage(
-                    "jsp.error.attempt_to_clear_flushed_buffer"));
-            ise.initCause(ex);
-            throw ise;
+            throw new IllegalStateException(Localizer.getMessage(
+                    "jsp.error.attempt_to_clear_flushed_buffer"), ex);
         }
 
         // Make sure that the response object is not the wrapper for include
@@ -545,7 +553,7 @@ public class PageContextImpl extends PageContext {
         depth++;
         if (depth >= outs.length) {
             BodyContentImpl[] newOuts = Arrays.copyOf(outs, depth + 1);
-            newOuts[depth] = new BodyContentImpl(out);
+            newOuts[depth] = new BodyContentImpl(out, limitBodyContentBuffer, bodyContentTagBufferSize);
             outs = newOuts;
         }
 

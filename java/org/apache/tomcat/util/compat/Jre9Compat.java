@@ -31,9 +31,6 @@ import java.util.Set;
 import java.util.jar.JarFile;
 import java.util.zip.ZipFile;
 
-import javax.net.ssl.SSLEngine;
-import javax.net.ssl.SSLParameters;
-
 import org.apache.juli.logging.Log;
 import org.apache.juli.logging.LogFactory;
 import org.apache.tomcat.util.res.StringManager;
@@ -44,8 +41,6 @@ class Jre9Compat extends JreCompat {
     private static final StringManager sm = StringManager.getManager(Jre9Compat.class);
 
     private static final Class<?> inaccessibleObjectExceptionClazz;
-    private static final Method setApplicationProtocolsMethod;
-    private static final Method getApplicationProtocolMethod;
     private static final Method setDefaultUseCachesMethod;
     private static final Method bootMethod;
     private static final Method configurationMethod;
@@ -61,11 +56,10 @@ class Jre9Compat extends JreCompat {
     private static final Method canAccessMethod;
     private static final Method getModuleMethod;
     private static final Method isExportedMethod;
+    private static final Method getNameMethod;
 
     static {
         Class<?> c1 = null;
-        Method m2 = null;
-        Method m3 = null;
         Method m4 = null;
         Method m5 = null;
         Method m6 = null;
@@ -81,6 +75,7 @@ class Jre9Compat extends JreCompat {
         Method m16 = null;
         Method m17 = null;
         Method m18 = null;
+        Method m19 = null;
 
         try {
             // Order is important for the error handling below.
@@ -96,8 +91,6 @@ class Jre9Compat extends JreCompat {
             Method runtimeVersionMethod = JarFile.class.getMethod("runtimeVersion");
             Method majorMethod = versionClazz.getMethod("major");
 
-            m2 = SSLParameters.class.getMethod("setApplicationProtocols", String[].class);
-            m3 = SSLEngine.class.getMethod("getApplicationProtocol");
             m4 = URLConnection.class.getMethod("setDefaultUseCaches", String.class, boolean.class);
             m5 = moduleLayerClazz.getMethod("boot");
             m6 = moduleLayerClazz.getMethod("configuration");
@@ -114,6 +107,7 @@ class Jre9Compat extends JreCompat {
             m17 = Class.class.getMethod("getModule");
             Class<?> moduleClass = Class.forName("java.lang.Module");
             m18 = moduleClass.getMethod("isExported", String.class);
+            m19 = moduleClass.getMethod("getName");
 
         } catch (ClassNotFoundException e) {
             if (c1 == null) {
@@ -129,8 +123,6 @@ class Jre9Compat extends JreCompat {
         }
 
         inaccessibleObjectExceptionClazz = c1;
-        setApplicationProtocolsMethod = m2;
-        getApplicationProtocolMethod = m3;
         setDefaultUseCachesMethod = m4;
         bootMethod = m5;
         configurationMethod = m6;
@@ -153,6 +145,7 @@ class Jre9Compat extends JreCompat {
         canAccessMethod = m16;
         getModuleMethod = m17;
         isExportedMethod = m18;
+        getNameMethod = m19;
     }
 
 
@@ -168,26 +161,6 @@ class Jre9Compat extends JreCompat {
         }
 
         return inaccessibleObjectExceptionClazz.isAssignableFrom(t.getClass());
-    }
-
-
-    @Override
-    public void setApplicationProtocols(SSLParameters sslParameters, String[] protocols) {
-        try {
-            setApplicationProtocolsMethod.invoke(sslParameters, (Object) protocols);
-        } catch (IllegalAccessException | IllegalArgumentException | InvocationTargetException e) {
-            throw new UnsupportedOperationException(e);
-        }
-    }
-
-
-    @Override
-    public String getApplicationProtocol(SSLEngine sslEngine) {
-        try {
-            return (String) getApplicationProtocolMethod.invoke(sslEngine);
-        } catch (IllegalAccessException | IllegalArgumentException | InvocationTargetException e) {
-            throw new UnsupportedOperationException(e);
-        }
     }
 
 
@@ -255,7 +228,7 @@ class Jre9Compat extends JreCompat {
 
 
     @Override
-    public boolean canAcccess(Object base, AccessibleObject accessibleObject) {
+    public boolean canAccess(Object base, AccessibleObject accessibleObject) {
         try {
             return ((Boolean) canAccessMethod.invoke(accessibleObject, base)).booleanValue();
         } catch (ReflectiveOperationException | IllegalArgumentException e) {
@@ -272,6 +245,17 @@ class Jre9Compat extends JreCompat {
             return ((Boolean) isExportedMethod.invoke(module, packageName)).booleanValue();
         } catch (ReflectiveOperationException e) {
             return false;
+        }
+    }
+
+
+    @Override
+    public String getModuleName(Class<?> type) {
+        try {
+            Object module = getModuleMethod.invoke(type);
+            return (String) getNameMethod.invoke(module);
+        } catch (ReflectiveOperationException e) {
+            return "ERROR";
         }
     }
 }

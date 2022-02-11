@@ -128,13 +128,10 @@ public class JspServlet extends HttpServlet implements PeriodicEventListener {
             }
             try {
                 if (SecurityUtil.isPackageProtectionEnabled()){
-                   AccessController.doPrivileged(new PrivilegedExceptionAction<Object>(){
-                        @Override
-                        public Object run() throws IOException, ServletException {
-                            serviceJspFile(null, null, jspFile, true);
-                            return null;
-                        }
-                    });
+                   AccessController.doPrivileged((PrivilegedExceptionAction<Object>) () -> {
+                       serviceJspFile(null, null, jspFile, true);
+                       return null;
+                   });
                 } else {
                     serviceJspFile(null, null, jspFile, true);
                 }
@@ -234,16 +231,17 @@ public class JspServlet extends HttpServlet implements PeriodicEventListener {
      */
     boolean preCompile(HttpServletRequest request) throws ServletException {
 
+        String precompileParameter = rctxt.getOptions().getJspPrecompilationQueryParameter();
         String queryString = request.getQueryString();
         if (queryString == null) {
             return false;
         }
-        int start = queryString.indexOf(Constants.PRECOMPILE);
+        int start = queryString.indexOf(precompileParameter);
         if (start < 0) {
             return false;
         }
         queryString =
-            queryString.substring(start + Constants.PRECOMPILE.length());
+            queryString.substring(start + precompileParameter.length());
         if (queryString.length() == 0) {
             return true;             // ?jsp_precompile
         }
@@ -270,7 +268,7 @@ public class JspServlet extends HttpServlet implements PeriodicEventListener {
             return true;             // ?jsp_precompile=false
         } else {
             throw new ServletException(Localizer.getMessage("jsp.error.precompilation.parameter",
-                    Constants.PRECOMPILE, value));
+                    precompileParameter, value));
         }
 
     }
@@ -327,11 +325,7 @@ public class JspServlet extends HttpServlet implements PeriodicEventListener {
         try {
             boolean precompile = preCompile(request);
             serviceJspFile(request, response, jspUri, precompile);
-        } catch (RuntimeException e) {
-            throw e;
-        } catch (ServletException e) {
-            throw e;
-        } catch (IOException e) {
+        } catch (RuntimeException | IOException | ServletException e) {
             throw e;
         } catch (Throwable e) {
             ExceptionUtils.handleThrowable(e);
@@ -397,21 +391,18 @@ public class JspServlet extends HttpServlet implements PeriodicEventListener {
         String includeRequestUri =
             (String)request.getAttribute(RequestDispatcher.INCLUDE_REQUEST_URI);
 
+        String msg = Localizer.getMessage("jsp.error.file.not.found",jspUri);
         if (includeRequestUri != null) {
             // This file was included. Throw an exception as
             // a response.sendError() will be ignored
-            String msg =
-                Localizer.getMessage("jsp.error.file.not.found",jspUri);
             // Strictly, filtering this is an application
             // responsibility but just in case...
             throw new ServletException(Escape.htmlElementContent(msg));
         } else {
             try {
-                response.sendError(HttpServletResponse.SC_NOT_FOUND,
-                        request.getRequestURI());
+                response.sendError(HttpServletResponse.SC_NOT_FOUND, msg);
             } catch (IllegalStateException ise) {
-                log.error(Localizer.getMessage("jsp.error.file.not.found",
-                        jspUri));
+                log.error(msg);
             }
         }
     }

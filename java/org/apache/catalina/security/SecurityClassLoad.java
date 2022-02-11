@@ -43,7 +43,7 @@ public final class SecurityClassLoad {
         loadServletsPackage(loader);
         loadSessionPackage(loader);
         loadUtilPackage(loader);
-        loadJavaxPackage(loader);
+        loadJakartaPackage(loader);
         loadConnectorPackage(loader);
         loadTomcatPackage(loader);
     }
@@ -120,7 +120,7 @@ public final class SecurityClassLoad {
     }
 
 
-    private static final void loadJavaxPackage(ClassLoader loader) throws Exception {
+    private static final void loadJakartaPackage(ClassLoader loader) throws Exception {
         loader.loadClass("jakarta.servlet.http.Cookie");
     }
 
@@ -149,10 +149,11 @@ public final class SecurityClassLoad {
         loader.loadClass(basePackage + "CoyoteInputStream$PrivilegedRead");
         loader.loadClass(basePackage + "CoyoteInputStream$PrivilegedReadArray");
         loader.loadClass(basePackage + "CoyoteInputStream$PrivilegedReadBuffer");
+        loader.loadClass(basePackage + "CoyoteOutputStream");
         loader.loadClass(basePackage + "InputBuffer$PrivilegedCreateConverter");
         loader.loadClass(basePackage + "Response$PrivilegedDoIsEncodable");
         loader.loadClass(basePackage + "Response$PrivilegedGenerateCookieString");
-        loader.loadClass(basePackage + "Response$PrivilgedEncodeUrl");
+        loader.loadClass(basePackage + "Response$PrivilegedEncodeUrl");
     }
 
 

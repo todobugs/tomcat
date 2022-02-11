@@ -55,14 +55,8 @@ public abstract class ExpressionFactory {
     static {
         if (IS_SECURITY_ENABLED) {
             PROPERTY_FILE = AccessController.doPrivileged(
-                    new PrivilegedAction<String>(){
-                        @Override
-                        public String run() {
-                            return System.getProperty("java.home") + File.separator +
-                                    "lib" + File.separator + "el.properties";
-                        }
-
-                    }
+                    (PrivilegedAction<String>) () -> System.getProperty("java.home") + File.separator +
+                            "lib" + File.separator + "el.properties"
             );
         } else {
             PROPERTY_FILE = System.getProperty("java.home") + File.separator + "lib" +
@@ -330,14 +324,7 @@ public abstract class ExpressionFactory {
         className = getClassNameServices(tccl);
         if (className == null) {
             if (IS_SECURITY_ENABLED) {
-                className = AccessController.doPrivileged(
-                        new PrivilegedAction<String>() {
-                            @Override
-                            public String run() {
-                                return getClassNameJreDir();
-                            }
-                        }
-                );
+                className = AccessController.doPrivileged((PrivilegedAction<String>) ExpressionFactory::getClassNameJreDir);
             } else {
                 // Second el.properties file
                 className = getClassNameJreDir();
@@ -345,14 +332,7 @@ public abstract class ExpressionFactory {
         }
         if (className == null) {
             if (IS_SECURITY_ENABLED) {
-                className = AccessController.doPrivileged(
-                        new PrivilegedAction<String>() {
-                            @Override
-                            public String run() {
-                                return getClassNameSysProp();
-                            }
-                        }
-                );
+                className = AccessController.doPrivileged((PrivilegedAction<String>) ExpressionFactory::getClassNameSysProp);
             } else {
                 // Third system property
                 className = getClassNameSysProp();
