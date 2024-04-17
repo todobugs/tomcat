@@ -14,7 +14,6 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  */
-
 package org.apache.tomcat.util.net.openssl.ciphers;
 
 import java.util.Arrays;
@@ -2777,7 +2776,7 @@ public enum Cipher {
             MessageDigest.AEAD,
             Protocol.TLSv1_3,
             false,
-            EncryptionLevel.HIGH,
+            EncryptionLevel.MEDIUM,
             true,
             128,
             128,
@@ -4433,7 +4432,7 @@ public enum Cipher {
             MessageDigest.AEAD,
             Protocol.TLSv1_2,
             false,
-            EncryptionLevel.HIGH,
+            EncryptionLevel.MEDIUM,
             false,
             128,
             128,
@@ -4450,7 +4449,7 @@ public enum Cipher {
             MessageDigest.AEAD,
             Protocol.TLSv1_2,
             false,
-            EncryptionLevel.HIGH,
+            EncryptionLevel.MEDIUM,
             false,
             256,
             256,
@@ -4467,7 +4466,7 @@ public enum Cipher {
             MessageDigest.AEAD,
             Protocol.TLSv1_2,
             false,
-            EncryptionLevel.HIGH,
+            EncryptionLevel.MEDIUM,
             false,
             128,
             128,
@@ -4484,7 +4483,7 @@ public enum Cipher {
             MessageDigest.AEAD,
             Protocol.TLSv1_2,
             false,
-            EncryptionLevel.HIGH,
+            EncryptionLevel.MEDIUM,
             false,
             256,
             256,
@@ -4569,7 +4568,7 @@ public enum Cipher {
             MessageDigest.AEAD,
             Protocol.TLSv1_2,
             false,
-            EncryptionLevel.HIGH,
+            EncryptionLevel.MEDIUM,
             false,
             128,
             128,
@@ -4586,7 +4585,7 @@ public enum Cipher {
             MessageDigest.AEAD,
             Protocol.TLSv1_2,
             false,
-            EncryptionLevel.HIGH,
+            EncryptionLevel.MEDIUM,
             false,
             256,
             256,
@@ -4603,7 +4602,7 @@ public enum Cipher {
             MessageDigest.AEAD,
             Protocol.TLSv1_2,
             false,
-            EncryptionLevel.HIGH,
+            EncryptionLevel.MEDIUM,
             false,
             128,
             128,
@@ -4620,7 +4619,7 @@ public enum Cipher {
             MessageDigest.AEAD,
             Protocol.TLSv1_2,
             false,
-            EncryptionLevel.HIGH,
+            EncryptionLevel.MEDIUM,
             false,
             256,
             256,
@@ -4672,7 +4671,7 @@ public enum Cipher {
             MessageDigest.AEAD,
             Protocol.TLSv1_2,
             false,
-            EncryptionLevel.HIGH,
+            EncryptionLevel.MEDIUM,
             false,
             128,
             128,
@@ -4689,7 +4688,7 @@ public enum Cipher {
             MessageDigest.AEAD,
             Protocol.TLSv1_2,
             false,
-            EncryptionLevel.HIGH,
+            EncryptionLevel.MEDIUM,
             false,
             256,
             256,
@@ -5012,15 +5011,14 @@ public enum Cipher {
      */
     private final int alg_bits;
 
-    private Cipher(int id, String openSSLAlias, KeyExchange kx, Authentication au, Encryption enc,
+    Cipher(int id, String openSSLAlias, KeyExchange kx, Authentication au, Encryption enc,
             MessageDigest mac, Protocol protocol, boolean export, EncryptionLevel level,
             boolean fipsCompatible, int strength_bits, int alg_bits, String[] jsseAltNames,
             String[] openSSlAltNames) {
         this.id = id;
         this.openSSLAlias = openSSLAlias;
         if (openSSlAltNames != null && openSSlAltNames.length != 0) {
-            Set<String> altNames = new HashSet<>();
-            altNames.addAll(Arrays.asList(openSSlAltNames));
+            Set<String> altNames = new HashSet<>(Arrays.asList(openSSlAltNames));
             this.openSSLAltNames = Collections.unmodifiableSet(altNames);
         } else {
             this.openSSLAltNames = Collections.emptySet();
@@ -5103,7 +5101,7 @@ public enum Cipher {
     private static final Map<Integer,Cipher> idMap = new HashMap<>();
 
     static {
-        for (Cipher cipher : Cipher.values()) {
+        for (Cipher cipher : values()) {
             int id = cipher.getId();
 
             if (id > 0 && id < 0xFFFF) {

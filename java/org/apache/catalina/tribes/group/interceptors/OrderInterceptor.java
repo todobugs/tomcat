@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.catalina.tribes.group.interceptors;
 
 import java.util.HashMap;
@@ -31,7 +30,6 @@ import org.apache.catalina.tribes.util.StringManager;
 
 
 /**
- *
  * The order interceptor guarantees that messages are received in the same order they were
  * sent.
  * This interceptor works best with the ack=true setting. <br>
@@ -49,9 +47,6 @@ import org.apache.catalina.tribes.util.StringManager;
  * do when a message has expired or the queue has grown larger than the maxQueue value.
  * true means that the message is sent up the stack to the receiver that will receive and out of order message
  * false means, forget the message and reset the message counter. <b>default=true</b>
- *
- *
- * @version 1.1
  */
 public class OrderInterceptor extends ChannelInterceptorBase {
     protected static final StringManager sm = StringManager.getManager(OrderInterceptor.class);
@@ -72,28 +67,32 @@ public class OrderInterceptor extends ChannelInterceptorBase {
             return;
         }
         ChannelException cx = null;
-        for (int i=0; i<destination.length; i++ ) {
+        for (Member member : destination) {
             try {
                 int nr = 0;
                 outLock.writeLock().lock();
                 try {
-                    nr = incCounter(destination[i]);
+                    nr = incCounter(member);
                 } finally {
                     outLock.writeLock().unlock();
                 }
                 //reduce byte copy
                 msg.getMessage().append(nr);
                 try {
-                    getNext().sendMessage(new Member[] {destination[i]}, msg, payload);
+                    getNext().sendMessage(new Member[]{member}, msg, payload);
                 } finally {
                     msg.getMessage().trim(4);
                 }
-            }catch ( ChannelException x ) {
-                if ( cx == null ) cx = x;
+            } catch (ChannelException x) {
+                if (cx == null) {
+                    cx = x;
+                }
                 cx.addFaultyMember(x.getFaultyMembers());
             }
         }//for
-        if ( cx != null ) throw cx;
+        if ( cx != null ) {
+            throw cx;
+        }
     }
 
     @Override
@@ -107,7 +106,9 @@ public class OrderInterceptor extends ChannelInterceptorBase {
         MessageOrder order = new MessageOrder(msgnr,(ChannelMessage)msg.deepclone());
         inLock.writeLock().lock();
         try {
-            if ( processIncoming(order) ) processLeftOvers(msg.getAddress(),false);
+            if ( processIncoming(order) ) {
+                processLeftOvers(msg.getAddress(),false);
+            }
         } finally {
             inLock.writeLock().unlock();
         }
@@ -118,10 +119,11 @@ public class OrderInterceptor extends ChannelInterceptorBase {
             Counter cnt = getInCounter(member);
             cnt.setCounter(Integer.MAX_VALUE);
         }
-        if ( tmp!= null ) processIncoming(tmp);
+        if ( tmp!= null ) {
+            processIncoming(tmp);
+        }
     }
     /**
-     *
      * @param order MessageOrder
      * @return boolean - true if a message expired and was processed
      */
@@ -138,8 +140,11 @@ public class OrderInterceptor extends ChannelInterceptorBase {
 
         while ( (order!=null) && (order.getMsgNr() <= cnt.getCounter())  ) {
             //we are right on target. process orders
-            if ( order.getMsgNr() == cnt.getCounter() ) cnt.inc();
-            else if ( order.getMsgNr() > cnt.getCounter() ) cnt.setCounter(order.getMsgNr());
+            if ( order.getMsgNr() == cnt.getCounter() ) {
+                cnt.inc();
+            } else if ( order.getMsgNr() > cnt.getCounter() ) {
+                cnt.setCounter(order.getMsgNr());
+            }
             super.messageReceived(order.getMessage());
             order.setMessage(null);
             order = order.next;
@@ -153,21 +158,29 @@ public class OrderInterceptor extends ChannelInterceptorBase {
             //process expired messages or empty out the queue
             if ( tmp.isExpired(expire) || empty ) {
                 //reset the head
-                if ( tmp == head ) head = tmp.next;
+                if ( tmp == head ) {
+                    head = tmp.next;
+                }
                 cnt.setCounter(tmp.getMsgNr()+1);
-                if ( getForwardExpired() )
+                if ( getForwardExpired() ) {
                     super.messageReceived(tmp.getMessage());
+                }
                 tmp.setMessage(null);
                 tmp = tmp.next;
-                if ( prev != null ) prev.next = tmp;
+                if ( prev != null ) {
+                    prev.next = tmp;
+                }
                 result = true;
             } else {
                 prev = tmp;
                 tmp = tmp.next;
             }
         }
-        if ( head == null ) incoming.remove(member);
-        else incoming.put(member, head);
+        if ( head == null ) {
+            incoming.remove(member);
+        } else {
+            incoming.put(member, head);
+        }
         return result;
     }
 
@@ -269,9 +282,15 @@ public class OrderInterceptor extends ChannelInterceptorBase {
 
         @SuppressWarnings("null") // prev cannot be null
         public static MessageOrder add(MessageOrder head, MessageOrder add) {
-            if ( head == null ) return add;
-            if ( add == null ) return head;
-            if ( head == add ) return add;
+            if ( head == null ) {
+                return add;
+            }
+            if ( add == null ) {
+                return head;
+            }
+            if ( head == add ) {
+                return add;
+            }
 
             if ( head.getMsgNr() > add.getMsgNr() ) {
                 add.next = head;

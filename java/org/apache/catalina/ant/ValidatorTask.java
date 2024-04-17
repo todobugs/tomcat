@@ -14,8 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
-
 package org.apache.catalina.ant;
 
 
@@ -83,9 +81,9 @@ public class ValidatorTask extends BaseRedirectorHelperTask {
         }
 
         // Commons-logging likes having the context classloader set
-        ClassLoader oldCL = Thread.currentThread().getContextClassLoader();
-        Thread.currentThread().setContextClassLoader
-            (ValidatorTask.class.getClassLoader());
+        Thread currentThread = Thread.currentThread();
+        ClassLoader oldCL = currentThread.getContextClassLoader();
+        currentThread.setContextClassLoader(ValidatorTask.class.getClassLoader());
 
         // Called through trusted manager interface. If running under a
         // SecurityManager assume that untrusted applications may be deployed.
@@ -103,7 +101,7 @@ public class ValidatorTask extends BaseRedirectorHelperTask {
                 handleErrorOutput("Validation failure: " + e);
             }
         } finally {
-            Thread.currentThread().setContextClassLoader(oldCL);
+            currentThread.setContextClassLoader(oldCL);
             closeRedirector();
         }
 

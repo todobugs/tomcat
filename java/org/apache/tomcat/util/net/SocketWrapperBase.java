@@ -29,6 +29,9 @@ import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
 
 import org.apache.juli.logging.Log;
 import org.apache.juli.logging.LogFactory;
@@ -41,13 +44,18 @@ public abstract class SocketWrapperBase<E> {
 
     protected static final StringManager sm = StringManager.getManager(SocketWrapperBase.class);
 
-    private final E socket;
-    private final AbstractEndpoint<E> endpoint;
+    private E socket;
+    private final AbstractEndpoint<E,?> endpoint;
+    private final Lock lock = new ReentrantLock();
+
+    protected final AtomicBoolean closed = new AtomicBoolean(false);
 
     // Volatile because I/O and setting the timeout values occurs on a different
     // thread to the thread checking the timeout.
     private volatile long readTimeout = -1;
     private volatile long writeTimeout = -1;
+
+    protected volatile IOException previousIOException = null;
 
     private volatile int keepAliveLeft = 100;
     private volatile boolean upgraded = false;
@@ -101,7 +109,15 @@ public abstract class SocketWrapperBase<E> {
     protected final Semaphore writePending;
     protected volatile OperationState<?> writeOperation = null;
 
-    public SocketWrapperBase(E socket, AbstractEndpoint<E> endpoint) {
+    /**
+     * The org.apache.coyote.Processor instance currently associated with the
+     * wrapper. Only populated when required to maintain wrapper<->Processor
+     * mapping between calls to
+     * {@link AbstractEndpoint.Handler#process(SocketWrapperBase, SocketEvent)}.
+     */
+    private final AtomicReference<Object> currentProcessor = new AtomicReference<>();
+
+    public SocketWrapperBase(E socket, AbstractEndpoint<E,?> endpoint) {
         this.socket = socket;
         this.endpoint = endpoint;
         if (endpoint.getUseAsyncIO() || needSemaphores()) {
@@ -117,8 +133,28 @@ public abstract class SocketWrapperBase<E> {
         return socket;
     }
 
-    public AbstractEndpoint<E> getEndpoint() {
+    protected void reset(E closedSocket) {
+        socket = closedSocket;
+    }
+
+    public AbstractEndpoint<E,?> getEndpoint() {
         return endpoint;
+    }
+
+    public Lock getLock() {
+        return lock;
+    }
+
+    public Object getCurrentProcessor() {
+        return currentProcessor.get();
+    }
+
+    public void setCurrentProcessor(Object currentProcessor) {
+        this.currentProcessor.set(currentProcessor);
+    }
+
+    public Object takeCurrentProcessor() {
+        return currentProcessor.getAndSet(null);
     }
 
     /**
@@ -151,9 +187,33 @@ public abstract class SocketWrapperBase<E> {
         }
     }
 
+    /**
+     * @return {@code true} if the connection has been upgraded.
+     *
+     * @deprecated Unused. Will be removed in Tomcat 10.
+     */
+    @Deprecated
     public boolean isUpgraded() { return upgraded; }
+    /**
+     * @param upgraded {@code true} if the connection has been upgraded.
+     *
+     * @deprecated Unused. Will be removed in Tomcat 10.
+     */
+    @Deprecated
     public void setUpgraded(boolean upgraded) { this.upgraded = upgraded; }
+    /**
+     * @return {@code true} if the connection uses TLS
+     *
+     * @deprecated Unused. Will be removed in Tomcat 10.
+     */
+    @Deprecated
     public boolean isSecure() { return secure; }
+    /**
+     * @param secure {@code true} if the connection uses TLS
+     *
+     * @deprecated Unused. Will be removed in Tomcat 10.
+     */
+    @Deprecated
     public void setSecure(boolean secure) { this.secure = secure; }
     public String getNegotiatedProtocol() { return negotiatedProtocol; }
     public void setNegotiatedProtocol(String negotiatedProtocol) {
@@ -199,8 +259,8 @@ public abstract class SocketWrapperBase<E> {
     }
 
 
-    public void setKeepAliveLeft(int keepAliveLeft) { this.keepAliveLeft = keepAliveLeft;}
-    public int decrementKeepAlive() { return (--keepAliveLeft);}
+    public void setKeepAliveLeft(int keepAliveLeft) { this.keepAliveLeft = keepAliveLeft; }
+    public int decrementKeepAlive() { return (--keepAliveLeft); }
 
     public String getRemoteHost() {
         if (remoteHost == null) {
@@ -320,8 +380,8 @@ public abstract class SocketWrapperBase<E> {
             remaining = Math.min(remaining, len);
             readBuffer.get(b, off, remaining);
 
-            if (log.isDebugEnabled()) {
-                log.debug("Socket: [" + this + "], Read from buffer: [" + remaining + "]");
+            if (log.isTraceEnabled()) {
+                log.trace("Socket: [" + this + "], Read from buffer: [" + remaining + "]");
             }
         }
         return remaining;
@@ -334,8 +394,8 @@ public abstract class SocketWrapperBase<E> {
         socketBufferHandler.configureReadBufferForRead();
         int nRead = transfer(socketBufferHandler.getReadBuffer(), to);
 
-        if (log.isDebugEnabled()) {
-            log.debug("Socket: [" + this + "], Read from buffer: [" + nRead + "]");
+        if (log.isTraceEnabled()) {
+            log.trace("Socket: [" + this + "], Read from buffer: [" + nRead + "]");
         }
         return nRead;
     }
@@ -354,14 +414,42 @@ public abstract class SocketWrapperBase<E> {
      */
     public void unRead(ByteBuffer returnedInput) {
         if (returnedInput != null) {
-            socketBufferHandler.configureReadBufferForWrite();
-            socketBufferHandler.getReadBuffer().put(returnedInput);
+            socketBufferHandler.unReadReadBuffer(returnedInput);
         }
     }
 
 
-    public abstract void close() throws IOException;
-    public abstract boolean isClosed();
+    /**
+     * Close the socket wrapper.
+     */
+    public void close() {
+        if (closed.compareAndSet(false, true)) {
+            try {
+                getEndpoint().getHandler().release(this);
+            } catch (Throwable e) {
+                ExceptionUtils.handleThrowable(e);
+                if (log.isDebugEnabled()) {
+                    log.error(sm.getString("endpoint.debug.handlerRelease"), e);
+                }
+            } finally {
+                getEndpoint().countDownConnection();
+                doClose();
+            }
+        }
+    }
+
+    /**
+     * Perform the actual close. The closed atomic boolean guarantees this will
+     * be called only once per wrapper.
+     */
+    protected abstract void doClose();
+
+    /**
+     * @return true if the wrapper has been closed
+     */
+    public boolean isClosed() {
+        return closed.get();
+    }
 
 
     /**
@@ -641,6 +729,12 @@ public abstract class SocketWrapperBase<E> {
     }
 
 
+    /**
+     * Writes all remaining data from the buffers and blocks until the write is
+     * complete.
+     *
+     * @throws IOException If an IO error occurs during the write
+     */
     protected void flushBlocking() throws IOException {
         doWrite(true);
 
@@ -655,26 +749,15 @@ public abstract class SocketWrapperBase<E> {
     }
 
 
-    protected boolean flushNonBlocking() throws IOException {
-        boolean dataLeft = !socketBufferHandler.isWriteBufferEmpty();
-
-        // Write to the socket, if there is anything to write
-        if (dataLeft) {
-            doWrite(false);
-            dataLeft = !socketBufferHandler.isWriteBufferEmpty();
-        }
-
-        if (!dataLeft && !nonBlockingWriteBuffer.isEmpty()) {
-            dataLeft = nonBlockingWriteBuffer.write(this, false);
-
-            if (!dataLeft && !socketBufferHandler.isWriteBufferEmpty()) {
-                doWrite(false);
-                dataLeft = !socketBufferHandler.isWriteBufferEmpty();
-            }
-        }
-
-        return dataLeft;
-    }
+    /**
+     * Writes as much data as possible from any that remains in the buffers.
+     *
+     * @return <code>true</code> if data remains to be flushed after this method
+     *         completes, otherwise <code>false</code>.
+     *
+     * @throws IOException If an IO error occurs during the write
+     */
+    protected abstract boolean flushNonBlocking() throws IOException;
 
 
     /**
@@ -827,7 +910,7 @@ public abstract class SocketWrapperBase<E> {
          *
          * @return The call, if any, to make to the completion handler
          */
-        public CompletionHandlerCall callHandler(CompletionState state, ByteBuffer[] buffers,
+        CompletionHandlerCall callHandler(CompletionState state, ByteBuffer[] buffers,
                 int offset, int length);
     }
 
@@ -940,6 +1023,13 @@ public abstract class SocketWrapperBase<E> {
          */
         protected abstract boolean isInline();
 
+        protected boolean hasOutboundRemaining() {
+            // NIO2 and APR never have remaining outbound data when the
+            // completion handler is called. NIO needs to override this.
+            return false;
+        }
+
+
         /**
          * Process the operation using the connector executor.
          * @return true if the operation was accepted, false if the executor
@@ -991,7 +1081,7 @@ public abstract class SocketWrapperBase<E> {
                 boolean completion = true;
                 if (state.check != null) {
                     CompletionHandlerCall call = state.check.callHandler(currentState, state.buffers, state.offset, state.length);
-                    if (call == CompletionHandlerCall.CONTINUE) {
+                    if (call == CompletionHandlerCall.CONTINUE || (!state.read && state.hasOutboundRemaining())) {
                         complete = false;
                     } else if (call == CompletionHandlerCall.NONE) {
                         completion = false;
@@ -999,12 +1089,16 @@ public abstract class SocketWrapperBase<E> {
                 }
                 if (complete) {
                     boolean notify = false;
-                    state.semaphore.release();
                     if (state.read) {
                         readOperation = null;
                     } else {
                         writeOperation = null;
                     }
+                    // Semaphore must be released after [read|write]Operation is cleared
+                    // to ensure that the next thread to hold the semaphore hasn't
+                    // written a new value to [read|write]Operation by the time it is
+                    // cleared.
+                    state.semaphore.release();
                     if (state.block == BlockingMode.BLOCK && currentState != CompletionState.INLINE) {
                         notify = true;
                     } else {
@@ -1040,12 +1134,16 @@ public abstract class SocketWrapperBase<E> {
             }
             setError(ioe);
             boolean notify = false;
-            state.semaphore.release();
             if (state.read) {
                 readOperation = null;
             } else {
                 writeOperation = null;
             }
+            // Semaphore must be released after [read|write]Operation is cleared
+            // to ensure that the next thread to hold the semaphore hasn't
+            // written a new value to [read|write]Operation by the time it is
+            // cleared.
+            state.semaphore.release();
             if (state.block == BlockingMode.BLOCK) {
                 notify = true;
             } else {
@@ -1383,13 +1481,13 @@ public abstract class SocketWrapperBase<E> {
                         state.wait(unit.toMillis(timeout));
                         if (state.state == CompletionState.PENDING) {
                             if (handler != null && state.callHandler.compareAndSet(true, false)) {
-                                handler.failed(new SocketTimeoutException(), attachment);
+                                handler.failed(new SocketTimeoutException(getTimeoutMsg(read)), attachment);
                             }
                             return CompletionState.ERROR;
                         }
                     } catch (InterruptedException e) {
                         if (handler != null && state.callHandler.compareAndSet(true, false)) {
-                            handler.failed(new SocketTimeoutException(), attachment);
+                            handler.failed(new SocketTimeoutException(getTimeoutMsg(read)), attachment);
                         }
                         return CompletionState.ERROR;
                     }
@@ -1399,11 +1497,22 @@ public abstract class SocketWrapperBase<E> {
         return state.state;
     }
 
+
+    private String getTimeoutMsg(boolean read) {
+        if (read) {
+            return sm.getString("socketWrapper.readTimeout");
+        } else {
+            return sm.getString("socketWrapper.writeTimeout");
+        }
+    }
+
+
     protected abstract <A> OperationState<A> newOperationState(boolean read,
             ByteBuffer[] buffers, int offset, int length,
             BlockingMode block, long timeout, TimeUnit unit, A attachment,
             CompletionCheck check, CompletionHandler<Long, ? super A> handler,
             Semaphore semaphore, VectoredIOCompletionHandler<A> completion);
+
 
     // --------------------------------------------------------- Utility methods
 

@@ -27,6 +27,9 @@ import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
 import java.util.Locale;
 
+import org.apache.juli.logging.Log;
+import org.apache.juli.logging.LogFactory;
+import org.apache.tomcat.util.ExceptionUtils;
 import org.apache.tomcat.util.res.StringManager;
 
 /**
@@ -34,8 +37,8 @@ import org.apache.tomcat.util.res.StringManager;
  */
 public class B2CConverter {
 
-    private static final StringManager sm =
-        StringManager.getManager(Constants.Package);
+    private static final Log log = LogFactory.getLog(B2CConverter.class);
+    private static final StringManager sm = StringManager.getManager(B2CConverter.class);
 
     private static final CharsetCache charsetCache = new CharsetCache();
 
@@ -50,11 +53,9 @@ public class B2CConverter {
      *
      * @return The Charset corresponding to the requested encoding
      *
-     * @throws UnsupportedEncodingException If the requested Charset is not
-     *                                      available
+     * @throws UnsupportedEncodingException If the requested Charset is not available
      */
-    public static Charset getCharset(String enc)
-            throws UnsupportedEncodingException {
+    public static Charset getCharset(String enc) throws UnsupportedEncodingException {
 
         // Encoding names should all be ASCII
         String lowerCaseEnc = enc.toLowerCase(Locale.ENGLISH);
@@ -65,26 +66,23 @@ public class B2CConverter {
 
     /**
      * Only to be used when it is known that the encoding name is in lower case.
-     * @param lowerCaseEnc The name of the encoding for the required charset in
-     *                     lower case
+     *
+     * @param lowerCaseEnc The name of the encoding for the required charset in lower case
      *
      * @return The Charset corresponding to the requested encoding
      *
-     * @throws UnsupportedEncodingException If the requested Charset is not
-     *                                      available
+     * @throws UnsupportedEncodingException If the requested Charset is not available
      *
      * @deprecated Will be removed in Tomcat 9.0.x
      */
     @Deprecated
-    public static Charset getCharsetLower(String lowerCaseEnc)
-            throws UnsupportedEncodingException {
+    public static Charset getCharsetLower(String lowerCaseEnc) throws UnsupportedEncodingException {
 
         Charset charset = charsetCache.getCharset(lowerCaseEnc);
 
         if (charset == null) {
             // Pre-population of the cache means this must be invalid
-            throw new UnsupportedEncodingException(
-                    sm.getString("b2cConverter.unknownEncoding", lowerCaseEnc));
+            throw new UnsupportedEncodingException(sm.getString("b2cConverter.unknownEncoding", lowerCaseEnc));
         }
         return charset;
     }
@@ -128,21 +126,25 @@ public class B2CConverter {
      * Reset the decoder state.
      */
     public void recycle() {
-        decoder.reset();
+        try {
+            decoder.reset();
+        } catch (Throwable t) {
+            ExceptionUtils.handleThrowable(t);
+            log.warn(sm.getString("b2cConverter.decoderResetFail", decoder.charset()), t);
+        }
         leftovers.position(0);
     }
 
     /**
      * Convert the given bytes to characters.
      *
-     * @param bc byte input
-     * @param cc char output
-     * @param endOfInput    Is this all of the available data
+     * @param bc         byte input
+     * @param cc         char output
+     * @param endOfInput Is this all of the available data
      *
      * @throws IOException If the conversion can not be completed
      */
-    public void convert(ByteChunk bc, CharChunk cc, boolean endOfInput)
-            throws IOException {
+    public void convert(ByteChunk bc, CharChunk cc, boolean endOfInput) throws IOException {
         if ((bb == null) || (bb.array() != bc.getBuffer())) {
             // Create a new byte buffer if anything changed
             bb = ByteBuffer.wrap(bc.getBuffer(), bc.getStart(), bc.getLength());
@@ -153,8 +155,7 @@ public class B2CConverter {
         }
         if ((cb == null) || (cb.array() != cc.getBuffer())) {
             // Create a new char buffer if anything changed
-            cb = CharBuffer.wrap(cc.getBuffer(), cc.getEnd(),
-                    cc.getBuffer().length - cc.getEnd());
+            cb = CharBuffer.wrap(cc.getBuffer(), cc.getEnd(), cc.getBuffer().length - cc.getEnd());
         } else {
             // Initialize the char buffer
             cb.limit(cc.getBuffer().length);
@@ -166,7 +167,7 @@ public class B2CConverter {
             int pos = cb.position();
             // Loop until one char is decoded or there is a decoder error
             do {
-                leftovers.put(bc.substractB());
+                leftovers.put(bc.subtractB());
                 leftovers.flip();
                 result = decoder.decode(leftovers, cb, endOfInput);
                 leftovers.position(leftovers.limit());
@@ -196,7 +197,7 @@ public class B2CConverter {
             if (bc.getLength() > 0) {
                 leftovers.limit(leftovers.array().length);
                 leftovers.position(bc.getLength());
-                bc.substract(leftovers.array(), 0, bc.getLength());
+                bc.subtract(leftovers.array(), 0, bc.getLength());
             }
         }
     }
@@ -204,10 +205,10 @@ public class B2CConverter {
     /**
      * Convert the given bytes to characters.
      *
-     * @param bc byte input
-     * @param cc char output
-     * @param ic byte input channel
-     * @param endOfInput    Is this all of the available data
+     * @param bc         byte input
+     * @param cc         char output
+     * @param ic         byte input channel
+     * @param endOfInput Is this all of the available data
      *
      * @throws IOException If the conversion can not be completed
      */

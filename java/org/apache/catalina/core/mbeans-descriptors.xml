@@ -15,6 +15,9 @@
   See the License for the specific language governing permissions and
   limitations under the License.
 -->
+<!DOCTYPE mbeans-descriptors PUBLIC
+   "-//Apache Software Foundation//DTD Model MBeans Configuration File"
+   "http://jakarta.apache.org/commons/dtds/mbeans-descriptors.dtd">
 <mbeans-descriptors>
 
   <mbean name="ApplicationFilterConfig"
@@ -1309,8 +1312,17 @@
                type="java.lang.Object"/>
 
     <attribute name="port"
-               description="TCP port for shutdown messages"
+               description="TCP port (excluding any offset) for shutdown messages"
                type="int"/>
+
+    <attribute name="portOffset"
+               description="The offset applied to port and to the port attributes of any nested connectors"
+               type="int"/>
+
+    <attribute name="portWithOffset"
+               description="Actual TCP port (including any offset) for shutdown messages"
+               type="int"
+               writeable="false"/>
 
     <attribute name="serverInfo"
                description="Tomcat server release identifier"
@@ -1500,10 +1512,6 @@
                type="int"
                writeable="false" />
 
-    <attribute name="prestartminSpareThreads"
-               description="Prestart threads?"
-               is="true"
-               type="boolean"/>
 
     <attribute name="queueSize"
                description="Number of tasks waiting to be processed"
@@ -1575,7 +1583,7 @@
                writeable="false" />
 
     <attribute name="maxInstances"
-               description="Maximum number of STM instances."
+               description="Deprecated. Will be removed in Tomcat 10.1 onwards. Maximum number of STM instances."
                type="int" />
 
     <attribute name="minTime"
@@ -1607,7 +1615,7 @@
                writeable="false" />
 
     <attribute name="singleThreadModel"
-               description="Does this servlet implement the SingleThreadModel interface?"
+               description="Deprecated. Will be removed in Tomcat 10.1 onwards. Does this servlet implement the SingleThreadModel interface?"
                type="java.lang.Boolean"
                is="true"
                writeable="false" />

@@ -44,7 +44,7 @@ public class AccessLogAdapter implements AccessLog {
 
     @Override
     public void log(Request request, Response response, long time) {
-        for (AccessLog log: logs) {
+        for (AccessLog log : logs) {
             log.log(request, response, time);
         }
     }
@@ -60,5 +60,4 @@ public class AccessLogAdapter implements AccessLog {
         // not see a use case for that.
         return false;
     }
-
 }

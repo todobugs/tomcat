@@ -39,8 +39,9 @@ public class StoreContextAppender extends StoreAppender {
             if(attributeName.equals("docBase")) {
                 if(bean instanceof StandardContext) {
                     String docBase = ((StandardContext)bean).getOriginalDocBase() ;
-                    if(docBase != null)
+                    if(docBase != null) {
                         value = docBase ;
+                    }
                 }
             }
             printValue(writer, indent, attributeName, value);
@@ -52,9 +53,8 @@ public class StoreContextAppender extends StoreAppender {
      * </li><li> Don't save path at external context.xml </li><li> Don't
      * generate docBase for host.appBase webapps <LI></ul>
      *
-     * @see org.apache.catalina.storeconfig.StoreAppender#isPrintValue(java.lang.Object,
-     *      java.lang.Object, java.lang.String,
-     *      org.apache.catalina.storeconfig.StoreDescription)
+     * @see org.apache.catalina.storeconfig.StoreAppender#isPrintValue(Object,
+     *      Object, String, StoreDescription)
      */
     @Override
     public boolean isPrintValue(Object bean, Object bean2, String attrName,
@@ -64,7 +64,9 @@ public class StoreContextAppender extends StoreAppender {
             StandardContext context = ((StandardContext) bean);
             if ("workDir".equals(attrName)) {
                 String defaultWorkDir = getDefaultWorkDir(context);
-                isPrint = !defaultWorkDir.equals(context.getWorkDir());
+                if (defaultWorkDir != null) {
+                    isPrint = !defaultWorkDir.equals(context.getWorkDir());
+                }
             } else if ("path".equals(attrName)) {
                 isPrint = desc.isStoreSeparate()
                             && desc.isExternalAllowed()
@@ -85,9 +87,10 @@ public class StoreContextAppender extends StoreAppender {
 
         File appBase;
         File file = new File(host.getAppBase());
-        if (!file.isAbsolute())
+        if (!file.isAbsolute()) {
             file = new File(System.getProperty("catalina.base"), host
                     .getAppBase());
+        }
         try {
             appBase = file.getCanonicalFile();
         } catch (IOException e) {
@@ -100,11 +103,13 @@ public class StoreContextAppender extends StoreAppender {
     protected File getDocBase(StandardContext context, File appBase) {
         File docBase;
         String contextDocBase = context.getOriginalDocBase() ;
-        if(contextDocBase == null)
+        if(contextDocBase == null) {
             contextDocBase = context.getDocBase() ;
+        }
         File file = new File(contextDocBase);
-        if (!file.isAbsolute())
+        if (!file.isAbsolute()) {
             file = new File(appBase, contextDocBase);
+        }
         try {
             docBase = file.getCanonicalFile();
         } catch (IOException e) {
@@ -122,10 +127,12 @@ public class StoreContextAppender extends StoreAppender {
     protected String getDefaultWorkDir(StandardContext context) {
         String defaultWorkDir = null;
         String contextWorkDir = context.getName();
-        if (contextWorkDir.length() == 0)
+        if (contextWorkDir.length() == 0) {
             contextWorkDir = "_";
-        if (contextWorkDir.startsWith("/"))
+        }
+        if (contextWorkDir.startsWith("/")) {
             contextWorkDir = contextWorkDir.substring(1);
+        }
 
         Container host = context.getParent();
         if (host instanceof StandardHost) {
@@ -167,7 +174,8 @@ public class StoreContextAppender extends StoreAppender {
              * .getConfigBase(), "context.xml.default")); }
              */
             return defaultContext;
-        } else
+        } else {
             return super.defaultInstance(bean);
+        }
     }
 }

@@ -14,8 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
-
 package org.apache.catalina;
 
 
@@ -34,7 +32,7 @@ public interface ContainerListener {
      *
      * @param event ContainerEvent that has occurred
      */
-    public void containerEvent(ContainerEvent event);
+    void containerEvent(ContainerEvent event);
 
 
 }

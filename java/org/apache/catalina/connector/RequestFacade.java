@@ -34,21 +34,20 @@ import javax.servlet.ServletInputStream;
 import javax.servlet.ServletRequest;
 import javax.servlet.ServletResponse;
 import javax.servlet.http.Cookie;
+import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 import javax.servlet.http.HttpSession;
 import javax.servlet.http.HttpUpgradeHandler;
 import javax.servlet.http.Part;
 
 import org.apache.catalina.Globals;
+import org.apache.catalina.core.ApplicationMappingImpl;
 import org.apache.catalina.core.ApplicationPushBuilder;
 import org.apache.catalina.security.SecurityUtil;
-import org.apache.catalina.servlet4preview.http.HttpServletMapping;
-import org.apache.catalina.servlet4preview.http.HttpServletRequest;
 import org.apache.tomcat.util.res.StringManager;
 
 /**
- * Facade class that wraps a Coyote request object.
- * All methods are delegated to the wrapped request.
+ * Facade class that wraps a Coyote request object. All methods are delegated to the wrapped request.
  *
  * @author Craig R. McClanahan
  * @author Remy Maucherat
@@ -57,10 +56,7 @@ import org.apache.tomcat.util.res.StringManager;
 public class RequestFacade implements HttpServletRequest {
 
 
-    // ----------------------------------------------------------- DoPrivileged
-
-    private final class GetAttributePrivilegedAction
-            implements PrivilegedAction<Enumeration<String>> {
+    private final class GetAttributePrivilegedAction implements PrivilegedAction<Enumeration<String>> {
 
         @Override
         public Enumeration<String> run() {
@@ -69,8 +65,7 @@ public class RequestFacade implements HttpServletRequest {
     }
 
 
-    private final class GetParameterMapPrivilegedAction
-            implements PrivilegedAction<Map<String,String[]>> {
+    private final class GetParameterMapPrivilegedAction implements PrivilegedAction<Map<String,String[]>> {
 
         @Override
         public Map<String,String[]> run() {
@@ -79,12 +74,11 @@ public class RequestFacade implements HttpServletRequest {
     }
 
 
-    private final class GetRequestDispatcherPrivilegedAction
-            implements PrivilegedAction<RequestDispatcher> {
+    private final class GetRequestDispatcherPrivilegedAction implements PrivilegedAction<RequestDispatcher> {
 
         private final String path;
 
-        public GetRequestDispatcherPrivilegedAction(String path){
+        GetRequestDispatcherPrivilegedAction(String path) {
             this.path = path;
         }
 
@@ -95,12 +89,11 @@ public class RequestFacade implements HttpServletRequest {
     }
 
 
-    private final class GetParameterPrivilegedAction
-            implements PrivilegedAction<String> {
+    private final class GetParameterPrivilegedAction implements PrivilegedAction<String> {
 
         public String name;
 
-        public GetParameterPrivilegedAction(String name){
+        GetParameterPrivilegedAction(String name) {
             this.name = name;
         }
 
@@ -111,8 +104,7 @@ public class RequestFacade implements HttpServletRequest {
     }
 
 
-    private final class GetParameterNamesPrivilegedAction
-            implements PrivilegedAction<Enumeration<String>> {
+    private final class GetParameterNamesPrivilegedAction implements PrivilegedAction<Enumeration<String>> {
 
         @Override
         public Enumeration<String> run() {
@@ -121,12 +113,11 @@ public class RequestFacade implements HttpServletRequest {
     }
 
 
-    private final class GetParameterValuePrivilegedAction
-            implements PrivilegedAction<String[]> {
+    private final class GetParameterValuePrivilegedAction implements PrivilegedAction<String[]> {
 
         public String name;
 
-        public GetParameterValuePrivilegedAction(String name){
+        GetParameterValuePrivilegedAction(String name) {
             this.name = name;
         }
 
@@ -137,8 +128,7 @@ public class RequestFacade implements HttpServletRequest {
     }
 
 
-    private final class GetCookiesPrivilegedAction
-            implements PrivilegedAction<Cookie[]> {
+    private final class GetCookiesPrivilegedAction implements PrivilegedAction<Cookie[]> {
 
         @Override
         public Cookie[] run() {
@@ -147,8 +137,7 @@ public class RequestFacade implements HttpServletRequest {
     }
 
 
-    private final class GetCharacterEncodingPrivilegedAction
-            implements PrivilegedAction<String> {
+    private final class GetCharacterEncodingPrivilegedAction implements PrivilegedAction<String> {
 
         @Override
         public String run() {
@@ -157,12 +146,11 @@ public class RequestFacade implements HttpServletRequest {
     }
 
 
-    private final class GetHeadersPrivilegedAction
-            implements PrivilegedAction<Enumeration<String>> {
+    private final class GetHeadersPrivilegedAction implements PrivilegedAction<Enumeration<String>> {
 
         private final String name;
 
-        public GetHeadersPrivilegedAction(String name){
+        GetHeadersPrivilegedAction(String name) {
             this.name = name;
         }
 
@@ -173,8 +161,7 @@ public class RequestFacade implements HttpServletRequest {
     }
 
 
-    private final class GetHeaderNamesPrivilegedAction
-            implements PrivilegedAction<Enumeration<String>> {
+    private final class GetHeaderNamesPrivilegedAction implements PrivilegedAction<Enumeration<String>> {
 
         @Override
         public Enumeration<String> run() {
@@ -183,8 +170,7 @@ public class RequestFacade implements HttpServletRequest {
     }
 
 
-    private final class GetLocalePrivilegedAction
-            implements PrivilegedAction<Locale> {
+    private final class GetLocalePrivilegedAction implements PrivilegedAction<Locale> {
 
         @Override
         public Locale run() {
@@ -193,8 +179,7 @@ public class RequestFacade implements HttpServletRequest {
     }
 
 
-    private final class GetLocalesPrivilegedAction
-            implements PrivilegedAction<Enumeration<Locale>> {
+    private final class GetLocalesPrivilegedAction implements PrivilegedAction<Enumeration<Locale>> {
 
         @Override
         public Enumeration<Locale> run() {
@@ -202,12 +187,11 @@ public class RequestFacade implements HttpServletRequest {
         }
     }
 
-    private final class GetSessionPrivilegedAction
-            implements PrivilegedAction<HttpSession> {
+    private final class GetSessionPrivilegedAction implements PrivilegedAction<HttpSession> {
 
         private final boolean create;
 
-        public GetSessionPrivilegedAction(boolean create){
+        GetSessionPrivilegedAction(boolean create) {
             this.create = create;
         }
 
@@ -217,22 +201,8 @@ public class RequestFacade implements HttpServletRequest {
         }
     }
 
-    // ----------------------------------------------------------- Constructors
 
-
-    /**
-     * Construct a wrapper for the specified request.
-     *
-     * @param request The request to be wrapped
-     */
-    public RequestFacade(Request request) {
-
-        this.request = request;
-
-    }
-
-
-    // ----------------------------------------------------- Instance Variables
+    private static final StringManager sm = StringManager.getManager(RequestFacade.class);
 
 
     /**
@@ -242,12 +212,13 @@ public class RequestFacade implements HttpServletRequest {
 
 
     /**
-     * The string manager for this package.
+     * Construct a wrapper for the specified request.
+     *
+     * @param request The request to be wrapped
      */
-    protected static final StringManager sm = StringManager.getManager(RequestFacade.class);
-
-
-    // --------------------------------------------------------- Public Methods
+    public RequestFacade(Request request) {
+        this.request = request;
+    }
 
 
     /**
@@ -262,38 +233,26 @@ public class RequestFacade implements HttpServletRequest {
      * Prevent cloning the facade.
      */
     @Override
-    protected Object clone()
-        throws CloneNotSupportedException {
+    protected Object clone() throws CloneNotSupportedException {
         throw new CloneNotSupportedException();
     }
 
 
     // ------------------------------------------------- ServletRequest Methods
 
-
     @Override
     public Object getAttribute(String name) {
-
-        if (request == null) {
-            throw new IllegalStateException(
-                            sm.getString("requestFacade.nullRequest"));
-        }
-
+        checkFacade();
         return request.getAttribute(name);
     }
 
 
     @Override
     public Enumeration<String> getAttributeNames() {
+        checkFacade();
 
-        if (request == null) {
-            throw new IllegalStateException(
-                            sm.getString("requestFacade.nullRequest"));
-        }
-
-        if (Globals.IS_SECURITY_ENABLED){
-            return AccessController.doPrivileged(
-                new GetAttributePrivilegedAction());
+        if (Globals.IS_SECURITY_ENABLED) {
+            return AccessController.doPrivileged(new GetAttributePrivilegedAction());
         } else {
             return request.getAttributeNames();
         }
@@ -302,15 +261,10 @@ public class RequestFacade implements HttpServletRequest {
 
     @Override
     public String getCharacterEncoding() {
+        checkFacade();
 
-        if (request == null) {
-            throw new IllegalStateException(
-                            sm.getString("requestFacade.nullRequest"));
-        }
-
-        if (Globals.IS_SECURITY_ENABLED){
-            return AccessController.doPrivileged(
-                new GetCharacterEncodingPrivilegedAction());
+        if (Globals.IS_SECURITY_ENABLED) {
+            return AccessController.doPrivileged(new GetCharacterEncodingPrivilegedAction());
         } else {
             return request.getCharacterEncoding();
         }
@@ -318,65 +272,39 @@ public class RequestFacade implements HttpServletRequest {
 
 
     @Override
-    public void setCharacterEncoding(String env)
-            throws java.io.UnsupportedEncodingException {
-
-        if (request == null) {
-            throw new IllegalStateException(
-                            sm.getString("requestFacade.nullRequest"));
-        }
-
+    public void setCharacterEncoding(String env) throws java.io.UnsupportedEncodingException {
+        checkFacade();
         request.setCharacterEncoding(env);
     }
 
 
     @Override
     public int getContentLength() {
-
-        if (request == null) {
-            throw new IllegalStateException(
-                            sm.getString("requestFacade.nullRequest"));
-        }
-
+        checkFacade();
         return request.getContentLength();
     }
 
 
     @Override
     public String getContentType() {
-
-        if (request == null) {
-            throw new IllegalStateException(
-                            sm.getString("requestFacade.nullRequest"));
-        }
-
+        checkFacade();
         return request.getContentType();
     }
 
 
     @Override
     public ServletInputStream getInputStream() throws IOException {
-
-        if (request == null) {
-            throw new IllegalStateException(
-                            sm.getString("requestFacade.nullRequest"));
-        }
-
+        checkFacade();
         return request.getInputStream();
     }
 
 
     @Override
     public String getParameter(String name) {
+        checkFacade();
 
-        if (request == null) {
-            throw new IllegalStateException(
-                            sm.getString("requestFacade.nullRequest"));
-        }
-
-        if (Globals.IS_SECURITY_ENABLED){
-            return AccessController.doPrivileged(
-                new GetParameterPrivilegedAction(name));
+        if (Globals.IS_SECURITY_ENABLED) {
+            return AccessController.doPrivileged(new GetParameterPrivilegedAction(name));
         } else {
             return request.getParameter(name);
         }
@@ -385,15 +313,10 @@ public class RequestFacade implements HttpServletRequest {
 
     @Override
     public Enumeration<String> getParameterNames() {
+        checkFacade();
 
-        if (request == null) {
-            throw new IllegalStateException(
-                            sm.getString("requestFacade.nullRequest"));
-        }
-
-        if (Globals.IS_SECURITY_ENABLED){
-            return AccessController.doPrivileged(
-                new GetParameterNamesPrivilegedAction());
+        if (Globals.IS_SECURITY_ENABLED) {
+            return AccessController.doPrivileged(new GetParameterNamesPrivilegedAction());
         } else {
             return request.getParameterNames();
         }
@@ -402,21 +325,16 @@ public class RequestFacade implements HttpServletRequest {
 
     @Override
     public String[] getParameterValues(String name) {
-
-        if (request == null) {
-            throw new IllegalStateException(
-                            sm.getString("requestFacade.nullRequest"));
-        }
+        checkFacade();
 
         String[] ret = null;
 
         /*
-         * Clone the returned array only if there is a security manager
-         * in place, so that performance won't suffer in the non-secure case
+         * Clone the returned array only if there is a security manager in place, so that performance won't suffer in
+         * the non-secure case
          */
-        if (SecurityUtil.isPackageProtectionEnabled()){
-            ret = AccessController.doPrivileged(
-                new GetParameterValuePrivilegedAction(name));
+        if (SecurityUtil.isPackageProtectionEnabled()) {
+            ret = AccessController.doPrivileged(new GetParameterValuePrivilegedAction(name));
             if (ret != null) {
                 ret = ret.clone();
             }
@@ -430,15 +348,10 @@ public class RequestFacade implements HttpServletRequest {
 
     @Override
     public Map<String,String[]> getParameterMap() {
+        checkFacade();
 
-        if (request == null) {
-            throw new IllegalStateException(
-                            sm.getString("requestFacade.nullRequest"));
-        }
-
-        if (Globals.IS_SECURITY_ENABLED){
-            return AccessController.doPrivileged(
-                new GetParameterMapPrivilegedAction());
+        if (Globals.IS_SECURITY_ENABLED) {
+            return AccessController.doPrivileged(new GetParameterMapPrivilegedAction());
         } else {
             return request.getParameterMap();
         }
@@ -447,123 +360,73 @@ public class RequestFacade implements HttpServletRequest {
 
     @Override
     public String getProtocol() {
-
-        if (request == null) {
-            throw new IllegalStateException(
-                            sm.getString("requestFacade.nullRequest"));
-        }
-
+        checkFacade();
         return request.getProtocol();
     }
 
 
     @Override
     public String getScheme() {
-
-        if (request == null) {
-            throw new IllegalStateException(
-                            sm.getString("requestFacade.nullRequest"));
-        }
-
+        checkFacade();
         return request.getScheme();
     }
 
 
     @Override
     public String getServerName() {
-
-        if (request == null) {
-            throw new IllegalStateException(
-                            sm.getString("requestFacade.nullRequest"));
-        }
-
+        checkFacade();
         return request.getServerName();
     }
 
 
     @Override
     public int getServerPort() {
-
-        if (request == null) {
-            throw new IllegalStateException(
-                            sm.getString("requestFacade.nullRequest"));
-        }
-
+        checkFacade();
         return request.getServerPort();
     }
 
 
     @Override
     public BufferedReader getReader() throws IOException {
-
-        if (request == null) {
-            throw new IllegalStateException(
-                            sm.getString("requestFacade.nullRequest"));
-        }
-
+        checkFacade();
         return request.getReader();
     }
 
 
     @Override
     public String getRemoteAddr() {
-
-        if (request == null) {
-            throw new IllegalStateException(
-                            sm.getString("requestFacade.nullRequest"));
-        }
-
+        checkFacade();
         return request.getRemoteAddr();
     }
 
 
     @Override
     public String getRemoteHost() {
-
-        if (request == null) {
-            throw new IllegalStateException(
-                            sm.getString("requestFacade.nullRequest"));
-        }
-
+        checkFacade();
         return request.getRemoteHost();
     }
 
 
     @Override
     public void setAttribute(String name, Object o) {
-
-        if (request == null) {
-            throw new IllegalStateException(
-                            sm.getString("requestFacade.nullRequest"));
-        }
-
+        checkFacade();
         request.setAttribute(name, o);
     }
 
 
     @Override
     public void removeAttribute(String name) {
-
-        if (request == null) {
-            throw new IllegalStateException(
-                            sm.getString("requestFacade.nullRequest"));
-        }
-
+        checkFacade();
         request.removeAttribute(name);
     }
 
 
     @Override
     public Locale getLocale() {
+        checkFacade();
 
-        if (request == null) {
-            throw new IllegalStateException(
-                            sm.getString("requestFacade.nullRequest"));
-        }
-
-        if (Globals.IS_SECURITY_ENABLED){
-            return AccessController.doPrivileged(
-                new GetLocalePrivilegedAction());
+        if (Globals.IS_SECURITY_ENABLED) {
+            return AccessController.doPrivileged(new GetLocalePrivilegedAction());
         } else {
             return request.getLocale();
         }
@@ -572,15 +435,10 @@ public class RequestFacade implements HttpServletRequest {
 
     @Override
     public Enumeration<Locale> getLocales() {
+        checkFacade();
 
-        if (request == null) {
-            throw new IllegalStateException(
-                            sm.getString("requestFacade.nullRequest"));
-        }
-
-        if (Globals.IS_SECURITY_ENABLED){
-            return AccessController.doPrivileged(
-                new GetLocalesPrivilegedAction());
+        if (Globals.IS_SECURITY_ENABLED) {
+            return AccessController.doPrivileged(new GetLocalesPrivilegedAction());
         } else {
             return request.getLocales();
         }
@@ -589,27 +447,17 @@ public class RequestFacade implements HttpServletRequest {
 
     @Override
     public boolean isSecure() {
-
-        if (request == null) {
-            throw new IllegalStateException(
-                            sm.getString("requestFacade.nullRequest"));
-        }
-
+        checkFacade();
         return request.isSecure();
     }
 
 
     @Override
     public RequestDispatcher getRequestDispatcher(String path) {
+        checkFacade();
 
-        if (request == null) {
-            throw new IllegalStateException(
-                            sm.getString("requestFacade.nullRequest"));
-        }
-
-        if (Globals.IS_SECURITY_ENABLED){
-            return AccessController.doPrivileged(
-                new GetRequestDispatcherPrivilegedAction(path));
+        if (Globals.IS_SECURITY_ENABLED) {
+            return AccessController.doPrivileged(new GetRequestDispatcherPrivilegedAction(path));
         } else {
             return request.getRequestDispatcher(path);
         }
@@ -619,8 +467,7 @@ public class RequestFacade implements HttpServletRequest {
     public String getRealPath(String path) {
 
         if (request == null) {
-            throw new IllegalStateException(
-                            sm.getString("requestFacade.nullRequest"));
+            throw new IllegalStateException(sm.getString("requestFacade.nullRequest"));
         }
 
         return request.getRealPath(path);
@@ -629,33 +476,23 @@ public class RequestFacade implements HttpServletRequest {
 
     @Override
     public String getAuthType() {
-
-        if (request == null) {
-            throw new IllegalStateException(
-                            sm.getString("requestFacade.nullRequest"));
-        }
-
+        checkFacade();
         return request.getAuthType();
     }
 
 
     @Override
     public Cookie[] getCookies() {
-
-        if (request == null) {
-            throw new IllegalStateException(
-                            sm.getString("requestFacade.nullRequest"));
-        }
+        checkFacade();
 
         Cookie[] ret = null;
 
         /*
-         * Clone the returned array only if there is a security manager
-         * in place, so that performance won't suffer in the non-secure case
+         * Clone the returned array only if there is a security manager in place, so that performance won't suffer in
+         * the non-secure case
          */
-        if (SecurityUtil.isPackageProtectionEnabled()){
-            ret = AccessController.doPrivileged(
-                new GetCookiesPrivilegedAction());
+        if (SecurityUtil.isPackageProtectionEnabled()) {
+            ret = AccessController.doPrivileged(new GetCookiesPrivilegedAction());
             if (ret != null) {
                 ret = ret.clone();
             }
@@ -669,39 +506,24 @@ public class RequestFacade implements HttpServletRequest {
 
     @Override
     public long getDateHeader(String name) {
-
-        if (request == null) {
-            throw new IllegalStateException(
-                            sm.getString("requestFacade.nullRequest"));
-        }
-
+        checkFacade();
         return request.getDateHeader(name);
     }
 
 
     @Override
     public String getHeader(String name) {
-
-        if (request == null) {
-            throw new IllegalStateException(
-                            sm.getString("requestFacade.nullRequest"));
-        }
-
+        checkFacade();
         return request.getHeader(name);
     }
 
 
     @Override
     public Enumeration<String> getHeaders(String name) {
+        checkFacade();
 
-        if (request == null) {
-            throw new IllegalStateException(
-                            sm.getString("requestFacade.nullRequest"));
-        }
-
-        if (Globals.IS_SECURITY_ENABLED){
-            return AccessController.doPrivileged(
-                new GetHeadersPrivilegedAction(name));
+        if (Globals.IS_SECURITY_ENABLED) {
+            return AccessController.doPrivileged(new GetHeadersPrivilegedAction(name));
         } else {
             return request.getHeaders(name);
         }
@@ -710,15 +532,10 @@ public class RequestFacade implements HttpServletRequest {
 
     @Override
     public Enumeration<String> getHeaderNames() {
+        checkFacade();
 
-        if (request == null) {
-            throw new IllegalStateException(
-                            sm.getString("requestFacade.nullRequest"));
-        }
-
-        if (Globals.IS_SECURITY_ENABLED){
-            return AccessController.doPrivileged(
-                new GetHeaderNamesPrivilegedAction());
+        if (Globals.IS_SECURITY_ENABLED) {
+            return AccessController.doPrivileged(new GetHeaderNamesPrivilegedAction());
         } else {
             return request.getHeaderNames();
         }
@@ -727,171 +544,101 @@ public class RequestFacade implements HttpServletRequest {
 
     @Override
     public int getIntHeader(String name) {
-
-        if (request == null) {
-            throw new IllegalStateException(
-                            sm.getString("requestFacade.nullRequest"));
-        }
-
+        checkFacade();
         return request.getIntHeader(name);
     }
 
 
     @Override
     public String getMethod() {
-
-        if (request == null) {
-            throw new IllegalStateException(
-                            sm.getString("requestFacade.nullRequest"));
-        }
-
+        checkFacade();
         return request.getMethod();
     }
 
 
     @Override
     public String getPathInfo() {
-
-        if (request == null) {
-            throw new IllegalStateException(
-                            sm.getString("requestFacade.nullRequest"));
-        }
-
+        checkFacade();
         return request.getPathInfo();
     }
 
 
     @Override
     public String getPathTranslated() {
-
-        if (request == null) {
-            throw new IllegalStateException(
-                            sm.getString("requestFacade.nullRequest"));
-        }
-
+        checkFacade();
         return request.getPathTranslated();
     }
 
 
     @Override
     public String getContextPath() {
-
-        if (request == null) {
-            throw new IllegalStateException(
-                            sm.getString("requestFacade.nullRequest"));
-        }
-
+        checkFacade();
         return request.getContextPath();
     }
 
 
     @Override
     public String getQueryString() {
-
-        if (request == null) {
-            throw new IllegalStateException(
-                            sm.getString("requestFacade.nullRequest"));
-        }
-
+        checkFacade();
         return request.getQueryString();
     }
 
 
     @Override
     public String getRemoteUser() {
-
-        if (request == null) {
-            throw new IllegalStateException(
-                            sm.getString("requestFacade.nullRequest"));
-        }
-
+        checkFacade();
         return request.getRemoteUser();
     }
 
 
     @Override
     public boolean isUserInRole(String role) {
-
-        if (request == null) {
-            throw new IllegalStateException(
-                            sm.getString("requestFacade.nullRequest"));
-        }
-
+        checkFacade();
         return request.isUserInRole(role);
     }
 
 
     @Override
     public java.security.Principal getUserPrincipal() {
-
-        if (request == null) {
-            throw new IllegalStateException(
-                            sm.getString("requestFacade.nullRequest"));
-        }
-
+        checkFacade();
         return request.getUserPrincipal();
     }
 
 
     @Override
     public String getRequestedSessionId() {
-
-        if (request == null) {
-            throw new IllegalStateException(
-                            sm.getString("requestFacade.nullRequest"));
-        }
-
+        checkFacade();
         return request.getRequestedSessionId();
     }
 
 
     @Override
     public String getRequestURI() {
-
-        if (request == null) {
-            throw new IllegalStateException(
-                            sm.getString("requestFacade.nullRequest"));
-        }
-
+        checkFacade();
         return request.getRequestURI();
     }
 
 
     @Override
     public StringBuffer getRequestURL() {
-
-        if (request == null) {
-            throw new IllegalStateException(
-                            sm.getString("requestFacade.nullRequest"));
-        }
-
+        checkFacade();
         return request.getRequestURL();
     }
 
 
     @Override
     public String getServletPath() {
-
-        if (request == null) {
-            throw new IllegalStateException(
-                            sm.getString("requestFacade.nullRequest"));
-        }
-
+        checkFacade();
         return request.getServletPath();
     }
 
 
     @Override
     public HttpSession getSession(boolean create) {
+        checkFacade();
 
-        if (request == null) {
-            throw new IllegalStateException(
-                            sm.getString("requestFacade.nullRequest"));
-        }
-
-        if (SecurityUtil.isPackageProtectionEnabled()){
-            return AccessController.
-                doPrivileged(new GetSessionPrivilegedAction(create));
+        if (SecurityUtil.isPackageProtectionEnabled()) {
+            return AccessController.doPrivileged(new GetSessionPrivilegedAction(create));
         } else {
             return request.getSession(create);
         }
@@ -899,58 +646,32 @@ public class RequestFacade implements HttpServletRequest {
 
     @Override
     public HttpSession getSession() {
-
-        if (request == null) {
-            throw new IllegalStateException(
-                            sm.getString("requestFacade.nullRequest"));
-        }
-
         return getSession(true);
     }
 
     @Override
     public String changeSessionId() {
-
-        if (request == null) {
-            throw new IllegalStateException(
-                            sm.getString("requestFacade.nullRequest"));
-        }
-
+        checkFacade();
         return request.changeSessionId();
     }
 
     @Override
     public boolean isRequestedSessionIdValid() {
-
-        if (request == null) {
-            throw new IllegalStateException(
-                            sm.getString("requestFacade.nullRequest"));
-        }
-
+        checkFacade();
         return request.isRequestedSessionIdValid();
     }
 
 
     @Override
     public boolean isRequestedSessionIdFromCookie() {
-
-        if (request == null) {
-            throw new IllegalStateException(
-                            sm.getString("requestFacade.nullRequest"));
-        }
-
+        checkFacade();
         return request.isRequestedSessionIdFromCookie();
     }
 
 
     @Override
     public boolean isRequestedSessionIdFromURL() {
-
-        if (request == null) {
-            throw new IllegalStateException(
-                            sm.getString("requestFacade.nullRequest"));
-        }
-
+        checkFacade();
         return request.isRequestedSessionIdFromURL();
     }
 
@@ -959,8 +680,7 @@ public class RequestFacade implements HttpServletRequest {
     public boolean isRequestedSessionIdFromUrl() {
 
         if (request == null) {
-            throw new IllegalStateException(
-                            sm.getString("requestFacade.nullRequest"));
+            throw new IllegalStateException(sm.getString("requestFacade.nullRequest"));
         }
 
         return request.isRequestedSessionIdFromURL();
@@ -969,171 +689,155 @@ public class RequestFacade implements HttpServletRequest {
 
     @Override
     public String getLocalAddr() {
-
-        if (request == null) {
-            throw new IllegalStateException(
-                            sm.getString("requestFacade.nullRequest"));
-        }
-
+        checkFacade();
         return request.getLocalAddr();
     }
 
 
     @Override
     public String getLocalName() {
-
-        if (request == null) {
-            throw new IllegalStateException(
-                            sm.getString("requestFacade.nullRequest"));
-        }
-
+        checkFacade();
         return request.getLocalName();
     }
 
 
     @Override
     public int getLocalPort() {
-
-        if (request == null) {
-            throw new IllegalStateException(
-                            sm.getString("requestFacade.nullRequest"));
-        }
-
+        checkFacade();
         return request.getLocalPort();
     }
 
 
     @Override
     public int getRemotePort() {
-
-        if (request == null) {
-            throw new IllegalStateException(
-                            sm.getString("requestFacade.nullRequest"));
-        }
-
+        checkFacade();
         return request.getRemotePort();
     }
 
 
     @Override
     public ServletContext getServletContext() {
-        if (request == null) {
-            throw new IllegalStateException(
-                            sm.getString("requestFacade.nullRequest"));
-        }
-
+        checkFacade();
         return request.getServletContext();
     }
 
 
     @Override
     public AsyncContext startAsync() throws IllegalStateException {
+        checkFacade();
         return request.startAsync();
     }
 
 
     @Override
-    public AsyncContext startAsync(ServletRequest request, ServletResponse response)
-    throws IllegalStateException {
+    public AsyncContext startAsync(ServletRequest request, ServletResponse response) throws IllegalStateException {
+        checkFacade();
         return this.request.startAsync(request, response);
     }
 
 
     @Override
     public boolean isAsyncStarted() {
+        checkFacade();
         return request.isAsyncStarted();
     }
 
 
     @Override
     public boolean isAsyncSupported() {
+        checkFacade();
         return request.isAsyncSupported();
     }
 
 
     @Override
     public AsyncContext getAsyncContext() {
+        checkFacade();
         return request.getAsyncContext();
     }
 
+
     @Override
     public DispatcherType getDispatcherType() {
+        checkFacade();
         return request.getDispatcherType();
     }
 
+
     @Override
-    public boolean authenticate(HttpServletResponse response)
-    throws IOException, ServletException {
+    public boolean authenticate(HttpServletResponse response) throws IOException, ServletException {
+        checkFacade();
         return request.authenticate(response);
     }
 
     @Override
-    public void login(String username, String password)
-    throws ServletException {
+    public void login(String username, String password) throws ServletException {
+        checkFacade();
         request.login(username, password);
     }
 
     @Override
     public void logout() throws ServletException {
+        checkFacade();
         request.logout();
     }
 
     @Override
-    public Collection<Part> getParts() throws IllegalStateException,
-            IOException, ServletException {
+    public Collection<Part> getParts() throws IllegalStateException, IOException, ServletException {
+        checkFacade();
         return request.getParts();
     }
 
+
     @Override
-    public Part getPart(String name) throws IllegalStateException, IOException,
-            ServletException {
+    public Part getPart(String name) throws IllegalStateException, IOException, ServletException {
+        checkFacade();
         return request.getPart(name);
     }
 
+
     public boolean getAllowTrace() {
+        checkFacade();
         return request.getConnector().getAllowTrace();
     }
 
-    /**
-     * {@inheritDoc}
-     *
-     * @since Servlet 3.1
-     */
+
     @Override
     public long getContentLengthLong() {
+        checkFacade();
         return request.getContentLengthLong();
     }
 
-    /**
-     * {@inheritDoc}
-     *
-     * @since Servlet 3.1
-     */
+
     @Override
-    public <T extends HttpUpgradeHandler> T upgrade(
-            Class<T> httpUpgradeHandlerClass) throws java.io.IOException, ServletException {
+    public <T extends HttpUpgradeHandler> T upgrade(Class<T> httpUpgradeHandlerClass)
+            throws IOException, ServletException {
+        checkFacade();
         return request.upgrade(httpUpgradeHandlerClass);
     }
 
 
-    /**
-     * {@inheritDoc}
-     * <p>
-     * Pulled forward from Servlet 4.0. The method signature may be modified,
-     * removed or replaced at any time until Servlet 4.0 becomes final.
-     */
-    @Override
-    public HttpServletMapping getHttpServletMapping() {
+    public ApplicationMappingImpl getHttpServletMapping() {
+        checkFacade();
         return request.getHttpServletMapping();
     }
 
 
     public ApplicationPushBuilder newPushBuilder(javax.servlet.http.HttpServletRequest request) {
+        checkFacade();
         return this.request.newPushBuilder(request);
     }
 
 
     public ApplicationPushBuilder newPushBuilder() {
+        checkFacade();
         return request.newPushBuilder();
+    }
+
+
+    private void checkFacade() {
+        if (request == null) {
+            throw new IllegalStateException(sm.getString("requestFacade.nullRequest"));
+        }
     }
 }

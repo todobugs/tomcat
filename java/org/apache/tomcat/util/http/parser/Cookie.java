@@ -27,35 +27,37 @@ import org.apache.tomcat.util.res.StringManager;
 
 
 /**
- * <p>Cookie header parser based on RFC6265 and RFC2109.</p>
- * <p>The parsing of cookies using RFC6265 is more relaxed that the
- * specification in the following ways:</p>
+ * <p>
+ * Cookie header parser based on RFC6265 and RFC2109.
+ * </p>
+ * <p>
+ * The parsing of cookies using RFC6265 is more relaxed that the specification in the following ways:
+ * </p>
  * <ul>
- *   <li>Values 0x80 to 0xFF are permitted in cookie-octet to support the use of
- *       UTF-8 in cookie values as used by HTML 5.</li>
- *   <li>For cookies without a value, the '=' is not required after the name as
- *       some browsers do not sent it.</li>
+ * <li>Values 0x80 to 0xFF are permitted in cookie-octet to support the use of UTF-8 in cookie values as used by HTML
+ * 5.</li>
+ * <li>For cookies without a value, the '=' is not required after the name as some browsers do not sent it.</li>
  * </ul>
- * <p>The parsing of cookies using RFC2109 is more relaxed that the
- * specification in the following ways:</p>
+ * <p>
+ * The parsing of cookies using RFC2109 is more relaxed that the specification in the following ways:
+ * </p>
  * <ul>
- *   <li>Values for the path attribute that contain a / character do not have to
- *       be quoted even though / is not permitted in a token.</li>
+ * <li>Values for the path attribute that contain a / character do not have to be quoted even though / is not permitted
+ * in a token.</li>
  * </ul>
- *
- * <p>Implementation note:<br>
- * This class has been carefully tuned to ensure that it has equal or better
- * performance than the original Netscape/RFC2109 cookie parser. Before
- * committing and changes, ensure that the TesterCookiePerformance unit test
- * continues to give results within 1% for the old and new parsers.</p>
+ * <p>
+ * Implementation note:<br>
+ * This class has been carefully tuned to ensure that it has equal or better performance than the original
+ * Netscape/RFC2109 cookie parser. Before committing and changes, ensure that the TesterCookiePerformance unit test
+ * continues to give results within 1% for the old and new parsers.
+ * </p>
  */
 public class Cookie {
 
     private static final Log log = LogFactory.getLog(Cookie.class);
     private static final UserDataHelper invalidCookieVersionLog = new UserDataHelper(log);
     private static final UserDataHelper invalidCookieLog = new UserDataHelper(log);
-    private static final StringManager sm =
-            StringManager.getManager("org.apache.tomcat.util.http.parser");
+    private static final StringManager sm = StringManager.getManager("org.apache.tomcat.util.http.parser");
 
     private static final boolean isCookieOctet[] = new boolean[256];
     private static final boolean isText[] = new boolean[256];
@@ -76,10 +78,10 @@ public class Cookie {
 
     static {
         // %x21 / %x23-2B / %x2D-3A / %x3C-5B / %x5D-7E (RFC6265)
-        // %x80 to %xFF                                 (UTF-8)
+        // %x80 to %xFF (UTF-8)
         for (int i = 0; i < 256; i++) {
-            if (i < 0x21 || i == QUOTE_BYTE || i == COMMA_BYTE ||
-                    i == SEMICOLON_BYTE || i == SLASH_BYTE || i == DEL_BYTE) {
+            if (i < 0x21 || i == QUOTE_BYTE || i == COMMA_BYTE || i == SEMICOLON_BYTE || i == SLASH_BYTE ||
+                    i == DEL_BYTE) {
                 isCookieOctet[i] = false;
             } else {
                 isCookieOctet[i] = true;
@@ -100,8 +102,7 @@ public class Cookie {
     }
 
 
-    public static void parseCookie(byte[] bytes, int offset, int len,
-            ServerCookies serverCookies) {
+    public static void parseCookie(byte[] bytes, int offset, int len, ServerCookies serverCookies) {
 
         // ByteBuffer is used throughout this parser as it allows the byte[]
         // and position information to be easily passed between parsing methods
@@ -200,6 +201,7 @@ public class Cookie {
         while (moreToProcess) {
             skipLWS(bb);
 
+            int start = bb.position();
             ByteBuffer name = readToken(bb);
             ByteBuffer value = null;
 
@@ -210,9 +212,9 @@ public class Cookie {
                 skipLWS(bb);
                 value = readCookieValueRfc6265(bb);
                 if (value == null) {
-                    logInvalidHeader(bb);
                     // Invalid cookie value. Skip to the next semi-colon
                     skipUntilSemiColon(bb);
+                    logInvalidHeader(start, bb);
                     continue;
                 }
                 skipLWS(bb);
@@ -222,9 +224,9 @@ public class Cookie {
             if (skipResult == SkipResult.FOUND) {
                 // NO-OP
             } else if (skipResult == SkipResult.NOT_FOUND) {
-                logInvalidHeader(bb);
                 // Invalid cookie. Ignore it and skip to the next semi-colon
                 skipUntilSemiColon(bb);
+                logInvalidHeader(start, bb);
                 continue;
             } else {
                 // SkipResult.EOF
@@ -244,8 +246,7 @@ public class Cookie {
     }
 
 
-    private static void parseCookieRfc2109(ByteBuffer bb, ServerCookies serverCookies,
-            int version) {
+    private static void parseCookieRfc2109(ByteBuffer bb, ServerCookies serverCookies, int version) {
 
         boolean moreToProcess = true;
 
@@ -253,6 +254,7 @@ public class Cookie {
             skipLWS(bb);
 
             boolean parseAttributes = true;
+            int start = bb.position();
 
             ByteBuffer name = readToken(bb);
             ByteBuffer value = null;
@@ -266,7 +268,7 @@ public class Cookie {
                 skipLWS(bb);
                 value = readCookieValueRfc2109(bb, false);
                 if (value == null) {
-                    skipInvalidCookie(bb);
+                    skipInvalidCookie(start, bb);
                     continue;
                 }
                 skipLWS(bb);
@@ -275,28 +277,31 @@ public class Cookie {
             skipResult = skipByte(bb, COMMA_BYTE);
             if (skipResult == SkipResult.FOUND) {
                 parseAttributes = false;
+            } else {
+                skipResult = skipByte(bb, SEMICOLON_BYTE);
             }
-            skipResult = skipByte(bb, SEMICOLON_BYTE);
             if (skipResult == SkipResult.EOF) {
                 parseAttributes = false;
                 moreToProcess = false;
             } else if (skipResult == SkipResult.NOT_FOUND) {
-                skipInvalidCookie(bb);
+                skipInvalidCookie(start, bb);
                 continue;
             }
 
             if (parseAttributes) {
+                skipLWS(bb);
                 skipResult = skipBytes(bb, PATH_BYTES);
                 if (skipResult == SkipResult.FOUND) {
                     skipLWS(bb);
                     skipResult = skipByte(bb, EQUALS_BYTE);
                     if (skipResult != SkipResult.FOUND) {
-                        skipInvalidCookie(bb);
+                        skipInvalidCookie(start, bb);
                         continue;
                     }
+                    skipLWS(bb);
                     path = readCookieValueRfc2109(bb, true);
                     if (path == null) {
-                        skipInvalidCookie(bb);
+                        skipInvalidCookie(start, bb);
                         continue;
                     }
                     skipLWS(bb);
@@ -304,43 +309,48 @@ public class Cookie {
                     skipResult = skipByte(bb, COMMA_BYTE);
                     if (skipResult == SkipResult.FOUND) {
                         parseAttributes = false;
+                    } else {
+                        skipResult = skipByte(bb, SEMICOLON_BYTE);
                     }
-                    skipResult = skipByte(bb, SEMICOLON_BYTE);
                     if (skipResult == SkipResult.EOF) {
                         parseAttributes = false;
                         moreToProcess = false;
                     } else if (skipResult == SkipResult.NOT_FOUND) {
-                        skipInvalidCookie(bb);
+                        skipInvalidCookie(start, bb);
                         continue;
                     }
                 }
             }
 
             if (parseAttributes) {
+                skipLWS(bb);
                 skipResult = skipBytes(bb, DOMAIN_BYTES);
                 if (skipResult == SkipResult.FOUND) {
                     skipLWS(bb);
                     skipResult = skipByte(bb, EQUALS_BYTE);
                     if (skipResult != SkipResult.FOUND) {
-                        skipInvalidCookie(bb);
+                        skipInvalidCookie(start, bb);
                         continue;
                     }
+                    skipLWS(bb);
                     domain = readCookieValueRfc2109(bb, false);
                     if (domain == null) {
-                        skipInvalidCookie(bb);
+                        skipInvalidCookie(start, bb);
                         continue;
                     }
+                    skipLWS(bb);
 
                     skipResult = skipByte(bb, COMMA_BYTE);
                     if (skipResult == SkipResult.FOUND) {
                         parseAttributes = false;
+                    } else {
+                        skipResult = skipByte(bb, SEMICOLON_BYTE);
                     }
-                    skipResult = skipByte(bb, SEMICOLON_BYTE);
                     if (skipResult == SkipResult.EOF) {
                         parseAttributes = false;
                         moreToProcess = false;
                     } else if (skipResult == SkipResult.NOT_FOUND) {
-                        skipInvalidCookie(bb);
+                        skipInvalidCookie(start, bb);
                         continue;
                     }
                 }
@@ -352,25 +362,25 @@ public class Cookie {
                 sc.getName().setBytes(name.array(), name.position(), name.remaining());
                 sc.getValue().setBytes(value.array(), value.position(), value.remaining());
                 if (domain != null) {
-                    sc.getDomain().setBytes(domain.array(),  domain.position(),  domain.remaining());
+                    sc.getDomain().setBytes(domain.array(), domain.position(), domain.remaining());
                 }
                 if (path != null) {
-                    sc.getPath().setBytes(path.array(),  path.position(),  path.remaining());
+                    sc.getPath().setBytes(path.array(), path.position(), path.remaining());
                 }
             }
         }
     }
 
 
-    private static void skipInvalidCookie(ByteBuffer bb) {
-        logInvalidHeader(bb);
+    private static void skipInvalidCookie(int start, ByteBuffer bb) {
         // Invalid cookie value. Skip to the next semi-colon
         skipUntilSemiColonOrComma(bb);
+        logInvalidHeader(start, bb);
     }
 
 
     private static void skipLWS(ByteBuffer bb) {
-        while(bb.hasRemaining()) {
+        while (bb.hasRemaining()) {
             byte b = bb.get();
             if (b != TAB_BYTE && b != SPACE_BYTE) {
                 bb.rewind();
@@ -381,7 +391,7 @@ public class Cookie {
 
 
     private static void skipUntilSemiColon(ByteBuffer bb) {
-        while(bb.hasRemaining()) {
+        while (bb.hasRemaining()) {
             if (bb.get() == SEMICOLON_BYTE) {
                 break;
             }
@@ -390,7 +400,7 @@ public class Cookie {
 
 
     private static void skipUntilSemiColonOrComma(ByteBuffer bb) {
-        while(bb.hasRemaining()) {
+        while (bb.hasRemaining()) {
             byte b = bb.get();
             if (b == SEMICOLON_BYTE || b == COMMA_BYTE) {
                 break;
@@ -416,12 +426,12 @@ public class Cookie {
     private static SkipResult skipBytes(ByteBuffer bb, byte[] target) {
         int mark = bb.position();
 
-        for (int i = 0; i < target.length; i++) {
+        for (byte b : target) {
             if (!bb.hasRemaining()) {
                 bb.position(mark);
                 return SkipResult.EOF;
             }
-            if (bb.get() != target[i]) {
+            if (bb.get() != b) {
                 bb.position(mark);
                 return SkipResult.NOT_FOUND;
             }
@@ -431,8 +441,7 @@ public class Cookie {
 
 
     /**
-     * Similar to readCookieValueRfc6265() but also allows a comma to terminate
-     * the value (as permitted by RFC2109).
+     * Similar to readCookieValueRfc6265() but also allows a comma to terminate the value (as permitted by RFC2109).
      */
     private static ByteBuffer readCookieValue(ByteBuffer bb) {
         boolean quoted = false;
@@ -467,8 +476,7 @@ public class Cookie {
 
 
     /**
-     * Similar to readCookieValue() but treats a comma as part of an invalid
-     * value.
+     * Similar to readCookieValue() but treats a comma as part of an invalid value.
      */
     private static ByteBuffer readCookieValueRfc6265(ByteBuffer bb) {
         boolean quoted = false;
@@ -576,11 +584,10 @@ public class Cookie {
     }
 
 
-    private static void logInvalidHeader(ByteBuffer bb) {
+    private static void logInvalidHeader(int start, ByteBuffer bb) {
         UserDataHelper.Mode logMode = invalidCookieLog.getNextMode();
         if (logMode != null) {
-            String headerValue = new String(bb.array(), bb.position(), bb.limit() - bb.position(),
-                        StandardCharsets.UTF_8);
+            String headerValue = new String(bb.array(), start, bb.position() - start, StandardCharsets.UTF_8);
             String message = sm.getString("cookie.invalidCookieValue", headerValue);
             switch (logMode) {
                 case INFO_THEN_DEBUG:
@@ -603,8 +610,8 @@ public class Cookie {
             if (value == null) {
                 version = sm.getString("cookie.valueNotPresent");
             } else {
-                version = new String(value.bytes, value.position(),
-                        value.limit() - value.position(), StandardCharsets.UTF_8);
+                version = new String(value.bytes, value.position(), value.limit() - value.position(),
+                        StandardCharsets.UTF_8);
             }
             String message = sm.getString("cookie.invalidCookieVersion", version);
             switch (logMode) {
@@ -622,8 +629,7 @@ public class Cookie {
 
 
     /**
-     * Custom implementation that skips many of the safety checks in
-     * {@link java.nio.ByteBuffer}.
+     * Custom implementation that skips many of the safety checks in {@link java.nio.ByteBuffer}.
      */
     private static class ByteBuffer {
 
@@ -631,7 +637,7 @@ public class Cookie {
         private int limit;
         private int position = 0;
 
-        public ByteBuffer(byte[] bytes, int offset, int len) {
+        ByteBuffer(byte[] bytes, int offset, int len) {
             this.bytes = bytes;
             this.position = offset;
             this.limit = offset + len;

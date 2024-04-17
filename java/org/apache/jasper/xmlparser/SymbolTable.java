@@ -22,7 +22,6 @@
  * information on the Apache Software Foundation, please see
  * <http://www.apache.org/>.
  */
-
 package org.apache.jasper.xmlparser;
 
 /**
@@ -185,7 +184,7 @@ public class SymbolTable {
          * Constructs a new entry from the specified symbol information and
          * next entry reference.
          */
-        public Entry(char[] ch, int offset, int length, Entry next) {
+        Entry(char[] ch, int offset, int length, Entry next) {
             characters = new char[length];
             System.arraycopy(ch, offset, characters, 0, length);
             symbol = new String(characters).intern();

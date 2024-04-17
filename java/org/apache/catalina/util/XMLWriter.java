@@ -14,20 +14,19 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.catalina.util;
 
 import java.io.IOException;
 import java.io.Writer;
+
+import org.apache.tomcat.util.security.Escape;
 
 /**
  * XMLWriter helper class.
  */
 public class XMLWriter {
 
-
     // -------------------------------------------------------------- Constants
-
 
     /**
      * Opening tag.
@@ -49,7 +48,6 @@ public class XMLWriter {
 
     // ----------------------------------------------------- Instance Variables
 
-
     /**
      * Buffer.
      */
@@ -62,8 +60,10 @@ public class XMLWriter {
     protected final Writer writer;
 
 
-    // ----------------------------------------------------------- Constructors
+    protected boolean lastWriteWasOpen;
 
+
+    // ----------------------------------------------------------- Constructors
 
     /**
      * New XML writer utility that will store its data in an internal buffer.
@@ -87,7 +87,6 @@ public class XMLWriter {
 
 
     // --------------------------------------------------------- Public Methods
-
 
     /**
      * Retrieve generated XML.
@@ -139,6 +138,9 @@ public class XMLWriter {
         if ((namespace != null) && (namespace.length() > 0)) {
             switch (type) {
             case OPENING:
+                if (lastWriteWasOpen) {
+                    buffer.append('\n');
+                }
                 if (namespaceInfo != null) {
                     buffer.append("<" + namespace + ":" + name + " xmlns:"
                                   + namespace + "=\""
@@ -146,32 +148,47 @@ public class XMLWriter {
                 } else {
                     buffer.append("<" + namespace + ":" + name + ">");
                 }
+                lastWriteWasOpen = true;
                 break;
             case CLOSING:
                 buffer.append("</" + namespace + ":" + name + ">\n");
+                lastWriteWasOpen = false;
                 break;
             case NO_CONTENT:
             default:
+                if (lastWriteWasOpen) {
+                    buffer.append('\n');
+                }
                 if (namespaceInfo != null) {
                     buffer.append("<" + namespace + ":" + name + " xmlns:"
                                   + namespace + "=\""
-                                  + namespaceInfo + "\"/>");
+                                  + namespaceInfo + "\"/>\n");
                 } else {
-                    buffer.append("<" + namespace + ":" + name + "/>");
+                    buffer.append("<" + namespace + ":" + name + "/>\n");
                 }
+                lastWriteWasOpen = false;
                 break;
             }
         } else {
             switch (type) {
             case OPENING:
+                if (lastWriteWasOpen) {
+                    buffer.append('\n');
+                }
                 buffer.append("<" + name + ">");
+                lastWriteWasOpen = true;
                 break;
             case CLOSING:
                 buffer.append("</" + name + ">\n");
+                lastWriteWasOpen = false;
                 break;
             case NO_CONTENT:
             default:
-                buffer.append("<" + name + "/>");
+                if (lastWriteWasOpen) {
+                    buffer.append('\n');
+                }
+                buffer.append("<" + name + "/>\n");
+                lastWriteWasOpen = false;
                 break;
             }
         }
@@ -184,7 +201,17 @@ public class XMLWriter {
      * @param text Text to append
      */
     public void writeText(String text) {
-        buffer.append(text);
+        buffer.append(Escape.xml(text));
+    }
+
+
+    /**
+     * Write raw XML data.
+     *
+     * @param raw Raw XML to append
+     */
+    public void writeRaw(String raw) {
+        buffer.append(raw);
     }
 
 

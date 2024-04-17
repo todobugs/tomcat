@@ -72,16 +72,12 @@ public class MediaType {
                     result.append(type);
                     result.append('/');
                     result.append(subtype);
-                    for (Map.Entry<String, String> entry : parameters.entrySet()) {
+                    for (Map.Entry<String,String> entry : parameters.entrySet()) {
                         String value = entry.getValue();
                         if (value == null || value.length() == 0) {
                             continue;
                         }
                         result.append(';');
-                        // Workaround for Adobe Read 9 plug-in on IE bug
-                        // Can be removed after 26 June 2013 (EOL of Reader 9)
-                        // See BZ 53814
-                        result.append(' ');
                         result.append(entry.getKey());
                         result.append('=');
                         result.append(value);
@@ -102,15 +98,11 @@ public class MediaType {
                     result.append(type);
                     result.append('/');
                     result.append(subtype);
-                    for (Map.Entry<String, String> entry : parameters.entrySet()) {
+                    for (Map.Entry<String,String> entry : parameters.entrySet()) {
                         if (entry.getKey().equalsIgnoreCase("charset")) {
                             continue;
                         }
                         result.append(';');
-                        // Workaround for Adobe Read 9 plug-in on IE bug
-                        // Can be removed after 26 June 2013 (EOL of Reader 9)
-                        // See BZ 53814
-                        result.append(' ');
                         result.append(entry.getKey());
                         result.append('=');
                         result.append(entry.getValue());
@@ -127,7 +119,9 @@ public class MediaType {
      * Parses a MediaType value, either from an HTTP header or from an application.
      *
      * @param input a reader over the header text
+     *
      * @return a MediaType parsed from the input, or null if not valid
+     *
      * @throws IOException if there was a problem reading the input
      */
     public static MediaType parseMediaType(StringReader input) throws IOException {

@@ -61,7 +61,7 @@ is mapped to the URL pattern "*.shtml".</p>
 is mapped to the URL pattern "*.shtml", though it can be mapped to "*" as
 it will selectively enable/disable SSI processing based on mime types.  The
 contentType init param allows you to apply SSI processing to JSP pages,
-javascript, or any other content you wish.</p>
+JavaScript, or any other content you wish.</p>
 <p>By default SSI support is disabled in Tomcat.</p>
 </section>
 
@@ -142,11 +142,11 @@ false.</li>
  whose type will be processed by the SSI servlet. The directives take the form of an HTML
  comment. The directive is replaced by the results of interpreting it before sending the
  page to the client. The general form of a directive is: </p>
-<p> <code>&lt;!--#directive [parm=value] --&gt;</code></p>
+<p> <code>&lt;!--#directive [param=value] --&gt;</code></p>
 <p>The directives are:</p>
 <ul>
 <li>
-<strong>config</strong> - <code>&lt;!--#config errmsg=&quot;Error occured&quot; sizefmt=&quot;abbrev&quot;
+<strong>config</strong> - <code>&lt;!--#config errmsg=&quot;Error occurred&quot; sizefmt=&quot;abbrev&quot;
 timefmt=&quot;%B %Y&quot; --&gt;</code>
 Used to set SSI error message, the format of dates and file sizes processed by SSI.<br/>
 All are optional but at least one must be used. The available options are as follows:

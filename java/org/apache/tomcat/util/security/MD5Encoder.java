@@ -16,6 +16,8 @@
  */
 package org.apache.tomcat.util.security;
 
+import org.apache.tomcat.util.buf.HexUtils;
+
 /**
  * Encode an MD5 digest into a String.
  * <p>
@@ -24,7 +26,10 @@ package org.apache.tomcat.util.security;
  * of the digest.
  *
  * @author Remy Maucherat
+ *
+ * @deprecated Unused. Use {@link HexUtils} instead. Will be removed in Tomcat 11.
  */
+@Deprecated
 public final class MD5Encoder {
 
 
@@ -46,8 +51,9 @@ public final class MD5Encoder {
      */
     public static String encode(byte[] binaryData) {
 
-        if (binaryData.length != 16)
+        if (binaryData.length != 16) {
             return null;
+        }
 
         char[] buffer = new char[32];
 

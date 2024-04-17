@@ -36,13 +36,13 @@ import java.util.Set;
  * @author Craig R. McClanahan
  * @author Peter Donald
  */
-public interface Pipeline {
+public interface Pipeline extends Contained {
 
     /**
      * @return the Valve instance that has been distinguished as the basic
      * Valve for this Pipeline (if any).
      */
-    public Valve getBasic();
+    Valve getBasic();
 
 
     /**
@@ -57,7 +57,7 @@ public interface Pipeline {
      *
      * @param valve Valve to be distinguished as the basic Valve
      */
-    public void setBasic(Valve valve);
+    void setBasic(Valve valve);
 
 
     /**
@@ -83,7 +83,7 @@ public interface Pipeline {
      * @exception IllegalStateException if the specified Valve is already
      *  associated with a different Container
      */
-    public void addValve(Valve valve);
+    void addValve(Valve valve);
 
 
     /**
@@ -91,7 +91,7 @@ public interface Pipeline {
      * Container, including the basic Valve (if any).  If there are no
      * such Valves, a zero-length array is returned.
      */
-    public Valve[] getValves();
+    Valve[] getValves();
 
 
     /**
@@ -106,35 +106,21 @@ public interface Pipeline {
      *
      * @param valve Valve to be removed
      */
-    public void removeValve(Valve valve);
+    void removeValve(Valve valve);
 
 
     /**
      * @return the Valve instance that has been distinguished as the basic
      * Valve for this Pipeline (if any).
      */
-    public Valve getFirst();
+    Valve getFirst();
 
 
     /**
      * Returns true if all the valves in this pipeline support async, false otherwise
      * @return true if all the valves in this pipeline support async, false otherwise
      */
-    public boolean isAsyncSupported();
-
-
-    /**
-     * @return the Container with which this Pipeline is associated.
-     */
-    public Container getContainer();
-
-
-    /**
-     * Set the Container with which this Pipeline is associated.
-     *
-     * @param container The new associated container
-     */
-    public void setContainer(Container container);
+    boolean isAsyncSupported();
 
 
     /**
@@ -145,5 +131,5 @@ public interface Pipeline {
      *               Valve in this Pipeline that does not support async will be
      *               added
      */
-    public void findNonAsyncValves(Set<String> result);
+    void findNonAsyncValves(Set<String> result);
 }

@@ -123,8 +123,8 @@ public class Diagnostics {
         threadMXBean.setThreadContentionMonitoringEnabled(enable);
         boolean checkValue = threadMXBean.isThreadContentionMonitoringEnabled();
         if (enable != checkValue) {
-            log.error("Could not set threadContentionMonitoringEnabled to " +
-                      enable + ", got " + checkValue + " instead");
+            log.error(sm.getString("diagnostics.setPropertyFail", "threadContentionMonitoringEnabled",
+                    Boolean.valueOf(enable), Boolean.valueOf(checkValue)));
         }
     }
 
@@ -146,8 +146,8 @@ public class Diagnostics {
         threadMXBean.setThreadCpuTimeEnabled(enable);
         boolean checkValue = threadMXBean.isThreadCpuTimeEnabled();
         if (enable != checkValue) {
-            log.error("Could not set threadCpuTimeEnabled to " + enable +
-                      ", got " + checkValue + " instead");
+            log.error(sm.getString("diagnostics.setPropertyFail", "threadCpuTimeEnabled",
+                    Boolean.valueOf(enable), Boolean.valueOf(checkValue)));
         }
     }
 
@@ -167,8 +167,8 @@ public class Diagnostics {
         classLoadingMXBean.setVerbose(verbose);
         boolean checkValue = classLoadingMXBean.isVerbose();
         if (verbose != checkValue) {
-            log.error("Could not set verbose class loading to " + verbose +
-                      ", got " + checkValue + " instead");
+            log.error(sm.getString("diagnostics.setPropertyFail", "verboseClassLoading",
+                    Boolean.valueOf(verbose), Boolean.valueOf(checkValue)));
         }
     }
 
@@ -182,9 +182,9 @@ public class Diagnostics {
         loggingMXBean.setLoggerLevel(loggerName, levelName);
         String checkValue = loggingMXBean.getLoggerLevel(loggerName);
         if (!checkValue.equals(levelName)) {
-            log.error("Could not set logger level for logger '" +
-                      loggerName + "' to '" + levelName +
-                      "', got '" + checkValue + "' instead");
+            String propertyName = "loggerLevel[" + loggerName + "]";
+            log.error(sm.getString("diagnostics.setPropertyFail", propertyName,
+                    levelName, checkValue));
         }
     }
 
@@ -197,8 +197,8 @@ public class Diagnostics {
         memoryMXBean.setVerbose(verbose);
         boolean checkValue = memoryMXBean.isVerbose();
         if (verbose != checkValue) {
-            log.error("Could not set verbose garbage collection logging to " + verbose +
-                      ", got " + checkValue + " instead");
+            log.error(sm.getString("diagnostics.setPropertyFail", "verboseGarbageCollection",
+                    Boolean.valueOf(verbose), Boolean.valueOf(checkValue)));
         }
     }
 
@@ -235,9 +235,7 @@ public class Diagnostics {
                 try {
                     mbean.setUsageThreshold(threshold);
                     return true;
-                } catch (IllegalArgumentException ex) {
-                    // IGNORE
-                } catch (UnsupportedOperationException ex) {
+                } catch (IllegalArgumentException | UnsupportedOperationException ex) {
                     // IGNORE
                 }
                 return false;
@@ -259,9 +257,7 @@ public class Diagnostics {
                 try {
                     mbean.setCollectionUsageThreshold(threshold);
                     return true;
-                } catch (IllegalArgumentException ex) {
-                    // IGNORE
-                } catch (UnsupportedOperationException ex) {
+                } catch (IllegalArgumentException | UnsupportedOperationException ex) {
                     // IGNORE
                 }
                 return false;
@@ -316,8 +312,8 @@ public class Diagnostics {
         StackTraceElement[] stes = ti.getStackTrace();
         Object[] monitorDepths = new Object[stes.length];
         MonitorInfo[] mis = ti.getLockedMonitors();
-        for (int i = 0; i < mis.length; i++) {
-            monitorDepths[mis[i].getLockedStackDepth()] = mis[i];
+        for (MonitorInfo monitorInfo : mis) {
+            monitorDepths[monitorInfo.getLockedStackDepth()] = monitorInfo;
         }
         for (int i = 0; i < stes.length; i++) {
             StackTraceElement ste = stes[i];
@@ -378,7 +374,7 @@ public class Diagnostics {
                                                 true, true);
             if (tinfos != null) {
                 StringBuilder sb =
-                    new StringBuilder("Deadlock found between the following threads:");
+                    new StringBuilder(sm.getString("diagnostics.deadlockFound"));
                 sb.append(CRLF);
                 sb.append(getThreadDump(tinfos));
                 return sb.toString();
@@ -426,7 +422,7 @@ public class Diagnostics {
         sb.append(CRLF);
 
         sb.append(requestedSm.getString("diagnostics.threadDumpTitle"));
-        sb.append(" ");
+        sb.append(' ');
         sb.append(runtimeMXBean.getVmName());
         sb.append(" (");
         sb.append(runtimeMXBean.getVmVersion());
@@ -563,7 +559,9 @@ public class Diagnostics {
 
         sb.append(requestedSm.getString("diagnostics.vmInfoPath"));
         sb.append(":" + CRLF);
-        sb.append(INDENT1 + "bootClassPath: " + runtimeMXBean.getBootClassPath() + CRLF);
+        if (runtimeMXBean.isBootClassPathSupported()) {
+            sb.append(INDENT1 + "bootClassPath: " + runtimeMXBean.getBootClassPath() + CRLF);
+        }
         sb.append(INDENT1 + "classPath: " + runtimeMXBean.getClassPath() + CRLF);
         sb.append(INDENT1 + "libraryPath: " + runtimeMXBean.getLibraryPath() + CRLF);
         sb.append(CRLF);

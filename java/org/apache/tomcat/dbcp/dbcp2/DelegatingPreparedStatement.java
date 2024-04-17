@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.tomcat.dbcp.dbcp2;
 
 import java.io.InputStream;
@@ -618,7 +617,9 @@ public class DelegatingPreparedStatement extends DelegatingStatement implements 
         }
     }
 
-    /** @deprecated Use setAsciiStream(), setCharacterStream() or setNCharacterStream() */
+    /**
+     * @deprecated Use setAsciiStream(), setCharacterStream() or setNCharacterStream()
+     */
     @Deprecated
     @Override
     public void setUnicodeStream(final int parameterIndex, final InputStream x, final int length) throws SQLException {
@@ -645,7 +646,6 @@ public class DelegatingPreparedStatement extends DelegatingStatement implements 
      *
      * @return String
      */
-    @SuppressWarnings("resource")
     @Override
     public synchronized String toString() {
         final Statement statement = getDelegate();

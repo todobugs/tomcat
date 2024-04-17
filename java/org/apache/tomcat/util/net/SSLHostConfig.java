@@ -22,9 +22,12 @@ import java.io.IOException;
 import java.io.Serializable;
 import java.security.KeyStore;
 import java.security.UnrecoverableKeyException;
+import java.security.cert.X509Certificate;
+import java.util.Date;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Set;
 
 import javax.management.ObjectName;
@@ -49,10 +52,12 @@ public class SSLHostConfig implements Serializable {
     private static final Log log = LogFactory.getLog(SSLHostConfig.class);
     private static final StringManager sm = StringManager.getManager(SSLHostConfig.class);
 
-    private static final String DEFAULT_CIPHERS = "HIGH:!aNULL:!eNULL:!EXPORT:!DES:!RC4:!MD5:!kRSA";
-
+    // Must be lower case. SSL host names are always stored using lower case as
+    // they are case insensitive but are used by case sensitive code such as
+    // keys in Maps.
     protected static final String DEFAULT_SSL_HOST_NAME = "_default_";
     protected static final Set<String> SSL_PROTO_ALL_SET = new HashSet<>();
+    public static final String DEFAULT_TLS_CIPHERS = "HIGH:!aNULL:!eNULL:!EXPORT:!DES:!RC4:!MD5:!kRSA";
 
     static {
         /* Default used if protocols are not configured, also used if
@@ -69,11 +74,13 @@ public class SSLHostConfig implements Serializable {
 
     private String hostName = DEFAULT_SSL_HOST_NAME;
 
-    private transient Long openSslConfContext = Long.valueOf(0);
+    private transient volatile Long openSslConfContext = Long.valueOf(0);
     // OpenSSL can handle multiple certs in a single config so the reference to
     // the context is here at the virtual host level. JSSE can't so the
     // reference is held on the certificate.
-    private transient Long openSslContext = Long.valueOf(0);
+    private transient volatile Long openSslContext = Long.valueOf(0);
+
+    private boolean tls13RenegotiationAvailable = false;
 
     // Configuration properties
 
@@ -125,6 +132,16 @@ public class SSLHostConfig implements Serializable {
     public SSLHostConfig() {
         // Set defaults that can't be (easily) set when defining the fields.
         setProtocols(Constants.SSL_PROTO_ALL);
+    }
+
+
+    public boolean isTls13RenegotiationAvailable() {
+        return tls13RenegotiationAvailable;
+    }
+
+
+    public void setTls13RenegotiationAvailable(boolean tls13RenegotiationAvailable) {
+        this.tls13RenegotiationAvailable = tls13RenegotiationAvailable;
     }
 
 
@@ -289,9 +306,26 @@ public class SSLHostConfig implements Serializable {
             return defaultCertificate.getCertificateKeyPassword();
         }
     }
+
+
     public void setCertificateKeyPassword(String certificateKeyPassword) {
         registerDefaultCertificate();
         defaultCertificate.setCertificateKeyPassword(certificateKeyPassword);
+    }
+
+
+    public String getCertificateKeyPasswordFile() {
+        if (defaultCertificate == null) {
+            return null;
+        } else {
+            return defaultCertificate.getCertificateKeyPasswordFile();
+        }
+    }
+
+
+    public void setCertificateKeyPasswordFile(String certificateKeyPasswordFile) {
+        registerDefaultCertificate();
+        defaultCertificate.setCertificateKeyPasswordFile(certificateKeyPasswordFile);
     }
 
 
@@ -392,9 +426,9 @@ public class SSLHostConfig implements Serializable {
     public String getCiphers() {
         if (ciphers == null) {
             if (!JreCompat.isJre8Available() && Type.JSSE.equals(configType)) {
-                ciphers = DEFAULT_CIPHERS + ":!DHE";
+                ciphers = DEFAULT_TLS_CIPHERS + ":!DHE";
             } else {
-                ciphers = DEFAULT_CIPHERS;
+                ciphers = DEFAULT_TLS_CIPHERS;
             }
 
         }
@@ -436,10 +470,14 @@ public class SSLHostConfig implements Serializable {
 
 
     public void setHostName(String hostName) {
-        this.hostName = hostName;
+        this.hostName = hostName.toLowerCase(Locale.ENGLISH);
     }
 
 
+    /**
+     * @return The host name associated with this SSL configuration - always in
+     *         lower case.
+     */
     public String getHostName() {
         return hostName;
     }
@@ -571,6 +609,19 @@ public class SSLHostConfig implements Serializable {
     public void setCertificateKeystorePassword(String certificateKeystorePassword) {
         registerDefaultCertificate();
         defaultCertificate.setCertificateKeystorePassword(certificateKeystorePassword);
+    }
+
+
+    public String getCertificateKeystorePasswordFile() {
+        if (defaultCertificate == null) {
+            return null;
+        } else {
+            return defaultCertificate.getCertificateKeystorePasswordFile();
+        }
+    }
+    public void setCertificateKeystorePasswordFile(String certificateKeystorePasswordFile) {
+        registerDefaultCertificate();
+        defaultCertificate.setCertificateKeystorePasswordFile(certificateKeystorePasswordFile);
     }
 
 
@@ -731,16 +782,16 @@ public class SSLHostConfig implements Serializable {
             if (truststoreFile != null){
                 try {
                     result = SSLUtilBase.getStore(getTruststoreType(), getTruststoreProvider(),
-                            getTruststoreFile(), getTruststorePassword());
+                            getTruststoreFile(), getTruststorePassword(), null);
                 } catch (IOException ioe) {
                     Throwable cause = ioe.getCause();
                     if (cause instanceof UnrecoverableKeyException) {
                         // Log a warning we had a password issue
-                        log.warn(sm.getString("jsse.invalid_truststore_password"),
+                        log.warn(sm.getString("sslHostConfig.invalid_truststore_password"),
                                 cause);
                         // Re-try
                         result = SSLUtilBase.getStore(getTruststoreType(), getTruststoreProvider(),
-                                getTruststoreFile(), null);
+                                getTruststoreFile(), null, null);
                     } else {
                         // Something else went wrong - re-throw
                         throw ioe;
@@ -874,6 +925,30 @@ public class SSLHostConfig implements Serializable {
 
     // --------------------------------------------------------- Support methods
 
+    public Set<X509Certificate> certificatesExpiringBefore(Date date) {
+        Set<X509Certificate> result = new HashSet<>();
+        Set<SSLHostConfigCertificate> sslHostConfigCertificates = getCertificates();
+        for (SSLHostConfigCertificate sslHostConfigCertificate : sslHostConfigCertificates) {
+            SSLContext sslContext = sslHostConfigCertificate.getSslContext();
+            if (sslContext != null) {
+                String alias = sslHostConfigCertificate.getCertificateKeyAlias();
+                if (alias == null) {
+                    alias = SSLUtilBase.DEFAULT_KEY_ALIAS;
+                }
+                X509Certificate[] certificates = sslContext.getCertificateChain(alias);
+                if (certificates != null && certificates.length > 0) {
+                    X509Certificate certificate = certificates[0];
+                    Date expirationDate = certificate.getNotAfter();
+                    if (date.after(expirationDate)) {
+                        result.add(certificate);
+                    }
+                }
+            }
+        }
+        return result;
+    }
+
+
     public static String adjustRelativePath(String path) throws FileNotFoundException {
         // Empty or null path can't point to anything useful. The assumption is
         // that the value is deliberately empty / null so leave it that way.
@@ -902,10 +977,20 @@ public class SSLHostConfig implements Serializable {
 
 
     public enum CertificateVerification {
-        NONE,
-        OPTIONAL_NO_CA,
-        OPTIONAL,
-        REQUIRED;
+        NONE(false),
+        OPTIONAL_NO_CA(true),
+        OPTIONAL(true),
+        REQUIRED(false);
+
+        private final boolean optional;
+
+        CertificateVerification(boolean optional) {
+            this.optional = optional;
+        }
+
+        public boolean isOptional() {
+           return optional;
+        }
 
         public static CertificateVerification fromString(String value) {
             if ("true".equalsIgnoreCase(value) ||

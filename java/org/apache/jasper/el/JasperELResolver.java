@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.jasper.el;
 
 import java.util.List;
@@ -161,7 +160,7 @@ public class JasperELResolver extends CompositeELResolver {
     /*
      * Copied from org.apache.el.lang.ELSupport#coerceToString(ELContext,Object)
      */
-    private static final String coerceToString(final Object obj) {
+    private static String coerceToString(final Object obj) {
         if (obj == null) {
             return "";
         } else if (obj instanceof String) {

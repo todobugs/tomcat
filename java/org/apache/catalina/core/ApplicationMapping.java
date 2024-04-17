@@ -16,27 +16,30 @@
  */
 package org.apache.catalina.core;
 
+import javax.servlet.http.HttpServletRequest;
+import javax.servlet.http.HttpServletRequestWrapper;
+
+import org.apache.catalina.connector.Request;
+import org.apache.catalina.connector.RequestFacade;
 import org.apache.catalina.mapper.MappingData;
-import org.apache.catalina.servlet4preview.http.HttpServletMapping;
-import org.apache.catalina.servlet4preview.http.MappingMatch;
 
 public class ApplicationMapping {
 
     private final MappingData mappingData;
 
-    private volatile HttpServletMapping mapping = null;
+    private volatile ApplicationMappingImpl mapping = null;
 
     public ApplicationMapping(MappingData mappingData) {
         this.mappingData = mappingData;
     }
 
-    public HttpServletMapping getHttpServletMapping() {
+    public ApplicationMappingImpl getHttpServletMapping() {
         if (mapping == null) {
             if (mappingData == null) {
                 // This can happen when dispatching from an application provided
                 // request object that does not provide the Servlet 4.0 mapping
                 // data.
-                mapping = new MappingImpl("", "", null, "");
+                mapping = new ApplicationMappingImpl("", "", null, "");
             } else {
                 String servletName;
                 if (mappingData.wrapper == null) {
@@ -45,23 +48,23 @@ public class ApplicationMapping {
                     servletName = mappingData.wrapper.getName();
                 }
                 if (mappingData.matchType == null) {
-                    mapping = new MappingImpl("", "", null, servletName);
+                    mapping = new ApplicationMappingImpl("", "", null, servletName);
                 } else {
                     switch (mappingData.matchType) {
                         case CONTEXT_ROOT:
-                            mapping = new MappingImpl("", "", mappingData.matchType, servletName);
+                            mapping = new ApplicationMappingImpl("", "", mappingData.matchType, servletName);
                             break;
                         case DEFAULT:
-                            mapping = new MappingImpl("", "/", mappingData.matchType, servletName);
+                            mapping = new ApplicationMappingImpl("", "/", mappingData.matchType, servletName);
                             break;
                         case EXACT:
-                            mapping = new MappingImpl(mappingData.wrapperPath.toString().substring(1),
+                            mapping = new ApplicationMappingImpl(mappingData.wrapperPath.toString().substring(1),
                                     mappingData.wrapperPath.toString(), mappingData.matchType, servletName);
                             break;
                         case EXTENSION:
                             String path = mappingData.wrapperPath.toString();
                             int extIndex = path.lastIndexOf('.');
-                            mapping = new MappingImpl(path.substring(1, extIndex),
+                            mapping = new ApplicationMappingImpl(path.substring(1, extIndex),
                                     "*" + path.substring(extIndex), mappingData.matchType, servletName);
                             break;
                         case PATH:
@@ -71,7 +74,7 @@ public class ApplicationMapping {
                             } else {
                                 matchValue = mappingData.pathInfo.toString().substring(1);
                             }
-                            mapping = new MappingImpl(matchValue, mappingData.wrapperPath.toString() + "/*",
+                            mapping = new ApplicationMappingImpl(matchValue, mappingData.wrapperPath.toString() + "/*",
                                     mappingData.matchType, servletName);
                             break;
                     }
@@ -86,39 +89,23 @@ public class ApplicationMapping {
         mapping = null;
     }
 
-    private static class MappingImpl implements HttpServletMapping {
 
-        private final String matchValue;
-        private final String pattern;
-        private final MappingMatch mappingType;
-        private final String servletName;
-
-        public MappingImpl(String matchValue, String pattern, MappingMatch mappingType,
-                String servletName) {
-            this.matchValue = matchValue;
-            this.pattern = pattern;
-            this.mappingType = mappingType;
-            this.servletName = servletName;
+    public static ApplicationMappingImpl getHttpServletMapping(HttpServletRequest request) {
+        if (request instanceof RequestFacade) {
+            return ((RequestFacade) request).getHttpServletMapping();
+        } else if (request instanceof Request) {
+            return ((Request) request).getHttpServletMapping();
+        } else if (request instanceof ApplicationHttpRequest) {
+            return ((ApplicationHttpRequest) request).getHttpServletMapping();
         }
+        return (new ApplicationMapping(null)).getHttpServletMapping();
+    }
 
-        @Override
-        public String getMatchValue() {
-            return matchValue;
-        }
 
-        @Override
-        public String getPattern() {
-            return pattern;
+    public static ApplicationMappingImpl getHttpServletMapping(HttpServletRequestWrapper wrapper) {
+        if (wrapper instanceof ApplicationHttpRequest) {
+            return ((ApplicationHttpRequest) wrapper).getHttpServletMapping();
         }
-
-        @Override
-        public MappingMatch getMappingMatch() {
-            return mappingType;
-        }
-
-        @Override
-        public String getServletName() {
-            return servletName;
-        }
+        return (new ApplicationMapping(null)).getHttpServletMapping();
     }
 }

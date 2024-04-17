@@ -125,13 +125,13 @@ public class CallParamRule extends Rule {
 
             param = digester.peek(stackIndex);
 
-            if (digester.log.isDebugEnabled()) {
+            if (digester.log.isTraceEnabled()) {
 
                 StringBuilder sb = new StringBuilder("[CallParamRule]{");
                 sb.append(digester.match);
                 sb.append("} Save from stack; from stack?").append(fromStack);
                 sb.append("; object=").append(param);
-                digester.log.debug(sb.toString());
+                digester.log.trace(sb.toString());
             }
         }
 
@@ -198,7 +198,7 @@ public class CallParamRule extends Rule {
         sb.append(attributeName);
         sb.append(", from stack=");
         sb.append(fromStack);
-        sb.append("]");
+        sb.append(']');
         return sb.toString();
     }
 

@@ -64,8 +64,9 @@ public class AntCompiler extends Compiler {
     // Lazy eval - if we don't need to compile we probably don't need the project
     protected Project getProject() {
 
-        if (project != null)
+        if (project != null) {
             return project;
+        }
 
         // Initializing project
         project = new Project();
@@ -79,8 +80,9 @@ public class AntCompiler extends Compiler {
         }
 
         if( options.getCompiler() != null ) {
-            if( log.isDebugEnabled() )
-                log.debug("Compiler " + options.getCompiler() );
+            if( log.isTraceEnabled() ) {
+                log.trace("Compiler " + options.getCompiler() );
+            }
             project.setProperty("build.compiler", options.getCompiler() );
         }
         project.init();
@@ -154,8 +156,8 @@ public class AntCompiler extends Compiler {
             info.append("    cp=" + repository + "\n");
         }
 
-        if (log.isDebugEnabled()) {
-            log.debug( "Using classpath: " + System.getProperty("java.class.path") +
+        if (log.isTraceEnabled()) {
+            log.trace( "Using classpath: " + System.getProperty("java.class.path") +
                     File.pathSeparator + classpath);
         }
 
@@ -269,8 +271,7 @@ public class AntCompiler extends Compiler {
 
         if( log.isDebugEnabled() ) {
             long t2 = System.currentTimeMillis();
-            log.debug("Compiled " + ctxt.getServletJavaFileName() + " "
-                      + (t2-t1) + "ms");
+            log.debug(Localizer.getMessage("jsp.compiled", ctxt.getServletJavaFileName(), Long.valueOf(t2 - t1)));
         }
 
         logger = null;

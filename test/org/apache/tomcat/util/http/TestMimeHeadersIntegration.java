@@ -95,7 +95,7 @@ public class TestMimeHeadersIntegration extends TomcatBaseTest {
             Assert.assertEquals("OK", client.getResponseBody());
         } else {
             alv.validateAccessLog(1, 400, 0, 3000);
-            // Connection aborted or response 400
+            // Connection cancelled or response 400
             Assert.assertTrue("Response line is: " + client.getResponseLine(),
                     client.getResponseLine() == null || client.isResponse400());
         }
@@ -105,8 +105,7 @@ public class TestMimeHeadersIntegration extends TomcatBaseTest {
         if (maxHeaderCount > 0) {
             Assert.assertEquals(maxHeaderCount, alv.arraySize);
         } else if (maxHeaderCount < 0) {
-            int maxHttpHeaderSize = ((Integer) tomcat.getConnector()
-                    .getAttribute("maxHttpHeaderSize")).intValue();
+            int maxHttpHeaderSize = ((Integer) tomcat.getConnector().getProperty("maxHttpHeaderSize")).intValue();
             int headerCount = Math.min(count,
                     maxHttpHeaderSize / header.length() + 1);
             int arraySize = 1;
@@ -170,7 +169,7 @@ public class TestMimeHeadersIntegration extends TomcatBaseTest {
     }
 
     private static final class Client extends SimpleHttpClient {
-        public Client(Tomcat tomcat) {
+        Client(Tomcat tomcat) {
             setPort(tomcat.getConnector().getLocalPort());
         }
 

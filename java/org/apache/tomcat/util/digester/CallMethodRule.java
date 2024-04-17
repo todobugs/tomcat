@@ -14,10 +14,9 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
-
 package org.apache.tomcat.util.digester;
 
+import java.util.Arrays;
 
 import org.apache.tomcat.util.IntrospectionUtils;
 import org.xml.sax.Attributes;
@@ -104,9 +103,7 @@ public class CallMethodRule extends Rule {
             this.paramTypes = new Class[] { String.class };
         } else {
             this.paramTypes = new Class[paramCount];
-            for (int i = 0; i < this.paramTypes.length; i++) {
-                this.paramTypes[i] = String.class;
-            }
+            Arrays.fill(this.paramTypes, String.class);
         }
         this.paramClassNames = null;
     }
@@ -144,19 +141,15 @@ public class CallMethodRule extends Rule {
      *  Java wrapper class instead, such as <code>java.lang.Boolean.TYPE</code>
      *  for a <code>boolean</code> parameter)
      */
-    public CallMethodRule(  int targetOffset,
-                            String methodName,
-                            int paramCount,
-                            Class<?> paramTypes[]) {
+    public CallMethodRule(int targetOffset, String methodName, int paramCount,
+                          Class<?>[] paramTypes) {
 
         this.targetOffset = targetOffset;
         this.methodName = methodName;
         this.paramCount = paramCount;
         if (paramTypes == null) {
             this.paramTypes = new Class[paramCount];
-            for (int i = 0; i < this.paramTypes.length; i++) {
-                this.paramTypes[i] = String.class;
-            }
+            Arrays.fill(this.paramTypes, String.class);
         } else {
             this.paramTypes = new Class[paramTypes.length];
             for (int i = 0; i < this.paramTypes.length; i++) {
@@ -278,10 +271,7 @@ public class CallMethodRule extends Rule {
 
         // Push an array to capture the parameter values if necessary
         if (paramCount > 0) {
-            Object parameters[] = new Object[paramCount];
-            for (int i = 0; i < parameters.length; i++) {
-                parameters[i] = null;
-            }
+            Object[] parameters = new Object[paramCount];
             digester.pushParams(parameters);
         }
 
@@ -342,7 +332,7 @@ public class CallMethodRule extends Rule {
                 return;
             }
 
-        } else if (paramTypes != null && paramTypes.length != 0) {
+        } else if (paramTypes.length != 0) {
 
             // In the case where the parameter for the method
             // is taken from the body text, but there is no
@@ -392,37 +382,37 @@ public class CallMethodRule extends Rule {
             sb.append(targetOffset);
             sb.append(",stackdepth=");
             sb.append(digester.getCount());
-            sb.append(")");
+            sb.append(')');
             throw new org.xml.sax.SAXException(sb.toString());
         }
 
         // Invoke the required method on the top object
-        if (digester.log.isDebugEnabled()) {
+        if (digester.log.isTraceEnabled()) {
             StringBuilder sb = new StringBuilder("[CallMethodRule]{");
             sb.append(digester.match);
             sb.append("} Call ");
             sb.append(target.getClass().getName());
-            sb.append(".");
+            sb.append('.');
             sb.append(methodName);
-            sb.append("(");
+            sb.append('(');
             for (int i = 0; i < paramValues.length; i++) {
                 if (i > 0) {
-                    sb.append(",");
+                    sb.append(',');
                 }
                 if (paramValues[i] == null) {
                     sb.append("null");
                 } else {
                     sb.append(paramValues[i].toString());
                 }
-                sb.append("/");
+                sb.append('/');
                 if (paramTypes[i] == null) {
                     sb.append("null");
                 } else {
                     sb.append(paramTypes[i].getName());
                 }
             }
-            sb.append(")");
-            digester.log.debug(sb.toString());
+            sb.append(')');
+            digester.log.trace(sb.toString());
         }
         Object result = IntrospectionUtils.callMethodN(target, methodName,
                 paramValues, paramTypes);
@@ -469,10 +459,8 @@ public class CallMethodRule extends Rule {
                 sb.append(paramTypes[i].getName());
             }
         }
-        sb.append("}");
-        sb.append("]");
+        sb.append('}');
+        sb.append(']');
         return sb.toString();
     }
-
-
 }

@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.jasper.compiler;
 
 import java.util.ArrayList;
@@ -191,7 +190,7 @@ abstract class ELNode {
         private String mapName = null;    // The function map associated this EL
         private final List<ELNode> list;
 
-        public Nodes() {
+        Nodes() {
             list = new ArrayList<>();
         }
 

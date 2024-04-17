@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.jasper.runtime;
 
 import java.util.Map;
@@ -35,6 +34,6 @@ public interface JspSourceDependent {
     * has a source dependency on the file.
     * @return the map of dependent resources
     */
-    public Map<String,Long> getDependants();
+    Map<String,Long> getDependants();
 
 }

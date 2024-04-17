@@ -14,8 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
-
 package org.apache.catalina;
 
 
@@ -35,7 +33,7 @@ public interface LifecycleListener {
      *
      * @param event LifecycleEvent that has occurred
      */
-    public void lifecycleEvent(LifecycleEvent event);
+    void lifecycleEvent(LifecycleEvent event);
 
 
 }

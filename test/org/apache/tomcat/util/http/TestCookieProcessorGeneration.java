@@ -188,7 +188,7 @@ public class TestCookieProcessorGeneration {
     @Test
     public void v1TestMaxAgeZero() {
         doV1TestMaxAge(0, "foo=bar; Version=1; Max-Age=0",
-                "foo=bar; Max-Age=0; Expires=Thu, 01-Jan-1970 00:00:10 GMT");
+                "foo=bar; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:10 GMT");
     }
 
     @Test
@@ -316,6 +316,36 @@ public class TestCookieProcessorGeneration {
         Assert.assertEquals("foo=bar; Secure; HttpOnly; SameSite=Strict", rfc6265.generateHeader(cookie));
     }
 
+
+    @Test
+    public void testPartitionedCookies() {
+        Rfc6265CookieProcessor rfc6265 = new Rfc6265CookieProcessor();
+
+        Cookie cookie = new Cookie("foo", "bar");
+
+        Assert.assertEquals("foo=bar", rfc6265.generateHeader(cookie, null));
+
+        rfc6265.setPartitioned(false);
+
+        Assert.assertEquals("foo=bar", rfc6265.generateHeader(cookie, null));
+
+        rfc6265.setPartitioned(true);
+
+        Assert.assertEquals("foo=bar; Partitioned", rfc6265.generateHeader(cookie, null));
+
+        cookie.setSecure(true);
+        cookie.setHttpOnly(true);
+
+        rfc6265.setPartitioned(false);
+
+        Assert.assertEquals("foo=bar; Secure; HttpOnly", rfc6265.generateHeader(cookie, null));
+
+        rfc6265.setPartitioned(true);
+
+        Assert.assertEquals("foo=bar; Secure; HttpOnly; Partitioned", rfc6265.generateHeader(cookie, null));
+    }
+
+
     private void doTest(Cookie cookie, String expected) {
         doTest(cookie, expected, expected);
     }
@@ -358,7 +388,7 @@ public class TestCookieProcessorGeneration {
         if (expected == null) {
             IllegalArgumentException e = null;
             try {
-                cookieProcessor.generateHeader(cookie);
+                cookieProcessor.generateHeader(cookie, null);
             } catch (IllegalArgumentException iae) {
                 e = iae;
             }
@@ -368,9 +398,9 @@ public class TestCookieProcessorGeneration {
                     cookie.getMaxAge() > 0) {
                 // Expires attribute will depend on time cookie is generated so
                 // use a modified test
-                Assert.assertTrue(cookieProcessor.generateHeader(cookie).startsWith(expected));
+                Assert.assertTrue(cookieProcessor.generateHeader(cookie, null).startsWith(expected));
             } else {
-                Assert.assertEquals(expected, cookieProcessor.generateHeader(cookie));
+                Assert.assertEquals(expected, cookieProcessor.generateHeader(cookie, null));
             }
         }
     }

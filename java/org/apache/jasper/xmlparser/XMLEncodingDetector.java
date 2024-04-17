@@ -578,11 +578,10 @@ public class XMLEncodingDetector {
                         fCurrentEntity.position++;
                         offset++;
                     }
-                    /*** NEWLINE NORMALIZATION ***/
+                    // NEWLINE NORMALIZATION
                     else {
                         newlines++;
                     }
-                    /***/
                 }
                 else if (c == '\n') {
                     newlines++;
@@ -593,13 +592,13 @@ public class XMLEncodingDetector {
                             break;
                         }
                     }
-                    /*** NEWLINE NORMALIZATION ***
+                    /* NEWLINE NORMALIZATION
                          if (fCurrentEntity.ch[fCurrentEntity.position] == '\r'
                          && external) {
                          fCurrentEntity.position++;
                          offset++;
                          }
-                         /***/
+                         */
                 }
                 else {
                     fCurrentEntity.position--;
@@ -720,7 +719,7 @@ public class XMLEncodingDetector {
                             fCurrentEntity.position++;
                             offset++;
                         }
-                        /*** NEWLINE NORMALIZATION ***/
+                        // NEWLINE NORMALIZATION
                         else {
                             newlines++;
                         }
@@ -874,10 +873,11 @@ public class XMLEncodingDetector {
                     if (fCurrentEntity.position == fCurrentEntity.count - 1) {
                         fCurrentEntity.ch[0] = (char)c;
                         entityChanged = load(1, true);
-                        if (!entityChanged)
-                                // the load change the position to be 1,
+                        if (!entityChanged) {
+                            // the load change the position to be 1,
                                 // need to restore it when entity not changed
                             fCurrentEntity.position = 0;
+                        }
                     }
                     if (c == '\r' && external) {
                         // REVISIT: Does this need to be updated to fix the
@@ -886,18 +886,19 @@ public class XMLEncodingDetector {
                             fCurrentEntity.position--;
                         }
                     }
-                    /*** NEWLINE NORMALIZATION ***
+                    /* NEWLINE NORMALIZATION
                          else {
                          if (fCurrentEntity.ch[fCurrentEntity.position + 1] == '\r'
                          && external) {
                          fCurrentEntity.position++;
                          }
                          }
-                         /***/
+                         */
                 }
                 // load more characters, if needed
-                if (!entityChanged)
+                if (!entityChanged) {
                     fCurrentEntity.position++;
+                }
                 if (fCurrentEntity.position == fCurrentEntity.count) {
                     load(0, true);
                 }
@@ -1037,7 +1038,7 @@ public class XMLEncodingDetector {
         private int fLength;
         private int fMark;
 
-        public RewindableInputStream(InputStream is) {
+        RewindableInputStream(InputStream is) {
             fData = new byte[DEFAULT_XMLDECL_BUFFER_SIZE];
             fInputStream = is;
             fEndOffset = -1;

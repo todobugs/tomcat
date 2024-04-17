@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.catalina.tribes.group.interceptors;
 
 import java.io.ByteArrayInputStream;
@@ -32,10 +31,6 @@ import org.apache.catalina.tribes.util.StringManager;
 import org.apache.juli.logging.Log;
 import org.apache.juli.logging.LogFactory;
 
-
-/**
- * @version 1.0
- */
 public class GzipInterceptor extends ChannelInterceptorBase {
 
     private static final Log log = LogFactory.getLog(GzipInterceptor.class);

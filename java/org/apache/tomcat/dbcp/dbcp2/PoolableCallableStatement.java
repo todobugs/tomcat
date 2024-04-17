@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.tomcat.dbcp.dbcp2;
 
 import java.sql.CallableStatement;
@@ -80,9 +79,7 @@ public class PoolableCallableStatement extends DelegatingCallableStatement {
         if (!isClosed()) {
             try {
                 pool.returnObject(key, this);
-            } catch (final SQLException e) {
-                throw e;
-            } catch (final RuntimeException e) {
+            } catch (final SQLException | RuntimeException e) {
                 throw e;
             } catch (final Exception e) {
                 throw new SQLException("Cannot close CallableStatement (return to pool failed)", e);
@@ -123,12 +120,12 @@ public class PoolableCallableStatement extends DelegatingCallableStatement {
         final List<AbandonedTrace> resultSetList = getTrace();
         if (resultSetList != null) {
             final List<Exception> thrownList = new ArrayList<>();
-            final ResultSet[] resultSets = resultSetList.toArray(new ResultSet[resultSetList.size()]);
+            final ResultSet[] resultSets = resultSetList.toArray(Utils.EMPTY_RESULT_SET_ARRAY);
             for (final ResultSet resultSet : resultSets) {
                 if (resultSet != null) {
                     try {
                         resultSet.close();
-                    } catch (Exception e) {
+                    } catch (final Exception e) {
                         thrownList.add(e);
                     }
                 }

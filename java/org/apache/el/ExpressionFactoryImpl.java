@@ -25,6 +25,7 @@ import javax.el.ValueExpression;
 import org.apache.el.lang.ELSupport;
 import org.apache.el.lang.ExpressionBuilder;
 import org.apache.el.stream.StreamELResolverImpl;
+import org.apache.el.util.ExceptionUtils;
 import org.apache.el.util.MessageFactory;
 
 
@@ -35,11 +36,8 @@ import org.apache.el.util.MessageFactory;
  */
 public class ExpressionFactoryImpl extends ExpressionFactory {
 
-    /**
-     *
-     */
-    public ExpressionFactoryImpl() {
-        super();
+    static {
+        ExceptionUtils.preload();
     }
 
     @Override

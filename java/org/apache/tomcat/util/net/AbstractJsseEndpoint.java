@@ -32,7 +32,7 @@ import org.apache.tomcat.util.compat.JreCompat;
 import org.apache.tomcat.util.net.openssl.OpenSSLImplementation;
 import org.apache.tomcat.util.net.openssl.ciphers.Cipher;
 
-public abstract class AbstractJsseEndpoint<S> extends AbstractEndpoint<S> {
+public abstract class AbstractJsseEndpoint<S,U> extends AbstractEndpoint<S,U> {
 
     private String sslImplementationName = null;
     private int sniParseLimit = 64 * 1024;
@@ -84,6 +84,14 @@ public abstract class AbstractJsseEndpoint<S> extends AbstractEndpoint<S> {
 
     @Override
     protected void createSSLContext(SSLHostConfig sslHostConfig) throws IllegalArgumentException {
+
+        // HTTP/2 does not permit optional certificate authentication with any
+        // version of TLS.
+        if (sslHostConfig.getCertificateVerification().isOptional() &&
+                negotiableProtocols.contains("h2")) {
+            getLog().warn(sm.getString("sslHostConfig.certificateVerificationWithHttp2", sslHostConfig.getHostName()));
+        }
+
         boolean firstCertificate = true;
         for (SSLHostConfigCertificate certificate : sslHostConfig.getCertificates(true)) {
             SSLUtil sslUtil = sslImplementation.getSSLUtil(certificate);
@@ -93,14 +101,25 @@ public abstract class AbstractJsseEndpoint<S> extends AbstractEndpoint<S> {
                 sslHostConfig.setEnabledCiphers(sslUtil.getEnabledCiphers());
             }
 
-            SSLContext sslContext;
-            try {
-                sslContext = sslUtil.createSSLContext(negotiableProtocols);
-            } catch (Exception e) {
-                throw new IllegalArgumentException(e.getMessage(), e);
+            SSLContext sslContext = certificate.getSslContext();
+            SSLContext sslContextGenerated = certificate.getSslContextGenerated();
+            // Generate the SSLContext from configuration unless (e.g. embedded) an SSLContext has been provided.
+            // Need to handle both initial configuration and reload.
+            // Initial, SSLContext provided     - sslContext will be non-null and sslContextGenerated will be null
+            // Initial, SSLContext not provided - sslContext null and sslContextGenerated will be null
+            // Reload,  SSLContext provided     - sslContext will be non-null and sslContextGenerated will be null
+            // Reload,  SSLContext not provided - sslContext non-null and equal to sslContextGenerated
+            if (sslContext == null || sslContext == sslContextGenerated) {
+                try {
+                    sslContext = sslUtil.createSSLContext(negotiableProtocols);
+                } catch (Exception e) {
+                    throw new IllegalArgumentException(e.getMessage(), e);
+                }
+
+                certificate.setSslContextGenerated(sslContext);
             }
 
-            certificate.setSslContext(sslContext);
+            logCertificate(certificate);
         }
     }
 
@@ -129,18 +148,17 @@ public abstract class AbstractJsseEndpoint<S> extends AbstractEndpoint<S> {
             JreCompat.getInstance().setUseServerCipherSuitesOrder(sslParameters, honorCipherOrder);
         }
 
-        if (JreCompat.isJre9Available() && clientRequestedApplicationProtocols != null
+        if (JreCompat.isAlpnSupported() && clientRequestedApplicationProtocols != null
                 && clientRequestedApplicationProtocols.size() > 0
                 && negotiableProtocols.size() > 0) {
             // Only try to negotiate if both client and server have at least
             // one protocol in common
             // Note: Tomcat does not explicitly negotiate http/1.1
             // TODO: Is this correct? Should it change?
-            List<String> commonProtocols = new ArrayList<>();
-            commonProtocols.addAll(negotiableProtocols);
+            List<String> commonProtocols = new ArrayList<>(negotiableProtocols);
             commonProtocols.retainAll(clientRequestedApplicationProtocols);
             if (commonProtocols.size() > 0) {
-                String[] commonProtocolsArray = commonProtocols.toArray(new String[commonProtocols.size()]);
+                String[] commonProtocolsArray = commonProtocols.toArray(new String[0]);
                 JreCompat.getInstance().setApplicationProtocols(sslParameters, commonProtocolsArray);
             }
         }
@@ -243,7 +261,11 @@ public abstract class AbstractJsseEndpoint<S> extends AbstractEndpoint<S> {
     public void unbind() throws Exception {
         for (SSLHostConfig sslHostConfig : sslHostConfigs.values()) {
             for (SSLHostConfigCertificate certificate : sslHostConfig.getCertificates(true)) {
-                certificate.setSslContext(null);
+                /*
+                 * Only remove any generated SSLContext. If the SSLContext was provided it is left in place in case the
+                 * endpoint is re-started.
+                 */
+                certificate.setSslContextGenerated(null);
             }
         }
     }
@@ -263,5 +285,11 @@ public abstract class AbstractJsseEndpoint<S> extends AbstractEndpoint<S> {
             return (InetSocketAddress) sa;
         }
         return null;
+    }
+
+
+    @Override
+    protected void setDefaultSslHostConfig(SSLHostConfig sslHostConfig) {
+        // NO-OP for JSSE
     }
 }

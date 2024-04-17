@@ -28,9 +28,7 @@ package org.apache.catalina;
  * @author Bip Thelin
  * @author Remy Maucherat
  */
-public interface Cluster {
-
-    // ------------------------------------------------------------- Properties
+public interface Cluster extends Contained {
 
     /**
      * Return the name of the cluster that this Server is currently
@@ -38,7 +36,7 @@ public interface Cluster {
      *
      * @return The name of the cluster associated with this server
      */
-    public String getClusterName();
+    String getClusterName();
 
 
     /**
@@ -47,24 +45,8 @@ public interface Cluster {
      *
      * @param clusterName The clustername to join
      */
-    public void setClusterName(String clusterName);
+    void setClusterName(String clusterName);
 
-    /**
-     * Set the Container associated with our Cluster
-     *
-     * @param container The Container to use
-     */
-    public void setContainer(Container container);
-
-    /**
-     * Get the Container associated with our Cluster
-     *
-     * @return The Container associated with our Cluster
-     */
-    public Container getContainer();
-
-
-    // --------------------------------------------------------- Public Methods
 
     /**
      * Create a new manager which will use this cluster to replicate its
@@ -75,7 +57,7 @@ public interface Cluster {
      *
      * @return The newly created Manager instance
      */
-    public Manager createManager(String name);
+    Manager createManager(String name);
 
 
     /**
@@ -84,15 +66,14 @@ public interface Cluster {
      * cluster that this manager is participating in the cluster.
      * @param manager Manager
      */
-    public void registerManager(Manager manager);
+    void registerManager(Manager manager);
+
 
     /**
      * Removes a manager from the cluster
      * @param manager Manager
      */
-    public void removeManager(Manager manager);
-
-    // --------------------------------------------------------- Cluster Wide Deployments
+    void removeManager(Manager manager);
 
 
     /**
@@ -100,5 +81,5 @@ public interface Cluster {
      * invoked inside the classloading context of this container. Unexpected
      * throwables will be caught and logged.
      */
-    public void backgroundProcess();
+    void backgroundProcess();
 }

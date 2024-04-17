@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.catalina.tribes.io;
 
 import java.io.IOException;
@@ -22,8 +21,6 @@ import java.io.OutputStream;
 
 /**
  * Byte array output stream that exposes the byte array directly
- *
- * @version 1.0
  */
 public class DirectByteArrayOutputStream extends OutputStream {
 

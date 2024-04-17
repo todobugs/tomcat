@@ -96,12 +96,12 @@ public final class JspRuntimeContext {
             loader = this.getClass().getClassLoader();
         }
 
-        if (log.isDebugEnabled()) {
+        if (log.isTraceEnabled()) {
             if (loader != null) {
-                log.debug(Localizer.getMessage("jsp.message.parent_class_loader_is",
+                log.trace(Localizer.getMessage("jsp.message.parent_class_loader_is",
                                                loader.toString()));
             } else {
-                log.debug(Localizer.getMessage("jsp.message.parent_class_loader_is",
+                log.trace(Localizer.getMessage("jsp.message.parent_class_loader_is",
                                                "<none>"));
             }
         }
@@ -135,8 +135,8 @@ public final class JspRuntimeContext {
 
         if (options.getMaxLoadedJsps() > 0) {
             jspQueue = new FastRemovalDequeue<>(options.getMaxLoadedJsps());
-            if (log.isDebugEnabled()) {
-                log.debug(Localizer.getMessage("jsp.message.jsp_queue_created",
+            if (log.isTraceEnabled()) {
+                log.trace(Localizer.getMessage("jsp.message.jsp_queue_created",
                                                "" + options.getMaxLoadedJsps(), context.getContextPath()));
             }
         }
@@ -223,8 +223,8 @@ public final class JspRuntimeContext {
         FastRemovalDequeue<JspServletWrapper>.Entry entry = jspQueue.push(jsw);
         JspServletWrapper replaced = entry.getReplaced();
         if (replaced != null) {
-            if (log.isDebugEnabled()) {
-                log.debug(Localizer.getMessage("jsp.message.jsp_removed_excess",
+            if (log.isTraceEnabled()) {
+                log.trace(Localizer.getMessage("jsp.message.jsp_removed_excess",
                                                replaced.getJspUri(), context.getContextPath()));
             }
             unloadJspServletWrapper(replaced);
@@ -367,11 +367,11 @@ public final class JspRuntimeContext {
         compileCheckInProgress = true;
 
         Object [] wrappers = jsps.values().toArray();
-        for (int i = 0; i < wrappers.length; i++ ) {
-            JspServletWrapper jsw = (JspServletWrapper)wrappers[i];
+        for (Object wrapper : wrappers) {
+            JspServletWrapper jsw = (JspServletWrapper) wrapper;
             JspCompilationContext ctxt = jsw.getJspEngineContext();
             // Sync on JspServletWrapper when calling ctxt.compile()
-            synchronized(jsw) {
+            synchronized (jsw) {
                 try {
                     ctxt.compile();
                     if (jsw.getReload()) {
@@ -381,8 +381,7 @@ public final class JspRuntimeContext {
                     ctxt.incrementRemoved();
                 } catch (Throwable t) {
                     ExceptionUtils.handleThrowable(t);
-                    jsw.getServletContext().log("Background compile failed",
-                                                t);
+                    jsw.getServletContext().log(Localizer.getMessage("jsp.error.backgroundCompilationFailed"), t);
                 }
             }
         }
@@ -405,7 +404,7 @@ public final class JspRuntimeContext {
                     jsw.getServlet();
                 }
             } catch (ServletException e) {
-                jsw.getServletContext().log("Servlet reload failed", e);
+                jsw.getServletContext().log(Localizer.getMessage("jsp.error.reload"), e);
             }
         }
     }
@@ -442,16 +441,16 @@ public final class JspRuntimeContext {
         if (parentClassLoader instanceof URLClassLoader) {
             URL [] urls = ((URLClassLoader)parentClassLoader).getURLs();
 
-            for (int i = 0; i < urls.length; i++) {
+            for (URL url : urls) {
                 // Tomcat can use URLs other than file URLs. However, a protocol
                 // other than file: will generate a bad file system path, so
                 // only add file: protocol URLs to the classpath.
 
-                if (urls[i].getProtocol().equals("file") ) {
+                if (url.getProtocol().equals("file")) {
                     try {
                         // Need to decode the URL, primarily to convert %20
                         // sequences back to spaces
-                        String decoded = urls[i].toURI().getPath();
+                        String decoded = url.toURI().getPath();
                         cpath.append(decoded + File.pathSeparator);
                     } catch (URISyntaxException e) {
                         log.warn(Localizer.getMessage("jsp.warning.classpathUrl"), e);
@@ -469,8 +468,8 @@ public final class JspRuntimeContext {
 
         String path = cpath.toString() + cp;
 
-        if(log.isDebugEnabled()) {
-            log.debug("Compilation classpath initialized: " + path);
+        if(log.isTraceEnabled()) {
+            log.trace("Compilation classpath initialized: " + path);
         }
         return path;
     }
@@ -577,14 +576,14 @@ public final class JspRuntimeContext {
         if (jspIdleTimeout > 0) {
             long unloadBefore = now - jspIdleTimeout;
             Object [] wrappers = jsps.values().toArray();
-            for (int i = 0; i < wrappers.length; i++ ) {
-                JspServletWrapper jsw = (JspServletWrapper)wrappers[i];
-                synchronized(jsw) {
+            for (Object wrapper : wrappers) {
+                JspServletWrapper jsw = (JspServletWrapper) wrapper;
+                synchronized (jsw) {
                     if (jsw.getLastUsageTime() < unloadBefore) {
-                        if (log.isDebugEnabled()) {
-                            log.debug(Localizer.getMessage("jsp.message.jsp_removed_idle",
-                                                           jsw.getJspUri(), context.getContextPath(),
-                                                           "" + (now-jsw.getLastUsageTime())));
+                        if (log.isTraceEnabled()) {
+                            log.trace(Localizer.getMessage("jsp.message.jsp_removed_idle",
+                                    jsw.getJspUri(), context.getContextPath(),
+                                    "" + (now - jsw.getLastUsageTime())));
                         }
                         if (jspQueue != null) {
                             jspQueue.remove(jsw.getUnloadHandle());

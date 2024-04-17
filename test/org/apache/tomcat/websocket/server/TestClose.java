@@ -17,6 +17,7 @@
 package org.apache.tomcat.websocket.server;
 
 import java.io.IOException;
+import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.concurrent.CountDownLatch;
@@ -33,7 +34,6 @@ import javax.websocket.Session;
 import javax.websocket.server.ServerEndpointConfig;
 
 import org.junit.Assert;
-import org.junit.Assume;
 import org.junit.Before;
 import org.junit.Test;
 
@@ -67,7 +67,7 @@ public class TestClose extends WebSocketBaseTest {
         // Parameter of an @OnError call
         public volatile Throwable onErrorThrowable = null;
 
-        //This is set to true for tests where the @OnMessage should send a message
+        // This is set to true for tests where the @OnMessage should send a message
         public volatile boolean onMessageSends = false;
     }
 
@@ -85,10 +85,7 @@ public class TestClose extends WebSocketBaseTest {
 
 
     public static void awaitOnClose(CloseCode... codes) {
-        Set<CloseCode> set = new HashSet<>();
-        for (CloseCode code : codes) {
-            set.add(code);
-        }
+        Set<CloseCode> set = new HashSet<>(Arrays.asList(codes));
         awaitOnClose(set);
     }
 
@@ -117,10 +114,6 @@ public class TestClose extends WebSocketBaseTest {
 
     @Test
     public void testTcpClose() throws Exception {
-        // TODO
-        Assume.assumeFalse("This test currently fails for APR",
-                getTomcatInstance().getConnector().getProtocolHandlerClassName().contains("Apr"));
-
         startServer(TestEndpointConfig.class);
 
         TesterWsClient client = new TesterWsClient("localhost", getPort());
@@ -180,10 +173,6 @@ public class TestClose extends WebSocketBaseTest {
 
     @Test
     public void testTcpCloseInOnMessage() throws Exception {
-        // TODO
-        Assume.assumeFalse("This test currently fails for APR",
-                getTomcatInstance().getConnector().getProtocolHandlerClassName().contains("Apr"));
-
         startServer(TestEndpointConfig.class);
 
         TesterWsClient client = new TesterWsClient("localhost", getPort());

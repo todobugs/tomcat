@@ -30,12 +30,12 @@ import org.junit.Test;
 import org.apache.catalina.WebResourceRoot;
 import org.apache.catalina.core.JreMemoryLeakPreventionListener;
 import org.apache.catalina.core.StandardContext;
+import org.apache.catalina.startup.ExpandWar;
 import org.apache.catalina.startup.Tomcat;
 import org.apache.catalina.startup.TomcatBaseTest;
+import org.apache.catalina.util.IOTools;
 import org.apache.catalina.webresources.StandardRoot;
 import org.apache.tomcat.util.buf.ByteChunk;
-import org.apache.tomcat.util.http.fileupload.FileUtils;
-import org.apache.tomcat.util.http.fileupload.IOUtils;
 import org.apache.tomcat.util.scan.StandardJarScanner;
 
 public class TestVirtualContext extends TomcatBaseTest {
@@ -58,7 +58,7 @@ public class TestVirtualContext extends TomcatBaseTest {
     public void testVirtualClassLoader() throws Exception {
         Tomcat tomcat = getTomcatInstance();
 
-        File appDir = new File("test/webapp-virtual-webapp/src/main/webapp");
+        File appDir = new File("test/webapp-virtual-webapp/src/main/webapp-a");
         // app dir is relative to server home
         StandardContext ctx = (StandardContext) tomcat.addWebapp(null, "/test",
             appDir.getAbsolutePath());
@@ -67,11 +67,11 @@ public class TestVirtualContext extends TomcatBaseTest {
         File f1 = new File("test/webapp-virtual-webapp/target/classes");
         File f2 = new File("test/webapp-virtual-library/target/WEB-INF");
         File f3 = new File(
-                "test/webapp-virtual-webapp/src/main/webapp/WEB-INF/classes");
+                "test/webapp-virtual-webapp/src/main/webapp-a/WEB-INF/classes");
         File f4 = new File(
-                "test/webapp-virtual-webapp/src/main/webapp2/WEB-INF/classes");
+                "test/webapp-virtual-webapp/src/main/webapp-b/WEB-INF/classes");
         File f5 = new File("test/webapp-virtual-webapp/src/main/misc");
-        File f6 = new File("test/webapp-virtual-webapp/src/main/webapp2");
+        File f6 = new File("test/webapp-virtual-webapp/src/main/webapp-b");
         ctx.getResources().createWebResourceSet(
                 WebResourceRoot.ResourceSetType.POST, "/WEB-INF/classes",
                 f1.getAbsolutePath(), null, "/");
@@ -143,13 +143,13 @@ public class TestVirtualContext extends TomcatBaseTest {
                     "/test/classpathGetResources.jsp?path=rsrc/").toString();
         Assert.assertTrue(
             allUrls,
-            allUrls.indexOf("/test/webapp-virtual-webapp/src/main/webapp/WEB-INF/classes/rsrc") > 0);
+            allUrls.indexOf("/test/webapp-virtual-webapp/src/main/webapp-a/WEB-INF/classes/rsrc") > 0);
         Assert.assertTrue(
             allUrls,
-            allUrls.indexOf("/test/webapp-virtual-webapp/src/main/webapp2/WEB-INF/classes/rsrc") > 0);
+            allUrls.indexOf("/test/webapp-virtual-webapp/src/main/webapp-b/WEB-INF/classes/rsrc") > 0);
         Assert.assertTrue(
             allUrls,
-            allUrls.indexOf("/test/webapp-virtual-webapp/src/main/webapp/WEB-INF/lib/rsrc.jar!/rsrc") > 0);
+            allUrls.indexOf("/test/webapp-virtual-webapp/src/main/webapp-a/WEB-INF/lib/rsrc.jar!/rsrc") > 0);
         Assert.assertTrue(
             allUrls,
             allUrls.indexOf("/test/webapp-virtual-webapp/target/classes/rsrc") > 0);
@@ -165,10 +165,10 @@ public class TestVirtualContext extends TomcatBaseTest {
         String allRsrsc2ClasspathUrls =
             getUrl(
                 "http://localhost:" + getPort() +
-                    "/test/classpathGetResources.jsp?path=rsrc2/").toString();
+                    "/test/classpathGetResources.jsp?path=rsrc-2/").toString();
         Assert.assertTrue(
             allRsrsc2ClasspathUrls,
-            allRsrsc2ClasspathUrls.indexOf("/test/webapp-virtual-webapp/src/main/webapp2/WEB-INF/classes/rsrc2") > 0);
+            allRsrsc2ClasspathUrls.indexOf("/test/webapp-virtual-webapp/src/main/webapp-b/WEB-INF/classes/rsrc-2") > 0);
 
         // tests context.getRealPath
 
@@ -180,7 +180,7 @@ public class TestVirtualContext extends TomcatBaseTest {
         // Real paths depend on the OS and this test has to work on all
         // platforms so use File to convert the path to a platform specific form
         File f = new File(
-            "test/webapp-virtual-webapp/src/main/webapp/rsrc/resourceF.properties");
+            "test/webapp-virtual-webapp/src/main/webapp-a/rsrc/resourceF.properties");
         assertPageContains(
             "/test/contextGetRealPath.jsp?path=/rsrc/resourceF.properties",
             f.getPath());
@@ -202,7 +202,7 @@ public class TestVirtualContext extends TomcatBaseTest {
             "/test/contextGetResource.jsp?path=/other/resourceI.properties",
             "resourceIInWebapp=true");
         assertPageContains(
-            "/test/contextGetResource.jsp?path=/rsrc2/resourceJ.properties",
+            "/test/contextGetResource.jsp?path=/rsrc-2/resourceJ.properties",
             "resourceJInWebapp=true");
 
         String allRsrcPaths =
@@ -227,10 +227,10 @@ public class TestVirtualContext extends TomcatBaseTest {
         String allRsrc2Paths =
             getUrl(
                 "http://localhost:" + getPort() +
-                    "/test/contextGetResourcePaths.jsp?path=/rsrc2/").toString();
+                    "/test/contextGetResourcePaths.jsp?path=/rsrc-2/").toString();
         Assert.assertTrue(
             allRsrc2Paths,
-            allRsrc2Paths.indexOf("/rsrc2/resourceJ.properties") > 0);
+            allRsrc2Paths.indexOf("/rsrc-2/resourceJ.properties") > 0);
 
         assertPageContains(
             "/test/testTlds.jsp",
@@ -250,7 +250,7 @@ public class TestVirtualContext extends TomcatBaseTest {
     public void testAdditionalWebInfClassesPaths() throws Exception {
         Tomcat tomcat = getTomcatInstance();
 
-        File appDir = new File("test/webapp-virtual-webapp/src/main/webapp");
+        File appDir = new File("test/webapp-virtual-webapp/src/main/webapp-a");
         // app dir is relative to server home
         StandardContext ctx = (StandardContext) tomcat.addWebapp(null, "/test",
             appDir.getAbsolutePath());
@@ -267,7 +267,7 @@ public class TestVirtualContext extends TomcatBaseTest {
                 FileOutputStream annotatedServletClassOutputStream = new FileOutputStream(new File(
                         targetPackageForAnnotatedClass, MyAnnotatedServlet.class.getSimpleName()
                                 + ".class"));) {
-            IOUtils.copy(annotatedServletClassInputStream, annotatedServletClassOutputStream);
+            IOTools.flow(annotatedServletClassInputStream, annotatedServletClassOutputStream);
         }
 
         ctx.setResources(new StandardRoot(ctx));
@@ -303,7 +303,7 @@ public class TestVirtualContext extends TomcatBaseTest {
         tomcat.start();
         assertPageContains("/test/annotatedServlet", MyAnnotatedServlet.MESSAGE);
         tomcat.stop();
-        FileUtils.deleteDirectory(additionWebInfClasses);
+        ExpandWar.delete(additionWebInfClasses);
         Assert.assertTrue("Failed to clean up [" + tempFile + "]", tempFile.delete());
     }
 
@@ -322,7 +322,10 @@ public class TestVirtualContext extends TomcatBaseTest {
         //       root cause of this is the frequent poor IO performance of the
         //       VM running the buildbot instance. Increasing this to 10s should
         //       avoid these failures.
-        int sc = getUrl("http://localhost:" + getPort() + pageUrl, res, 10000,
+        //       With the additional of Travis CI, failures continued to
+        //       observed with a 10s timeout. It was therefore increased to 20s
+        //       and then 30s.
+        int sc = getUrl("http://localhost:" + getPort() + pageUrl, res, 30000,
                 null, null);
 
         Assert.assertEquals(expectedStatus, sc);

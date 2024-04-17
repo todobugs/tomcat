@@ -14,8 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
-
 package org.apache.tomcat.util.digester;
 
 
@@ -132,8 +130,8 @@ public class ObjectCreateRule extends Rule {
     public void end(String namespace, String name) throws Exception {
 
         Object top = digester.pop();
-        if (digester.log.isDebugEnabled()) {
-            digester.log.debug("[ObjectCreateRule]{" + digester.match +
+        if (digester.log.isTraceEnabled()) {
+            digester.log.trace("[ObjectCreateRule]{" + digester.match +
                     "} Pop " + top.getClass().getName());
         }
 
@@ -150,7 +148,7 @@ public class ObjectCreateRule extends Rule {
         sb.append(className);
         sb.append(", attributeName=");
         sb.append(attributeName);
-        sb.append("]");
+        sb.append(']');
         return sb.toString();
     }
 

@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.jasper.servlet;
 
 import java.io.FileNotFoundException;
@@ -314,7 +313,7 @@ public class JspServletWrapper {
      * Get a list of files that the current page has source dependency on.
      * @return the map of dependent resources
      */
-    public java.util.Map<String,Long> getDependants() {
+    public Map<String,Long> getDependants() {
         try {
             Object target;
             if (isTagFile) {
@@ -417,20 +416,10 @@ public class JspServletWrapper {
                 return;
             }
 
-        } catch (ServletException ex) {
-            if (options.getDevelopment()) {
-                throw handleJspException(ex);
-            }
-            throw ex;
         } catch (FileNotFoundException fnfe) {
             // File has been removed. Let caller handle this.
             throw fnfe;
-        } catch (IOException ex) {
-            if (options.getDevelopment()) {
-                throw handleJspException(ex);
-            }
-            throw ex;
-        } catch (IllegalStateException ex) {
+        } catch (ServletException | IOException | IllegalStateException ex) {
             if (options.getDevelopment()) {
                 throw handleJspException(ex);
             }
@@ -494,7 +483,7 @@ public class JspServletWrapper {
             response.sendError
                 (HttpServletResponse.SC_SERVICE_UNAVAILABLE,
                  ex.getMessage());
-        } catch (ServletException ex) {
+        } catch (ServletException | IllegalStateException ex) {
             if(options.getDevelopment()) {
                 throw handleJspException(ex);
             }
@@ -502,11 +491,6 @@ public class JspServletWrapper {
         } catch (IOException ex) {
             if (options.getDevelopment()) {
                 throw new IOException(handleJspException(ex).getMessage(), ex);
-            }
-            throw ex;
-        } catch (IllegalStateException ex) {
-            if(options.getDevelopment()) {
-                throw handleJspException(ex);
             }
             throw ex;
         } catch (Exception ex) {
@@ -566,7 +550,7 @@ public class JspServletWrapper {
      * information, and a snippet of the JSP to help debugging.
      * Please see https://bz.apache.org/bugzilla/show_bug.cgi?id=37062 and
      * http://www.tfenne.com/jasper/ for more details.
-     *</p>
+     * </p>
      *
      * @param ex the exception that was the cause of the problem.
      * @return a JasperException with more detailed information

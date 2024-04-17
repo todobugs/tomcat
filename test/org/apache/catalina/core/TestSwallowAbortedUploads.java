@@ -35,6 +35,9 @@ import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 import javax.servlet.http.Part;
 
+import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.core.IsInstanceOf.instanceOf;
+
 import org.junit.Assert;
 import org.junit.Test;
 
@@ -128,8 +131,8 @@ public class TestSwallowAbortedUploads extends TomcatBaseTest {
         log.info("Limited, swallow disabled");
         AbortedUploadClient client = new AbortedUploadClient();
         Exception ex = doAbortedUploadTest(client, true, false);
-        Assert.assertTrue("Limited upload with swallow disabled does not generate client exception",
-                   ex instanceof java.net.SocketException);
+        assertThat("Limited upload with swallow disabled does not generate client exception",
+                   ex, instanceOf(java.net.SocketException.class));
         client.reset();
     }
 
@@ -174,8 +177,8 @@ public class TestSwallowAbortedUploads extends TomcatBaseTest {
         log.info("Aborted (413), swallow disabled");
         AbortedPOSTClient client = new AbortedPOSTClient();
         Exception ex = doAbortedPOSTTest(client, HttpServletResponse.SC_REQUEST_ENTITY_TOO_LARGE, false);
-        Assert.assertTrue("Limited upload with swallow disabled does not generate client exception",
-                   ex instanceof java.net.SocketException);
+        assertThat("Limited upload with swallow disabled does not generate client exception",
+                ex, instanceOf(java.net.SocketException.class));
         client.reset();
     }
 
@@ -325,7 +328,7 @@ public class TestSwallowAbortedUploads extends TomcatBaseTest {
 
         private final int status;
 
-        public AbortedPOSTServlet(int status) {
+        AbortedPOSTServlet(int status) {
             this.status = status;
         }
 
@@ -431,7 +434,7 @@ public class TestSwallowAbortedUploads extends TomcatBaseTest {
         // No need for target to exist.
 
         if (!limit) {
-            tomcat.getConnector().setAttribute("maxSwallowSize", "-1");
+            Assert.assertTrue(tomcat.getConnector().setProperty("maxSwallowSize", "-1"));
         }
 
         tomcat.start();
@@ -451,7 +454,7 @@ public class TestSwallowAbortedUploads extends TomcatBaseTest {
             // Smarter than the typical client. Attempts to read the response
             // even if the request is not fully written.
             try {
-                // Write (or try to write) 16MB
+                // Write (or try to write) 16 MiB
                 for (int i = 0; i < 1024 * 1024; i++) {
                     writer.write("10\r\n");
                     writer.write("0123456789ABCDEF\r\n");

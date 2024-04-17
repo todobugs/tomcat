@@ -30,16 +30,13 @@ import org.apache.juli.logging.LogFactory;
 import org.apache.tomcat.util.http.Parameters.FailReason;
 
 /**
- * Filter that will reject requests if there was a failure during parameter
- * parsing. This filter can be used to ensure that none parameter values
- * submitted by client are lost.
- *
+ * Filter that will reject requests if there was a failure during parameter parsing. This filter can be used to ensure
+ * that none parameter values submitted by client are lost.
  * <p>
- * Note that it has side effect that it triggers parameter parsing and thus
- * consumes the body for POST requests. Parameter parsing does check content
- * type of the request, so there should not be problems with addresses that use
- * <code>request.getInputStream()</code> and <code>request.getReader()</code>,
- * if requests parsed by them do not use standard value for content mime-type.
+ * Note that parameter parsing may consume the body of an HTTP request, so caution is needed if the servlet protected by
+ * this filter uses <code>request.getInputStream()</code> or <code>request.getReader()</code> calls. In general the risk
+ * of breaking a web application by adding this filter is not so high, because parameter parsing does check content type
+ * of the request before consuming the request body.
  */
 public class FailedRequestFilter extends FilterBase {
 
@@ -52,12 +49,12 @@ public class FailedRequestFilter extends FilterBase {
         return log;
     }
 
+    @SuppressWarnings("deprecation")
     @Override
-    public void doFilter(ServletRequest request, ServletResponse response,
-            FilterChain chain) throws IOException, ServletException {
+    public void doFilter(ServletRequest request, ServletResponse response, FilterChain chain)
+            throws IOException, ServletException {
         if (!isGoodRequest(request)) {
-            FailReason reason = (FailReason) request.getAttribute(
-                    Globals.PARAMETER_PARSE_FAILED_REASON_ATTR);
+            FailReason reason = (FailReason) request.getAttribute(Globals.PARAMETER_PARSE_FAILED_REASON_ATTR);
 
             int status;
 
@@ -74,8 +71,8 @@ public class FailedRequestFilter extends FilterBase {
                     // and/or URI could be well below any limits set. Use the
                     // default.
                 case UNKNOWN: // Assume the client is at fault
-                // Various things that the client can get wrong that don't have
-                // a specific status code so use the default.
+                    // Various things that the client can get wrong that don't have
+                    // a specific status code so use the default.
                 case INVALID_CONTENT_TYPE:
                 case MULTIPART_CONFIG_INVALID:
                 case NO_NAME:

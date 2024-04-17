@@ -19,21 +19,19 @@ package org.apache.tomcat.util.net;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.channels.ByteChannel;
+import java.nio.channels.ClosedChannelException;
 import java.nio.channels.GatheringByteChannel;
 import java.nio.channels.ScatteringByteChannel;
-import java.nio.channels.SelectionKey;
 import java.nio.channels.Selector;
 import java.nio.channels.SocketChannel;
 
-import org.apache.tomcat.util.net.NioEndpoint.Poller;
+import org.apache.tomcat.util.net.NioEndpoint.NioSocketWrapper;
 import org.apache.tomcat.util.res.StringManager;
 
 /**
  * Base class for a SocketChannel wrapper used by the endpoint.
  * This way, logic for an SSL socket channel remains the same as for
  * a non SSL, making sure we don't need to code for any exception cases.
- *
- * @version 1.0
  */
 public class NioChannel implements ByteChannel, ScatteringByteChannel, GatheringByteChannel {
 
@@ -41,30 +39,32 @@ public class NioChannel implements ByteChannel, ScatteringByteChannel, Gathering
 
     protected static final ByteBuffer emptyBuf = ByteBuffer.allocate(0);
 
-    protected SocketChannel sc = null;
-    protected SocketWrapperBase<NioChannel> socketWrapper = null;
-
     protected final SocketBufferHandler bufHandler;
+    protected SocketChannel sc = null;
+    protected NioSocketWrapper socketWrapper = null;
 
-    protected Poller poller;
-
-    public NioChannel(SocketChannel channel, SocketBufferHandler bufHandler) {
-        this.sc = channel;
+    public NioChannel(SocketBufferHandler bufHandler) {
         this.bufHandler = bufHandler;
     }
 
     /**
      * Reset the channel
      *
+     * @param channel the socket channel
+     * @param socketWrapper the socket wrapper
      * @throws IOException If a problem was encountered resetting the channel
      */
-    public void reset() throws IOException {
+    public void reset(SocketChannel channel, NioSocketWrapper socketWrapper) throws IOException {
+        this.sc = channel;
+        this.socketWrapper = socketWrapper;
         bufHandler.reset();
     }
 
-
-    void setSocketWrapper(SocketWrapperBase<NioChannel> socketWrapper) {
-        this.socketWrapper = socketWrapper;
+    /**
+     * @return the socketWrapper
+     */
+    NioSocketWrapper getSocketWrapper() {
+        return socketWrapper;
     }
 
     /**
@@ -98,19 +98,19 @@ public class NioChannel implements ByteChannel, ScatteringByteChannel, Gathering
      */
     @Override
     public void close() throws IOException {
-        getIOChannel().socket().close();
-        getIOChannel().close();
+        sc.close();
     }
 
     /**
      * Close the connection.
      *
      * @param force Should the underlying socket be forcibly closed?
-     *
      * @throws IOException If closing the secure channel fails.
      */
     public void close(boolean force) throws IOException {
-        if (isOpen() || force ) close();
+        if (isOpen() || force) {
+            close();
+        }
     }
 
     /**
@@ -172,20 +172,8 @@ public class NioChannel implements ByteChannel, ScatteringByteChannel, Gathering
         return sc.read(dsts, offset, length);
     }
 
-    public Object getAttachment() {
-        Poller pol = getPoller();
-        Selector sel = pol!=null?pol.getSelector():null;
-        SelectionKey key = sel!=null?getIOChannel().keyFor(sel):null;
-        Object att = key!=null?key.attachment():null;
-        return att;
-    }
-
     public SocketBufferHandler getBufHandler() {
         return bufHandler;
-    }
-
-    public Poller getPoller() {
-        return poller;
     }
 
     public SocketChannel getIOChannel() {
@@ -213,17 +201,9 @@ public class NioChannel implements ByteChannel, ScatteringByteChannel, Gathering
         return 0;
     }
 
-    public void setPoller(Poller poller) {
-        this.poller = poller;
-    }
-
-    public void setIOChannel(SocketChannel IOChannel) {
-        this.sc = IOChannel;
-    }
-
     @Override
     public String toString() {
-        return super.toString()+":"+this.sc.toString();
+        return super.toString() + ":" + sc;
     }
 
     public int getOutboundRemaining() {
@@ -234,7 +214,6 @@ public class NioChannel implements ByteChannel, ScatteringByteChannel, Gathering
      * Return true if the buffer wrote data. NO-OP for non-secure channel.
      *
      * @return Always returns {@code false} for non-secure channel
-     *
      * @throws IOException Never for non-secure channel
      */
     public boolean flushOutbound() throws IOException {
@@ -250,6 +229,7 @@ public class NioChannel implements ByteChannel, ScatteringByteChannel, Gathering
      * socket is removed from the poller without the socket being selected. This
      * results in a connection limit leak for NIO as the endpoint expects the
      * socket to be selected even in error conditions.
+     *
      * @throws IOException If the current thread was interrupted
      */
     protected void checkInterruptStatus() throws IOException {
@@ -258,7 +238,6 @@ public class NioChannel implements ByteChannel, ScatteringByteChannel, Gathering
         }
     }
 
-
     private ApplicationBufferHandler appReadBufHandler;
     public void setAppReadBufHandler(ApplicationBufferHandler handler) {
         this.appReadBufHandler = handler;
@@ -266,4 +245,51 @@ public class NioChannel implements ByteChannel, ScatteringByteChannel, Gathering
     protected ApplicationBufferHandler getAppReadBufHandler() {
         return appReadBufHandler;
     }
+
+    static final NioChannel CLOSED_NIO_CHANNEL = new NioChannel(SocketBufferHandler.EMPTY) {
+        @Override
+        public void close() throws IOException {
+        }
+        @Override
+        public boolean isOpen() {
+            return false;
+        }
+        @Override
+        public void reset(SocketChannel channel, NioSocketWrapper socketWrapper) throws IOException {
+        }
+        @Override
+        public void free() {
+        }
+        @Override
+        protected ApplicationBufferHandler getAppReadBufHandler() {
+            return ApplicationBufferHandler.EMPTY;
+        }
+        @Override
+        public void setAppReadBufHandler(ApplicationBufferHandler handler) {
+        }
+        @Override
+        public int read(ByteBuffer dst) throws IOException {
+            return -1;
+        }
+        @Override
+        public long read(ByteBuffer[] dsts, int offset, int length)
+                throws IOException {
+            return -1L;
+        }
+        @Override
+        public int write(ByteBuffer src) throws IOException {
+            checkInterruptStatus();
+            throw new ClosedChannelException();
+        }
+        @Override
+        public long write(ByteBuffer[] srcs, int offset, int length)
+                throws IOException {
+            throw new ClosedChannelException();
+        }
+        @Override
+        public String toString() {
+            return "Closed NioChannel";
+        }
+    };
+
 }

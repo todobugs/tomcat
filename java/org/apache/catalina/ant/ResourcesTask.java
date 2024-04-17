@@ -14,8 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
-
 package org.apache.catalina.ant;
 
 
@@ -70,8 +68,7 @@ public class ResourcesTask extends AbstractCatalinaTask {
                 execute("/resources?type=" +
                         URLEncoder.encode(type, getCharset()));
             } catch (UnsupportedEncodingException e) {
-                throw new BuildException
-                    ("Invalid 'charset' attribute: " + getCharset());
+                throw new BuildException("Invalid 'charset' attribute: " + getCharset());
             }
         } else {
             execute("/resources");

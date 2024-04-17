@@ -22,6 +22,7 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.Collection;
+import java.util.concurrent.Executor;
 
 import javax.management.InstanceAlreadyExistsException;
 import javax.management.MBeanRegistrationException;
@@ -44,7 +45,7 @@ public class PoolableConnection extends DelegatingConnection<Connection> impleme
     static {
         try {
             MBEAN_SERVER = ManagementFactory.getPlatformMBeanServer();
-        } catch (NoClassDefFoundError | Exception ex) {
+        } catch (final NoClassDefFoundError | Exception ex) {
             // ignore - JMX not available
         }
     }
@@ -63,7 +64,7 @@ public class PoolableConnection extends DelegatingConnection<Connection> impleme
      * Indicate that unrecoverable SQLException was thrown when using this connection. Such a connection should be
      * considered broken and not pass validation in the future.
      */
-    private boolean fatalSqlExceptionThrown = false;
+    private boolean fatalSqlExceptionThrown;
 
     /**
      * SQL_STATE codes considered to signal fatal conditions. Overrides the defaults in
@@ -75,7 +76,6 @@ public class PoolableConnection extends DelegatingConnection<Connection> impleme
     private final boolean fastFailValidation;
 
     /**
-     *
      * @param conn
      *            my underlying connection
      * @param pool
@@ -107,7 +107,6 @@ public class PoolableConnection extends DelegatingConnection<Connection> impleme
     }
 
     /**
-     *
      * @param conn
      *            my underlying connection
      * @param pool
@@ -124,6 +123,9 @@ public class PoolableConnection extends DelegatingConnection<Connection> impleme
     protected void passivate() throws SQLException {
         super.passivate();
         setClosedInternal(true);
+        if (getDelegateInternal() instanceof PoolingConnection) {
+            ((PoolingConnection) getDelegateInternal()).connectionReturnedToPool();
+        }
     }
 
     /**
@@ -202,9 +204,7 @@ public class PoolableConnection extends DelegatingConnection<Connection> impleme
                 // pool is closed, so close the connection
                 passivate();
                 getInnermostDelegate().close();
-            } catch (final SQLException e) {
-                throw e;
-            } catch (final RuntimeException e) {
+            } catch (final SQLException | RuntimeException e) {
                 throw e;
             } catch (final Exception e) {
                 throw new SQLException("Cannot close connection (return to pool failed)", e);
@@ -230,6 +230,19 @@ public class PoolableConnection extends DelegatingConnection<Connection> impleme
         }
 
         super.closeInternal();
+    }
+
+    /**
+     * Abort my underlying {@link Connection}.
+     *
+     * @since 2.9.0
+     */
+    @Override
+    public void abort(final Executor executor) throws SQLException {
+        if (jmxObjectName != null) {
+            jmxObjectName.unregisterMBean();
+        }
+        super.abort(executor);
     }
 
     /**
@@ -263,7 +276,7 @@ public class PoolableConnection extends DelegatingConnection<Connection> impleme
             throw new SQLException(Utils.getMessage("poolableConnection.validate.fastFail"));
         }
 
-        if (sql == null || sql.length() == 0) {
+        if (sql == null || sql.isEmpty()) {
             if (timeoutSeconds < 0) {
                 timeoutSeconds = 0;
             }

@@ -1,20 +1,19 @@
 /*
-* Licensed to the Apache Software Foundation (ASF) under one or more
-* contributor license agreements.  See the NOTICE file distributed with
-* this work for additional information regarding copyright ownership.
-* The ASF licenses this file to You under the Apache License, Version 2.0
-* (the "License"); you may not use this file except in compliance with
-* the License.  You may obtain a copy of the License at
-*
-*     http://www.apache.org/licenses/LICENSE-2.0
-*
-* Unless required by applicable law or agreed to in writing, software
-* distributed under the License is distributed on an "AS IS" BASIS,
-* WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-* See the License for the specific language governing permissions and
-* limitations under the License.
-*/
-
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 package org.apache.tomcat.buildutil;
 
 import java.io.BufferedInputStream;
@@ -22,7 +21,6 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.util.ArrayList;
-import java.util.LinkedList;
 import java.util.List;
 
 import org.apache.tools.ant.BuildException;
@@ -33,16 +31,20 @@ import org.apache.tools.ant.types.FileSet;
 
 /**
  * Ant task that checks that all the files in the given fileset have end-of-line
- * delimiters that are appropriate for the current OS.
+ * delimiters that are appropriate.
  *
  * <p>
- * The goal is to check whether we have problems with svn:eol-style property
- * when files are committed on one OS and then checked on another one.
+ * The goal is to check whether we have problems with Subversion's svn:eol-style
+ * property or Git's autocrlf setting when files are committed on one OS and then
+ * checked on another one.
  */
 public class CheckEol extends Task {
 
     /** The files to be checked */
-    private final List<FileSet> filesets = new LinkedList<>();
+    private final List<FileSet> filesets = new ArrayList<>();
+
+    /** The line ending mode (either LF, CRLF, or null for OS specific) */
+    private Mode mode;
 
     /**
      * Sets the files to be checked
@@ -54,6 +56,29 @@ public class CheckEol extends Task {
     }
 
     /**
+     * Sets the line ending mode.
+     *
+     * @param mode The line ending mode (either LF or CRLF)
+     */
+    public void setMode( String mode ) {
+        this.mode = Mode.valueOf( mode.toUpperCase() );
+    }
+
+    private Mode getMode() {
+        if ( mode != null ) {
+            return mode;
+        } else {
+            if ("\n".equals(System.lineSeparator())) {
+                return Mode.LF;
+            } else if ("\r\n".equals(System.lineSeparator())) {
+                return Mode.CRLF;
+            }
+        }
+
+        return null;
+    }
+
+    /**
      * Perform the check
      *
      * @throws BuildException if an error occurs during execution of
@@ -62,14 +87,9 @@ public class CheckEol extends Task {
     @Override
     public void execute() throws BuildException {
 
-        Mode mode = null;
-        if ("\n".equals(System.lineSeparator())) {
-            mode = Mode.LF;
-        } else if ("\r\n".equals(System.lineSeparator())) {
-            mode = Mode.CRLF;
-        } else {
-            log("Line ends check skipped, because OS line ends setting is neither LF nor CRLF.",
-                    Project.MSG_VERBOSE);
+        Mode mode = getMode();
+        if ( mode == null ) {
+            log("Line ends check skipped, because OS line ends setting is neither LF nor CRLF.", Project.MSG_VERBOSE);
             return;
         }
 
@@ -84,8 +104,8 @@ public class CheckEol extends Task {
             String[] files = ds.getIncludedFiles();
             if (files.length > 0) {
                 log("Checking line ends in " + files.length + " file(s)");
-                for (int i = 0; i < files.length; i++) {
-                    File file = new File(basedir, files[i]);
+                for (String filename : files) {
+                    File file = new File(basedir, filename);
                     log("Checking file '" + file + "' for correct line ends",
                             Project.MSG_DEBUG);
                     try {
@@ -122,7 +142,7 @@ public class CheckEol extends Task {
         private final int line;
         private final String value;
 
-        public CheckFailure(File file, int line, String value) {
+        CheckFailure(File file, int line, String value) {
             this.file = file;
             this.line = line;
             this.value = value;

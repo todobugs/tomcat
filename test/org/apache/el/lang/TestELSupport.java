@@ -215,7 +215,6 @@ public class TestELSupport {
         PropertyEditorManager.registerEditor(TesterType.class, TesterTypeEditorNoError.class);
         Object result = ELManager.getExpressionFactory().coerceToType(
                 "Foo", TesterType.class);
-        Assert.assertTrue(result instanceof TesterType);
         Assert.assertEquals("Foo", ((TesterType) result).getValue());
     }
 
@@ -224,7 +223,6 @@ public class TestELSupport {
         PropertyEditorManager.registerEditor(TesterType.class, TesterTypeEditorError.class);
         Object result = ELManager.getExpressionFactory().coerceToType(
                 "Foo", TesterType.class);
-        Assert.assertTrue(result instanceof TesterType);
         Assert.assertEquals("Foo", ((TesterType) result).getValue());
     }
 
@@ -266,15 +264,15 @@ public class TestELSupport {
         Assert.assertEquals(value, ELSupport.coerceToNumber(null, value, value.getClass()));
     }
 
-    private static enum TestEnumA {
+    private enum TestEnumA {
         VALA1,
         VALA2
     }
-    private static enum TestEnumB {
+    private enum TestEnumB {
         VALB1,
         VALB2
     }
-    private static enum TestEnumC {
+    private enum TestEnumC {
         VALA1,
         VALA2,
         VALB1,

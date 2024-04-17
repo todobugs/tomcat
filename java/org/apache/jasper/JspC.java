@@ -38,7 +38,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.StringTokenizer;
-import java.util.Vector;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorCompletionService;
@@ -226,7 +225,7 @@ public class JspC extends Task implements Options {
     /**
      * The pages.
      */
-    protected final List<String> pages = new Vector<>();
+    protected final List<String> pages = new ArrayList<>();
 
     /**
      * Needs better documentation, this data member does.
@@ -293,13 +292,8 @@ public class JspC extends Task implements Options {
                 } else {
                     jspc.execute();
                 }
-            } catch (JasperException je) {
-                System.err.println(je);
-                if (jspc.dieLevel != NO_DIE_LEVEL) {
-                    System.exit(jspc.dieLevel);
-                }
-            } catch (BuildException je) {
-                System.err.println(je);
+            } catch (JasperException | BuildException e) {
+                System.err.println(e);
                 if (jspc.dieLevel != NO_DIE_LEVEL) {
                     System.exit(jspc.dieLevel);
                 }
@@ -420,8 +414,7 @@ public class JspC extends Task implements Options {
                 setThreadCount(nextArg());
             } else {
                 if (tok.startsWith("-")) {
-                    throw new JasperException("Unrecognized option: " + tok +
-                        ".  Use -help for help.");
+                    throw new JasperException(Localizer.getMessage("jspc.error.unknownOption", tok));
                 }
                 if (!fullstop) {
                     argPos--;
@@ -451,9 +444,6 @@ public class JspC extends Task implements Options {
         return true;
     }
 
-    /**
-     * {@inheritDoc}
-     */
     @Override
     public boolean getTrimSpaces() {
         return trimSpaces;
@@ -469,9 +459,6 @@ public class JspC extends Task implements Options {
         this.trimSpaces = ts;
     }
 
-    /**
-     * {@inheritDoc}
-     */
     @Override
     public boolean isPoolingEnabled() {
         return poolingEnabled;
@@ -485,9 +472,6 @@ public class JspC extends Task implements Options {
         this.poolingEnabled = poolingEnabled;
     }
 
-    /**
-     * {@inheritDoc}
-     */
     @Override
     public boolean isXpoweredBy() {
         return xpoweredBy;
@@ -520,9 +504,6 @@ public class JspC extends Task implements Options {
         return -1;
     }
 
-    /**
-     * {@inheritDoc}
-     */
     @Override
     public boolean getErrorOnUseBeanInvalidClassAttribute() {
         return errorOnUseBeanInvalidClassAttribute;
@@ -537,9 +518,6 @@ public class JspC extends Task implements Options {
         errorOnUseBeanInvalidClassAttribute = b;
     }
 
-    /**
-     * {@inheritDoc}
-     */
     @Override
     public boolean getMappedFile() {
         return mappedFile;
@@ -557,18 +535,12 @@ public class JspC extends Task implements Options {
         classDebugInfo=b;
     }
 
-    /**
-     * {@inheritDoc}
-     */
     @Override
     public boolean getClassDebugInfo() {
         // compile with debug info
         return classDebugInfo;
     }
 
-    /**
-     * {@inheritDoc}
-     */
     @Override
     public boolean isCaching() {
         return caching;
@@ -584,9 +556,6 @@ public class JspC extends Task implements Options {
         this.caching = caching;
     }
 
-    /**
-     * {@inheritDoc}
-     */
     @Override
     public Map<String, TagLibraryInfo> getCache() {
         return cache;
@@ -630,9 +599,6 @@ public class JspC extends Task implements Options {
         return false;
     }
 
-    /**
-     * {@inheritDoc}
-     */
     @Override
     public boolean isSmapSuppressed() {
         return smapSuppressed;
@@ -646,9 +612,6 @@ public class JspC extends Task implements Options {
         this.smapSuppressed = smapSuppressed;
     }
 
-    /**
-     * {@inheritDoc}
-     */
     @Override
     public boolean isSmapDumped() {
         return smapDumped;
@@ -676,9 +639,6 @@ public class JspC extends Task implements Options {
         this.genStringAsCharArray = genStringAsCharArray;
     }
 
-    /**
-     * {@inheritDoc}
-     */
     @Override
     public boolean genStringAsCharArray() {
         return genStringAsCharArray;
@@ -695,25 +655,16 @@ public class JspC extends Task implements Options {
         this.ieClassId = ieClassId;
     }
 
-    /**
-     * {@inheritDoc}
-     */
     @Override
     public String getIeClassId() {
         return ieClassId;
     }
 
-    /**
-     * {@inheritDoc}
-     */
     @Override
     public File getScratchDir() {
         return scratchDir;
     }
 
-    /**
-     * {@inheritDoc}
-     */
     @Override
     public String getCompiler() {
         return compiler;
@@ -729,17 +680,11 @@ public class JspC extends Task implements Options {
         compiler=c;
     }
 
-    /**
-     * {@inheritDoc}
-     */
     @Override
     public String getCompilerClassName() {
         return null;
     }
 
-    /**
-     * {@inheritDoc}
-     */
     @Override
     public String getCompilerTargetVM() {
         return compilerTargetVM;
@@ -755,9 +700,6 @@ public class JspC extends Task implements Options {
         compilerTargetVM = vm;
     }
 
-    /**
-     * {@inheritDoc}
-     */
      @Override
     public String getCompilerSourceVM() {
          return compilerSourceVM;
@@ -773,9 +715,6 @@ public class JspC extends Task implements Options {
         compilerSourceVM = vm;
     }
 
-    /**
-     * {@inheritDoc}
-     */
     @Override
     public TldCache getTldCache() {
         return tldCache;
@@ -802,9 +741,6 @@ public class JspC extends Task implements Options {
         javaEncoding = encodingName;
     }
 
-    /**
-     * {@inheritDoc}
-     */
     @Override
     public boolean getFork() {
         return fork;
@@ -814,13 +750,11 @@ public class JspC extends Task implements Options {
         this.fork = fork;
     }
 
-    /**
-     * {@inheritDoc}
-     */
     @Override
     public String getClassPath() {
-        if( classPath != null )
+        if( classPath != null ) {
             return classPath;
+        }
         return System.getProperty("java.class.path");
     }
 
@@ -852,7 +786,7 @@ public class JspC extends Task implements Options {
     protected void addExtension(final String extension) {
         if(extension != null) {
             if(extensions == null) {
-                extensions = new Vector<>();
+                extensions = new ArrayList<>();
             }
 
             extensions.add(extension);
@@ -979,10 +913,11 @@ public class JspC extends Task implements Options {
                 newThreadCount = Integer.parseInt(threadCount);
             }
         } catch (NumberFormatException e) {
-            throw new BuildException("Couldn't parse thread count: " + threadCount);
+            throw new BuildException(Localizer.getMessage("jspc.error.parseThreadCount", threadCount));
         }
         if (newThreadCount < 1) {
-            throw new BuildException("There must be at least one thread: " + newThreadCount);
+            throw new BuildException(Localizer.getMessage(
+                    "jspc.error.minThreadCount", Integer.valueOf(newThreadCount)));
         }
         this.threadCount = newThreadCount;
     }
@@ -1102,17 +1037,11 @@ public class JspC extends Task implements Options {
         return failOnError;
     }
 
-    /**
-     * {@inheritDoc}
-     */
     @Override
     public JspConfig getJspConfig() {
         return jspConfig;
     }
 
-    /**
-     * {@inheritDoc}
-     */
     @Override
     public TagPluginManager getTagPluginManager() {
         return tagPluginManager;
@@ -1133,15 +1062,14 @@ public class JspC extends Task implements Options {
         throws IOException
     {
         if (log.isDebugEnabled()) {
-            log.debug("Generating web mapping for file " + file
-                      + " using compilation context " + clctxt);
+            log.debug(Localizer.getMessage("jspc.generatingMapping", file, clctxt));
         }
 
         String className = clctxt.getServletClassName();
         String packageName = clctxt.getServletPackageName();
 
         String thisServletName;
-        if  ("".equals(packageName)) {
+        if  (packageName.isEmpty()) {
             thisServletName = className;
         } else {
             thisServletName = packageName + '.' + className;
@@ -1249,12 +1177,14 @@ public class JspC extends Task implements Options {
             }
         }
 
-        if(!webXml2.delete() && log.isDebugEnabled())
+        if(!webXml2.delete() && log.isDebugEnabled()) {
             log.debug(Localizer.getMessage("jspc.delete.fail",
                     webXml2.toString()));
+        }
 
-        if (!(new File(webxmlFile)).delete() && log.isDebugEnabled())
+        if (!(new File(webxmlFile)).delete() && log.isDebugEnabled()) {
             log.debug(Localizer.getMessage("jspc.delete.fail", webxmlFile));
+        }
 
     }
 
@@ -1296,10 +1226,11 @@ public class JspC extends Task implements Options {
     protected void processFile(String file) throws JasperException {
 
         if (log.isDebugEnabled()) {
-            log.debug("Processing file: " + file);
+            log.debug(Localizer.getMessage("jspc.processing", file));
         }
 
         ClassLoader originalClassLoader = null;
+        Thread currentThread = Thread.currentThread();
 
         try {
             // set up a scratch/output dir if none is provided
@@ -1324,8 +1255,8 @@ public class JspC extends Task implements Options {
                 clctxt.setServletPackageName(targetPackage);
             }
 
-            originalClassLoader = Thread.currentThread().getContextClassLoader();
-            Thread.currentThread().setContextClassLoader(loader);
+            originalClassLoader = currentThread.getContextClassLoader();
+            currentThread.setContextClassLoader(loader);
 
             clctxt.setClassLoader(loader);
             clctxt.setClassPath(classPath);
@@ -1338,7 +1269,7 @@ public class JspC extends Task implements Options {
             // the .java file
             if( clc.isOutDated(compile) ) {
                 if (log.isDebugEnabled()) {
-                    log.debug(jspUri + " is out dated, compiling...");
+                    log.debug(Localizer.getMessage("jspc.outdated", jspUri));
                 }
 
                 clc.compile(compile, true);
@@ -1347,7 +1278,7 @@ public class JspC extends Task implements Options {
             // Generate mapping
             generateWebMapping( file, clctxt );
             if ( showSuccess ) {
-                log.info( "Built File: " + file );
+                log.info(Localizer.getMessage("jspc.built", file));
             }
 
         } catch (JasperException je) {
@@ -1369,8 +1300,8 @@ public class JspC extends Task implements Options {
             }
             throw new JasperException(e);
         } finally {
-            if(originalClassLoader != null) {
-                Thread.currentThread().setContextClassLoader(originalClassLoader);
+            if (originalClassLoader != null) {
+                currentThread.setContextClassLoader(originalClassLoader);
             }
         }
     }
@@ -1427,7 +1358,7 @@ public class JspC extends Task implements Options {
     @Override
     public void execute() {
         if(log.isDebugEnabled()) {
-            log.debug("execute() starting for " + pages.size() + " pages.");
+            log.debug(Localizer.getMessage("jspc.start", Integer.toString(pages.size())));
         }
 
         try {
@@ -1523,7 +1454,7 @@ public class JspC extends Task implements Options {
                             }
                         } else {
                             errorCount++;
-                            log.error(e.getMessage());
+                            log.error(Localizer.getMessage("jspc.error.compilation"), e);
                         }
                     } catch (InterruptedException e) {
                         // Ignore
@@ -1540,6 +1471,8 @@ public class JspC extends Task implements Options {
             String msg = Localizer.getMessage("jspc.generation.result",
                     Integer.toString(errorCount), Long.toString(time));
             if (failOnError && errorCount > 0) {
+                System.out.println(Localizer.getMessage(
+                        "jspc.errorCount", Integer.valueOf(errorCount)));
                 throw new BuildException(msg);
             } else {
                 log.info(msg);
@@ -1577,7 +1510,9 @@ public class JspC extends Task implements Options {
     }
 
     protected String nextFile() {
-        if (fullstop) argPos++;
+        if (fullstop) {
+            argPos++;
+        }
         if (argPos >= args.length) {
             return null;
         } else {
@@ -1695,7 +1630,7 @@ public class JspC extends Task implements Options {
         }
 
         // Turn the classPath into URLs
-        ArrayList<URL> urls = new ArrayList<>();
+        List<URL> urls = new ArrayList<>();
         StringTokenizer tokenizer = new StringTokenizer(classPath,
                                                         File.pathSeparator);
         while (tokenizer.hasMoreTokens()) {
@@ -1726,24 +1661,24 @@ public class JspC extends Task implements Options {
                 // therefore we have permission to freak out
                 throw new RuntimeException(ioe.toString());
             }
-            File lib = new File(webappBase, "/WEB-INF/lib");
-            if (lib.exists() && lib.isDirectory()) {
-                String[] libs = lib.list();
+            File webinfLib = new File(webappBase, "/WEB-INF/lib");
+            if (webinfLib.exists() && webinfLib.isDirectory()) {
+                String[] libs = webinfLib.list();
                 if (libs != null) {
-                    for (int i = 0; i < libs.length; i++) {
-                        if( libs[i].length() <5 ) continue;
-                        String ext=libs[i].substring( libs[i].length() - 4 );
-                        if (! ".jar".equalsIgnoreCase(ext)) {
+                    for (String lib : libs) {
+                        if (lib.length() < 5) {
+                            continue;
+                        }
+                        String ext = lib.substring(lib.length() - 4);
+                        if (!".jar".equalsIgnoreCase(ext)) {
                             if (".tld".equalsIgnoreCase(ext)) {
-                                log.warn("TLD files should not be placed in "
-                                         + "/WEB-INF/lib");
+                                log.warn(Localizer.getMessage("jspc.warning.tldInWebInfLib"));
                             }
                             continue;
                         }
                         try {
-                            File libFile = new File(lib, libs[i]);
-                            classPath = classPath + File.pathSeparator
-                                + libFile.getAbsolutePath();
+                            File libFile = new File(webinfLib, lib);
+                            classPath = classPath + File.pathSeparator + libFile.getAbsolutePath();
                             urls.add(libFile.getAbsoluteFile().toURI().toURL());
                         } catch (IOException ioe) {
                             // failing a toCanonicalPath on a file that
@@ -1756,8 +1691,7 @@ public class JspC extends Task implements Options {
             }
         }
 
-        URL urlsA[]=new URL[urls.size()];
-        urls.toArray(urlsA);
+        URL[] urlsA = urls.toArray(new URL[0]);
         loader = new URLClassLoader(urlsA, this.getClass().getClassLoader());
         return loader;
     }

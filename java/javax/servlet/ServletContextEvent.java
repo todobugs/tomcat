@@ -17,11 +17,11 @@
 package javax.servlet;
 
 /**
- * This is the event class for notifications about changes to the servlet
- * context of a web application.
+ * This is the event class for notifications about changes to the servlet context of a web application.
  *
  * @see ServletContextListener
- * @since v 2.3
+ *
+ * @since Servlet 2.3
  */
 public class ServletContextEvent extends java.util.EventObject {
 
@@ -30,8 +30,7 @@ public class ServletContextEvent extends java.util.EventObject {
     /**
      * Construct a ServletContextEvent from the given context.
      *
-     * @param source
-     *            - the ServletContext that is sending the event.
+     * @param source - the ServletContext that is sending the event.
      */
     public ServletContextEvent(ServletContext source) {
         super(source);

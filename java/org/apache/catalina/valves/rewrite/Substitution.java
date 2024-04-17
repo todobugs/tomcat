@@ -22,14 +22,17 @@ import java.util.Map;
 import java.util.regex.Matcher;
 
 import org.apache.catalina.util.URLEncoder;
+import org.apache.tomcat.util.res.StringManager;
 
 public class Substitution {
 
-    public abstract class SubstitutionElement {
+    protected static final StringManager sm = StringManager.getManager(Substitution.class);
+
+    public abstract static class SubstitutionElement {
         public abstract String evaluate(Matcher rule, Matcher cond, Resolver resolver);
     }
 
-    public class StaticElement extends SubstitutionElement {
+    public static class StaticElement extends SubstitutionElement {
         public String value;
 
         @Override
@@ -59,7 +62,7 @@ public class Substitution {
         }
     }
 
-    public class RewriteCondBackReferenceElement extends SubstitutionElement {
+    public static class RewriteCondBackReferenceElement extends SubstitutionElement {
         public int n;
         @Override
         public String evaluate(Matcher rule, Matcher cond, Resolver resolver) {
@@ -67,7 +70,7 @@ public class Substitution {
         }
     }
 
-    public class ServerVariableElement extends SubstitutionElement {
+    public static class ServerVariableElement extends SubstitutionElement {
         public String key;
         @Override
         public String evaluate(Matcher rule, Matcher cond, Resolver resolver) {
@@ -75,7 +78,7 @@ public class Substitution {
         }
     }
 
-    public class ServerVariableEnvElement extends SubstitutionElement {
+    public static class ServerVariableEnvElement extends SubstitutionElement {
         public String key;
         @Override
         public String evaluate(Matcher rule, Matcher cond, Resolver resolver) {
@@ -83,7 +86,7 @@ public class Substitution {
         }
     }
 
-    public class ServerVariableSslElement extends SubstitutionElement {
+    public static class ServerVariableSslElement extends SubstitutionElement {
         public String key;
         @Override
         public String evaluate(Matcher rule, Matcher cond, Resolver resolver) {
@@ -91,7 +94,7 @@ public class Substitution {
         }
     }
 
-    public class ServerVariableHttpElement extends SubstitutionElement {
+    public static class ServerVariableHttpElement extends SubstitutionElement {
         public String key;
         @Override
         public String evaluate(Matcher rule, Matcher cond, Resolver resolver) {
@@ -125,10 +128,10 @@ public class Substitution {
     }
 
     public void parse(Map<String, RewriteMap> maps) {
-        this.elements = parseSubtitution(sub, maps);
+        this.elements = parseSubstitution(sub, maps);
     }
 
-    private SubstitutionElement[] parseSubtitution(String sub, Map<String, RewriteMap> maps) {
+    private SubstitutionElement[] parseSubstitution(String sub, Map<String, RewriteMap> maps) {
 
         List<SubstitutionElement> elements = new ArrayList<>();
         int pos = 0;
@@ -143,12 +146,12 @@ public class Substitution {
             if (percentPos == -1 && dollarPos == -1 && backslashPos == -1) {
                 // Static text
                 StaticElement newElement = new StaticElement();
-                newElement.value = sub.substring(pos, sub.length());
+                newElement.value = sub.substring(pos);
                 pos = sub.length();
                 elements.add(newElement);
             } else if (isFirstPos(backslashPos, dollarPos, percentPos)) {
                 if (backslashPos + 1 == sub.length()) {
-                    throw new IllegalArgumentException(sub);
+                    throw new IllegalArgumentException(sm.getString("substitution.invalid", sub));
                 }
                 StaticElement newElement = new StaticElement();
                 newElement.value = sub.substring(pos, backslashPos) + sub.substring(backslashPos + 1, backslashPos + 2);
@@ -157,13 +160,12 @@ public class Substitution {
             } else if (isFirstPos(dollarPos, percentPos)) {
                 // $: back reference to rule or map lookup
                 if (dollarPos + 1 == sub.length()) {
-                    throw new IllegalArgumentException(sub);
+                    throw new IllegalArgumentException(sm.getString("substitution.invalid", sub));
                 }
                 if (pos < dollarPos) {
                     // Static text
                     StaticElement newElement = new StaticElement();
                     newElement.value = sub.substring(pos, dollarPos);
-                    pos = dollarPos;
                     elements.add(newElement);
                 }
                 if (Character.isDigit(sub.charAt(dollarPos + 1))) {
@@ -180,42 +182,41 @@ public class Substitution {
                     int def = findMatchingColonOrBar(false, sub, open);
                     int close = findMatchingBrace(sub, open);
                     if (!(-1 < open && open < colon && colon < close)) {
-                        throw new IllegalArgumentException(sub);
+                        throw new IllegalArgumentException(sm.getString("substitution.invalid", sub));
                     }
                     newElement.map = maps.get(sub.substring(open + 1, colon));
                     if (newElement.map == null) {
-                        throw new IllegalArgumentException(sub + ": No map: " + sub.substring(open + 1, colon));
+                        throw new IllegalArgumentException(sm.getString("substitution.noMap", sub.substring(open + 1, colon), sub));
                     }
                     String key = null;
                     String defaultValue = null;
                     if (def > -1) {
                         if (!(colon < def && def < close)) {
-                            throw new IllegalArgumentException(sub);
+                            throw new IllegalArgumentException(sm.getString("substitution.invalid", sub));
                         }
                         key = sub.substring(colon + 1, def);
                         defaultValue = sub.substring(def + 1, close);
                     } else {
                         key = sub.substring(colon + 1, close);
                     }
-                    newElement.key = parseSubtitution(key, maps);
+                    newElement.key = parseSubstitution(key, maps);
                     if (defaultValue != null) {
-                        newElement.defaultValue = parseSubtitution(defaultValue, maps);
+                        newElement.defaultValue = parseSubstitution(defaultValue, maps);
                     }
                     pos = close + 1;
                     elements.add(newElement);
                 } else {
-                    throw new IllegalArgumentException(sub + ": missing digit or curly brace.");
+                    throw new IllegalArgumentException(sm.getString("substitution.missingDigit", sub));
                 }
             } else {
                 // %: back reference to condition or server variable
                 if (percentPos + 1 == sub.length()) {
-                    throw new IllegalArgumentException(sub);
+                    throw new IllegalArgumentException(sm.getString("substitution.invalid", sub));
                 }
                 if (pos < percentPos) {
                     // Static text
                     StaticElement newElement = new StaticElement();
                     newElement.value = sub.substring(pos, percentPos);
-                    pos = percentPos;
                     elements.add(newElement);
                 }
                 if (Character.isDigit(sub.charAt(percentPos + 1))) {
@@ -231,7 +232,7 @@ public class Substitution {
                     int colon = findMatchingColonOrBar(true, sub, open);
                     int close = findMatchingBrace(sub, open);
                     if (!(-1 < open && open < close)) {
-                        throw new IllegalArgumentException(sub);
+                        throw new IllegalArgumentException(sm.getString("substitution.invalid", sub));
                     }
                     if (colon > -1 && open < colon && colon < close) {
                         String type = sub.substring(open + 1, colon);
@@ -245,7 +246,7 @@ public class Substitution {
                             newElement = new ServerVariableHttpElement();
                             ((ServerVariableHttpElement) newElement).key = sub.substring(colon + 1, close);
                         } else {
-                            throw new IllegalArgumentException(sub + ": Bad type: " + type);
+                            throw new IllegalArgumentException(sm.getString("substitution.badType", type, sub));
                         }
                     } else {
                         newElement = new ServerVariableElement();
@@ -254,7 +255,7 @@ public class Substitution {
                     pos = close + 1;
                     elements.add(newElement);
                 } else {
-                    throw new IllegalArgumentException(sub + ": missing digit or curly brace.");
+                    throw new IllegalArgumentException(sm.getString("substitution.missingDigit", sub));
                 }
             }
         }
@@ -314,9 +315,9 @@ public class Substitution {
     }
 
     private String evaluateSubstitution(SubstitutionElement[] elements, Matcher rule, Matcher cond, Resolver resolver) {
-        StringBuffer buf = new StringBuffer();
-        for (int i = 0; i < elements.length; i++) {
-            buf.append(elements[i].evaluate(rule, cond, resolver));
+        StringBuilder buf = new StringBuilder();
+        for (SubstitutionElement element : elements) {
+            buf.append(element.evaluate(rule, cond, resolver));
         }
         return buf.toString();
     }

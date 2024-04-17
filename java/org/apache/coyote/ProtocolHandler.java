@@ -21,23 +21,22 @@ import java.util.concurrent.Executor;
 import org.apache.tomcat.util.net.SSLHostConfig;
 
 /**
- * Abstract the protocol implementation, including threading, etc.
- *
- * This is the main interface to be implemented by a coyote protocol.
- * Adapter is the main interface to be implemented by a coyote servlet
- * container.
+ * Abstract the protocol implementation, including threading, etc. This is the main interface to be implemented by a
+ * coyote protocol. Adapter is the main interface to be implemented by a coyote servlet container.
  *
  * @author Remy Maucherat
  * @author Costin Manolache
+ *
  * @see Adapter
  */
 public interface ProtocolHandler {
 
     /**
      * Return the adapter associated with the protocol handler.
+     *
      * @return the adapter
      */
-    public Adapter getAdapter();
+    Adapter getAdapter();
 
 
     /**
@@ -45,7 +44,7 @@ public interface ProtocolHandler {
      *
      * @param adapter The adapter to associate
      */
-    public void setAdapter(Adapter adapter);
+    void setAdapter(Adapter adapter);
 
 
     /**
@@ -53,7 +52,7 @@ public interface ProtocolHandler {
      *
      * @return The executor used to process requests
      */
-    public Executor getExecutor();
+    Executor getExecutor();
 
 
     /**
@@ -61,7 +60,7 @@ public interface ProtocolHandler {
      *
      * @throws Exception If the protocol handler fails to initialise
      */
-    public void init() throws Exception;
+    void init() throws Exception;
 
 
     /**
@@ -69,7 +68,7 @@ public interface ProtocolHandler {
      *
      * @throws Exception If the protocol handler fails to start
      */
-    public void start() throws Exception;
+    void start() throws Exception;
 
 
     /**
@@ -77,7 +76,7 @@ public interface ProtocolHandler {
      *
      * @throws Exception If the protocol handler fails to pause
      */
-    public void pause() throws Exception;
+    void pause() throws Exception;
 
 
     /**
@@ -85,7 +84,7 @@ public interface ProtocolHandler {
      *
      * @throws Exception If the protocol handler fails to resume
      */
-    public void resume() throws Exception;
+    void resume() throws Exception;
 
 
     /**
@@ -93,7 +92,7 @@ public interface ProtocolHandler {
      *
      * @throws Exception If the protocol handler fails to stop
      */
-    public void stop() throws Exception;
+    void stop() throws Exception;
 
 
     /**
@@ -101,39 +100,86 @@ public interface ProtocolHandler {
      *
      * @throws Exception If the protocol handler fails to destroy
      */
-    public void destroy() throws Exception;
+    void destroy() throws Exception;
 
 
     /**
-     * Close the server socket (to prevent further connections) if the server
-     * socket was bound on {@link #start()} (rather than on {@link #init()}
-     * but do not perform any further shutdown.
+     * Close the server socket (to prevent further connections) if the server socket was bound on {@link #start()}
+     * (rather than on {@link #init()} but do not perform any further shutdown.
      */
-    public void closeServerSocketGraceful();
+    void closeServerSocketGraceful();
+
+
+    /**
+     * Wait for the client connections to the server to close gracefully. The method will return when all of the client
+     * connections have closed or the method has been waiting for {@code waitTimeMillis}.
+     *
+     * @param waitMillis The maximum time to wait in milliseconds for the client connections to close.
+     *
+     * @return The wait time, if any remaining when the method returned
+     */
+    long awaitConnectionsClose(long waitMillis);
 
 
     /**
      * Requires APR/native library
      *
-     * @return <code>true</code> if this Protocol Handler requires the
-     *         APR/native library, otherwise <code>false</code>
+     * @return <code>true</code> if this Protocol Handler requires the APR/native library, otherwise <code>false</code>
+     *
+     * @deprecated This method will be removed in Tomcat 10.1.x onwards
      */
-    public boolean isAprRequired();
+    @Deprecated boolean isAprRequired();
 
 
     /**
      * Does this ProtocolHandler support sendfile?
      *
-     * @return <code>true</code> if this Protocol Handler supports sendfile,
-     *         otherwise <code>false</code>
+     * @return <code>true</code> if this Protocol Handler supports sendfile, otherwise <code>false</code>
      */
-    public boolean isSendfileSupported();
+    boolean isSendfileSupported();
 
 
-    public void addSslHostConfig(SSLHostConfig sslHostConfig);
-    public SSLHostConfig[] findSslHostConfigs();
+    /**
+     * Add a new SSL configuration for a virtual host.
+     *
+     * @param sslHostConfig the configuration
+     */
+    void addSslHostConfig(SSLHostConfig sslHostConfig);
 
 
-    public void addUpgradeProtocol(UpgradeProtocol upgradeProtocol);
-    public UpgradeProtocol[] findUpgradeProtocols();
+    /**
+     * Add a new SSL configuration for a virtual host.
+     *
+     * @param sslHostConfig the configuration
+     * @param replace       If {@code true} replacement of an existing configuration is permitted, otherwise any such
+     *                          attempted replacement will trigger an exception
+     *
+     * @throws IllegalArgumentException If the host name is not valid or if a configuration has already been provided
+     *                                      for that host and replacement is not allowed
+     */
+    void addSslHostConfig(SSLHostConfig sslHostConfig, boolean replace);
+
+
+    /**
+     * Find all configured SSL virtual host configurations which will be used by SNI.
+     *
+     * @return the configurations
+     */
+    SSLHostConfig[] findSslHostConfigs();
+
+
+    /**
+     * Add a new protocol for used by HTTP/1.1 upgrade or ALPN.
+     *
+     * @param upgradeProtocol the protocol
+     */
+    void addUpgradeProtocol(UpgradeProtocol upgradeProtocol);
+
+
+    /**
+     * Return all configured upgrade protocols.
+     *
+     * @return the protocols
+     */
+    UpgradeProtocol[] findUpgradeProtocols();
 }

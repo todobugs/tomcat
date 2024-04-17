@@ -63,7 +63,7 @@ public class ConnectorStoreAppender extends StoreAppender {
             throws Exception {
 
         // Render a className attribute if requested
-        if (include && desc != null && !desc.isStandard()) {
+        if (include && !desc.isStandard()) {
             writer.print(" className=\"");
             writer.print(bean.getClass().getName());
             writer.print("\"");
@@ -94,8 +94,9 @@ public class ConnectorStoreAppender extends StoreAppender {
                 printValue(writer, indent, key, value);
             }
         }
-        if (protocol != null && !"HTTP/1.1".equals(protocol))
+        if (protocol != null && !"HTTP/1.1".equals(protocol)) {
             super.printValue(writer, indent, "protocol", protocol);
+        }
 
     }
 
@@ -104,11 +105,11 @@ public class ConnectorStoreAppender extends StoreAppender {
      *
      * @param bean The connector
      * @return List of Connector property names
-     * @throws IntrospectionException Error intropecting connector
+     * @throws IntrospectionException Error introspecting connector
      */
     protected List<String> getPropertyKeys(Connector bean)
             throws IntrospectionException {
-        ArrayList<String> propertyKeys = new ArrayList<>();
+        List<String> propertyKeys = new ArrayList<>();
         // Acquire the list of properties for this bean
         ProtocolHandler protocolHandler = bean.getProtocolHandler();
         // Acquire the list of properties for this bean
@@ -128,8 +129,9 @@ public class ConnectorStoreAppender extends StoreAppender {
             }
             if ("protocol".equals(descriptor.getName())
                     || "protocolHandlerClassName".equals(descriptor
-                            .getName()))
+                            .getName())) {
                 continue;
+            }
             propertyKeys.add(descriptor.getName());
         }
         // Add the properties of the protocol handler
@@ -236,7 +238,7 @@ public class ConnectorStoreAppender extends StoreAppender {
      * Print a value but replace certain attribute names.
      *
      * @see org.apache.catalina.storeconfig.StoreAppender#printValue(java.io.PrintWriter,
-     *      int, java.lang.String, java.lang.Object)
+     *      int, String, Object)
      */
     @Override
     public void printValue(PrintWriter writer, int indent, String name,
@@ -252,9 +254,8 @@ public class ConnectorStoreAppender extends StoreAppender {
      * Print Connector Values. <ul><li> Special handling to default jkHome.
      * </li><li> Don't save catalina.base path at server.xml</li><li></ul>
      *
-     * @see org.apache.catalina.storeconfig.StoreAppender#isPrintValue(java.lang.Object,
-     *      java.lang.Object, java.lang.String,
-     *      org.apache.catalina.storeconfig.StoreDescription)
+     * @see org.apache.catalina.storeconfig.StoreAppender#isPrintValue(Object,
+     *      Object, String, StoreDescription)
      */
     @Override
     public boolean isPrintValue(Object bean, Object bean2, String attrName,
@@ -287,8 +288,9 @@ public class ConnectorStoreAppender extends StoreAppender {
 
         File jkHomeBase;
         File file = new File(jkHome);
-        if (!file.isAbsolute())
+        if (!file.isAbsolute()) {
             file = new File(appBase, jkHome);
+        }
         try {
             jkHomeBase = file.getCanonicalFile();
         } catch (IOException e) {

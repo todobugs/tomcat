@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.naming.factory;
 
 import java.security.AccessController;
@@ -113,7 +112,7 @@ public class SendMailFactory implements ObjectFactory
                         RefAddr fromAddr = ref.get("mail.from");
                         String from = null;
                         if (fromAddr != null) {
-                            from = (String)ref.get("mail.from").getContent();
+                            from = (String) fromAddr.getContent();
                         }
                         if (from != null) {
                             message.setFrom(new InternetAddress(from));
@@ -124,8 +123,7 @@ public class SendMailFactory implements ObjectFactory
                     return mds;
                 }
             } );
-        }
-        else { // We can't create an instance of the DataSource
+        } else { // We can't create an instance of the DataSource
             return null;
         }
     }

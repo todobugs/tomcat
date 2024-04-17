@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.jasper.compiler;
 
 import java.security.AccessController;
@@ -23,6 +22,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 import javax.servlet.jsp.tagext.FunctionInfo;
@@ -81,7 +81,7 @@ public class ELFunctionMapper {
          * Use a global name map to facilitate reuse of function maps.
          * The key used is prefix:function:uri.
          */
-        private final HashMap<String, String> gMap = new HashMap<>();
+        private final Map<String, String> gMap = new HashMap<>();
 
         @Override
         public void visit(Node.ParamAction n) throws JasperException {
@@ -238,8 +238,7 @@ public class ELFunctionMapper {
                         int iArray = params[k].indexOf('[');
                         if (iArray < 0) {
                             ds.append(params[k] + ".class");
-                        }
-                        else {
+                        } else {
                             String baseType = params[k].substring(0, iArray);
                             ds.append("java.lang.reflect.Array.newInstance(");
                             ds.append(baseType);
@@ -312,11 +311,12 @@ public class ELFunctionMapper {
             Class<?> clazz;
 
             ClassLoader tccl;
+            Thread currentThread = Thread.currentThread();
             if (Constants.IS_SECURITY_ENABLED) {
-                PrivilegedAction<ClassLoader> pa = new PrivilegedGetTccl();
+                PrivilegedAction<ClassLoader> pa = new PrivilegedGetTccl(currentThread);
                 tccl = AccessController.doPrivileged(pa);
             } else {
-                tccl = Thread.currentThread().getContextClassLoader();
+                tccl = currentThread.getContextClassLoader();
             }
 
             try {

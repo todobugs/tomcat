@@ -14,8 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
-
 package org.apache.catalina.loader;
 
 import java.sql.Driver;
@@ -25,18 +23,14 @@ import java.util.ArrayList;
 import java.util.Enumeration;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 /**
- * This class is loaded by {@link WebappClassLoaderBase} to enable it to
- * deregister JDBC drivers forgotten by the web application. There are some
- * classloading hacks involved - see
- * {@link WebappClassLoaderBase#clearReferences()} for details - but the short
- * version is do not just create a new instance of this class with the new
- * keyword.
- *
- * Since this class is loaded by {@link WebappClassLoaderBase}, it cannot refer
- * to any internal Tomcat classes as that will cause the security manager to
- * complain.
+ * This class is loaded by {@link WebappClassLoaderBase} to enable it to deregister JDBC drivers forgotten by the web
+ * application. There are some classloading hacks involved - see {@link WebappClassLoaderBase#clearReferences()} for
+ * details - but the short version is do not just create a new instance of this class with the new keyword. Since this
+ * class is loaded by {@link WebappClassLoaderBase}, it cannot refer to any internal Tomcat classes as that will cause
+ * the security manager to complain.
  */
 public class JdbcLeakPrevention {
 
@@ -44,15 +38,12 @@ public class JdbcLeakPrevention {
         List<String> driverNames = new ArrayList<>();
 
         /*
-         * DriverManager.getDrivers() has a nasty side-effect of registering
-         * drivers that are visible to this class loader but haven't yet been
-         * loaded. Therefore, the first call to this method a) gets the list
-         * of originally loaded drivers and b) triggers the unwanted
-         * side-effect. The second call gets the complete list of drivers
-         * ensuring that both original drivers and any loaded as a result of the
-         * side-effects are all de-registered.
+         * DriverManager.getDrivers() has a nasty side-effect of registering drivers that are visible to this class
+         * loader but haven't yet been loaded. Therefore, the first call to this method a) gets the list of originally
+         * loaded drivers and b) triggers the unwanted side-effect. The second call gets the complete list of drivers
+         * ensuring that both original drivers and any loaded as a result of the side-effects are all de-registered.
          */
-        HashSet<Driver> originalDrivers = new HashSet<>();
+        Set<Driver> originalDrivers = new HashSet<>();
         Enumeration<Driver> drivers = DriverManager.getDrivers();
         while (drivers.hasMoreElements()) {
             originalDrivers.add(drivers.nextElement());
@@ -61,8 +52,7 @@ public class JdbcLeakPrevention {
         while (drivers.hasMoreElements()) {
             Driver driver = drivers.nextElement();
             // Only unload the drivers this web app loaded
-            if (driver.getClass().getClassLoader() !=
-                this.getClass().getClassLoader()) {
+            if (driver.getClass().getClassLoader() != this.getClass().getClassLoader()) {
                 continue;
             }
             // Only report drivers that were originally registered. Skip any

@@ -24,7 +24,6 @@ import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 
 import org.junit.Assert;
-import org.junit.Assume;
 import org.junit.Test;
 
 import org.apache.catalina.core.StandardContext;
@@ -40,19 +39,17 @@ public class TestMaxConnections extends TomcatBaseTest {
     @Test
     public void testConnector() throws Exception {
         init();
-        Assume.assumeFalse("This feature is not available for NIO2 (BZ58103)",
-                getTomcatInstance().getConnector().getProtocolHandlerClassName().contains("Nio2"));
         ConnectThread[] t = new ConnectThread[10];
         for (int i=0; i<t.length; i++) {
             t[i] = new ConnectThread();
             t[i].setName("ConnectThread["+i+"]");
         }
-        for (int i=0; i<t.length; i++) {
-            t[i].start();
+        for (ConnectThread thread : t) {
+            thread.start();
             Thread.sleep(50);
         }
-        for (int i=0; i<t.length; i++) {
-            t[i].join();
+        for (ConnectThread connectThread : t) {
+            connectThread.join();
         }
 
         Assert.assertEquals(MAX_CONNECTIONS, SimpleServlet.getMaxConnections());
@@ -133,7 +130,7 @@ public class TestMaxConnections extends TomcatBaseTest {
 
             System.out.println("Processing thread: " + Thread.currentThread().getName());
             try {
-                Thread.sleep(TestMaxConnections.soTimeout*4/5);
+                Thread.sleep(soTimeout*4/5);
             } catch (InterruptedException x) {
 
             }

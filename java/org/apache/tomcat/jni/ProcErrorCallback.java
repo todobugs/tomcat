@@ -14,13 +14,19 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  */
-
 package org.apache.tomcat.jni;
 
-/** ProcErrorCallback Interface
+/**
+ * ProcErrorCallback Interface
  *
  * @author Mladen Turk
+ *
+ * @deprecated  The scope of the APR/Native Library will be reduced in Tomcat
+ *              10.1.x / Tomcat Native 2.x onwards to only include those
+ *              components required to provide OpenSSL integration with the NIO
+ *              and NIO2 connectors.
  */
+@Deprecated
 public interface ProcErrorCallback {
 
     /**
@@ -32,5 +38,5 @@ public interface ProcErrorCallback {
      * @param err APR error code describing the error
      * @param description Text description of type of processing which failed
      */
-    public void callback(long pool, int err, String description);
+    void callback(long pool, int err, String description);
 }

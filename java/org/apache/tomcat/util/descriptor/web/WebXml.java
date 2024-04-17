@@ -85,12 +85,23 @@ public class WebXml extends XmlEncodingBase implements DocumentProperties.Encodi
      * to know as the action that the specification requires (see 8.2.2 1.e and
      * 2.c) varies depending on the ordering method used.
      */
-    private boolean duplicated = false;
+    private final List<String> duplicates = new ArrayList<>();
     public boolean isDuplicated() {
-        return duplicated;
+        return !duplicates.isEmpty();
     }
+    @Deprecated
     public void setDuplicated(boolean duplicated) {
-        this.duplicated = duplicated;
+        if (duplicated) {
+            duplicates.add("unknown");
+        } else {
+            duplicates.clear();
+        }
+    }
+    public void addDuplicate(String duplicate) {
+        this.duplicates.add(duplicate);
+    }
+    public List<String> getDuplicates() {
+        return new ArrayList<>(this.duplicates);
     }
 
     /**
@@ -293,6 +304,7 @@ public class WebXml extends XmlEncodingBase implements DocumentProperties.Encodi
     private final Set<FilterMap> filterMaps = new LinkedHashSet<>();
     private final Set<String> filterMappingNames = new HashSet<>();
     public void addFilterMapping(FilterMap filterMap) {
+        filterMap.setCharset(getCharset());
         filterMaps.add(filterMap);
         filterMappingNames.add(filterMap.getFilterName());
     }
@@ -394,6 +406,7 @@ public class WebXml extends XmlEncodingBase implements DocumentProperties.Encodi
     // error-page
     private final Map<String,ErrorPage> errorPages = new HashMap<>();
     public void addErrorPage(ErrorPage errorPage) {
+        errorPage.setCharset(getCharset());
         errorPages.put(errorPage.getName(), errorPage);
     }
     public Map<String,ErrorPage> getErrorPages() { return errorPages; }
@@ -437,6 +450,7 @@ public class WebXml extends XmlEncodingBase implements DocumentProperties.Encodi
     // Digester will check there is only one of these
     private LoginConfig loginConfig = null;
     public void setLoginConfig(LoginConfig loginConfig) {
+        loginConfig.setCharset(getCharset());
         this.loginConfig = loginConfig;
     }
     public LoginConfig getLoginConfig() { return loginConfig; }
@@ -718,7 +732,7 @@ public class WebXml extends XmlEncodingBase implements DocumentProperties.Encodi
             sb.append("\"http://www.w3.org/2001/XMLSchema-instance\"\n");
             sb.append("         xsi:schemaLocation=\"");
             sb.append(javaeeNamespace);
-            sb.append(" ");
+            sb.append(' ');
             sb.append(webXmlSchemaLocation);
             sb.append("\"\n");
             sb.append("         version=\"");
@@ -1368,7 +1382,9 @@ public class WebXml extends XmlEncodingBase implements DocumentProperties.Encodi
 
     private static void appendElement(StringBuilder sb, String indent,
             String elementName, Object value) {
-        if (value == null) return;
+        if (value == null) {
+            return;
+        }
         appendElement(sb, indent, elementName, value.toString());
     }
 
@@ -2174,7 +2190,7 @@ public class WebXml extends XmlEncodingBase implements DocumentProperties.Encodi
             Set<String> requestedOrder = getAbsoluteOrdering();
 
             for (String requestedName : requestedOrder) {
-                if (WebXml.ORDER_OTHERS.equals(requestedName)) {
+                if (ORDER_OTHERS.equals(requestedName)) {
                     // Add all fragments not named explicitly at this point
                     for (Entry<String, WebXml> entry : fragments.entrySet()) {
                         if (!requestedOrder.contains(entry.getKey())) {
@@ -2197,8 +2213,10 @@ public class WebXml extends XmlEncodingBase implements DocumentProperties.Encodi
             // Stage 0. Check there were no fragments with duplicate names
             for (WebXml fragment : fragments.values()) {
                 if (fragment.isDuplicated()) {
+                    List<String> duplicates = fragment.getDuplicates();
+                    duplicates.add(0, fragment.getURL().toString());
                     throw new IllegalArgumentException(
-                            sm.getString("webXml.duplicateFragment", fragment.getName()));
+                            sm.getString("webXml.duplicateFragment", fragment.getName(), duplicates));
                 }
             }
             // Stage 1. Make all dependencies bi-directional - this makes the

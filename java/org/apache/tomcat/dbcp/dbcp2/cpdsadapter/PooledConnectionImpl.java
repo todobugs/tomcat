@@ -14,14 +14,15 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.tomcat.dbcp.dbcp2.cpdsadapter;
 
 import java.sql.CallableStatement;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.SQLException;
-import java.util.Vector;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 
 import javax.sql.ConnectionEvent;
 import javax.sql.ConnectionEventListener;
@@ -35,6 +36,7 @@ import org.apache.tomcat.dbcp.dbcp2.PStmtKey;
 import org.apache.tomcat.dbcp.dbcp2.PoolableCallableStatement;
 import org.apache.tomcat.dbcp.dbcp2.PoolablePreparedStatement;
 import org.apache.tomcat.dbcp.dbcp2.PoolingConnection.StatementType;
+import org.apache.tomcat.dbcp.pool2.DestroyMode;
 import org.apache.tomcat.dbcp.pool2.KeyedObjectPool;
 import org.apache.tomcat.dbcp.pool2.KeyedPooledObjectFactory;
 import org.apache.tomcat.dbcp.pool2.PooledObject;
@@ -68,12 +70,12 @@ class PooledConnectionImpl
     /**
      * ConnectionEventListeners.
      */
-    private final Vector<ConnectionEventListener> eventListeners;
+    private final List<ConnectionEventListener> eventListeners;
 
     /**
      * StatementEventListeners.
      */
-    private final Vector<StatementEventListener> statementEventListeners = new Vector<>();
+    private final List<StatementEventListener> statementEventListeners = Collections.synchronizedList(new ArrayList<StatementEventListener>());
 
     /**
      * Flag set to true, once {@link #close()} is called.
@@ -101,17 +103,14 @@ class PooledConnectionImpl
         } else {
             this.delegatingConnection = new DelegatingConnection<>(connection);
         }
-        eventListeners = new Vector<>();
+        eventListeners = Collections.synchronizedList(new ArrayList<ConnectionEventListener>());
         closed = false;
     }
 
     /**
      * My {@link KeyedPooledObjectFactory} method for activating {@link PreparedStatement}s.
      *
-     * @param key
-     *            Ignored.
-     * @param pooledObject
-     *            Ignored.
+     * @param pooledObject Activates the underlying object.
      */
     @Override
     public void activateObject(final PStmtKey key, final PooledObject<DelegatingPreparedStatement> pooledObject)
@@ -119,9 +118,6 @@ class PooledConnectionImpl
         pooledObject.getObject().activate();
     }
 
-    /**
-     * {@inheritDoc}
-     */
     @Override
     public void addConnectionEventListener(final ConnectionEventListener listener) {
         if (!eventListeners.contains(listener)) {
@@ -129,7 +125,6 @@ class PooledConnectionImpl
         }
     }
 
-    /* JDBC_4_ANT_KEY_BEGIN */
     @Override
     public void addStatementEventListener(final StatementEventListener listener) {
         if (!statementEventListeners.contains(listener)) {
@@ -214,7 +209,7 @@ class PooledConnectionImpl
      *            rows.
      * @return a key to uniquely identify a prepared statement.
      */
-    protected PStmtKey createKey(final String sql, final int columnIndexes[]) {
+    protected PStmtKey createKey(final String sql, final int[] columnIndexes) {
         return new PStmtKey(normalizeSQL(sql), getCatalogOrNull(), getSchemaOrNull(), columnIndexes);
     }
 
@@ -327,7 +322,7 @@ class PooledConnectionImpl
      *            An array of column names indicating the columns that should be returned from the inserted row or rows.
      * @return a key to uniquely identify a prepared statement.
      */
-    protected PStmtKey createKey(final String sql, final String columnNames[]) {
+    protected PStmtKey createKey(final String sql, final String[] columnNames) {
         return new PStmtKey(normalizeSQL(sql), getCatalogOrNull(), getSchemaOrNull(), columnNames);
     }
 
@@ -343,6 +338,12 @@ class PooledConnectionImpl
     public void destroyObject(final PStmtKey key, final PooledObject<DelegatingPreparedStatement> pooledObject)
             throws Exception {
         pooledObject.getObject().getInnermostDelegate().close();
+    }
+
+    @Override
+    public void destroyObject(PStmtKey key, PooledObject<DelegatingPreparedStatement> p,
+            DestroyMode mode) throws Exception {
+        destroyObject(key, p);
     }
 
     /**
@@ -417,7 +418,6 @@ class PooledConnectionImpl
      * @param key
      *            The key for the {@link PreparedStatement} to be created.
      */
-    @SuppressWarnings("resource")
     @Override
     public PooledObject<DelegatingPreparedStatement> makeObject(final PStmtKey key) throws Exception {
         if (null == key) {
@@ -470,7 +470,6 @@ class PooledConnectionImpl
     @Override
     public void passivateObject(final PStmtKey key, final PooledObject<DelegatingPreparedStatement> pooledObject)
             throws Exception {
-        @SuppressWarnings("resource")
         final DelegatingPreparedStatement dps = pooledObject.getObject();
         dps.clearParameters();
         dps.passivate();
@@ -574,9 +573,10 @@ class PooledConnectionImpl
     /**
      * Creates or obtains a {@link PreparedStatement} from my pool.
      *
-     * @param sql
-     *            the SQL statement.
+     * @param sql the SQL statement.
      * @return a {@link PoolablePreparedStatement}
+     * @throws SQLException Thrown if a database access error occurs, this method is called on a closed connection, or
+     *         the borrow failed.
      */
     PreparedStatement prepareStatement(final String sql) throws SQLException {
         if (pStmtPool == null) {
@@ -600,6 +600,8 @@ class PooledConnectionImpl
      *            a flag indicating whether auto-generated keys should be returned; one of
      *            <code>Statement.RETURN_GENERATED_KEYS</code> or <code>Statement.NO_GENERATED_KEYS</code>.
      * @return a {@link PoolablePreparedStatement}
+     * @throws SQLException Thrown if a database access error occurs, this method is called on a closed connection, or
+     *         the borrow failed.
      * @see Connection#prepareStatement(String, int)
      */
     PreparedStatement prepareStatement(final String sql, final int autoGeneratedKeys) throws SQLException {
@@ -615,7 +617,7 @@ class PooledConnectionImpl
         }
     }
 
-    PreparedStatement prepareStatement(final String sql, final int columnIndexes[]) throws SQLException {
+    PreparedStatement prepareStatement(final String sql, final int[] columnIndexes) throws SQLException {
         if (pStmtPool == null) {
             return connection.prepareStatement(sql, columnIndexes);
         }
@@ -642,6 +644,8 @@ class PooledConnectionImpl
      *            <code>ResultSet.CONCUR_UPDATABLE</code>.
      *
      * @return a {@link PoolablePreparedStatement}.
+     * @throws SQLException Thrown if a database access error occurs, this method is called on a closed connection, or
+     *         the borrow failed.
      * @see Connection#prepareStatement(String, int, int)
      */
     PreparedStatement prepareStatement(final String sql, final int resultSetType, final int resultSetConcurrency)
@@ -672,7 +676,7 @@ class PooledConnectionImpl
         }
     }
 
-    PreparedStatement prepareStatement(final String sql, final String columnNames[]) throws SQLException {
+    PreparedStatement prepareStatement(final String sql, final String[] columnNames) throws SQLException {
         if (pStmtPool == null) {
             return connection.prepareStatement(sql, columnNames);
         }
@@ -685,15 +689,11 @@ class PooledConnectionImpl
         }
     }
 
-    /**
-     * {@inheritDoc}
-     */
     @Override
     public void removeConnectionEventListener(final ConnectionEventListener listener) {
         eventListeners.remove(listener);
     }
 
-    /* JDBC_4_ANT_KEY_BEGIN */
     @Override
     public void removeStatementEventListener(final StatementEventListener listener) {
         statementEventListeners.remove(listener);
@@ -727,5 +727,31 @@ class PooledConnectionImpl
     @Override
     public boolean validateObject(final PStmtKey key, final PooledObject<DelegatingPreparedStatement> pooledObject) {
         return true;
+    }
+
+    /**
+     * @since 2.6.0
+     */
+    @Override
+    public synchronized String toString() {
+        final StringBuilder builder = new StringBuilder(super.toString());
+        builder.append("[connection=");
+        builder.append(connection);
+        builder.append(", delegatingConnection=");
+        builder.append(delegatingConnection);
+        builder.append(", logicalConnection=");
+        builder.append(logicalConnection);
+        builder.append(", eventListeners=");
+        builder.append(eventListeners);
+        builder.append(", statementEventListeners=");
+        builder.append(statementEventListeners);
+        builder.append(", closed=");
+        builder.append(closed);
+        builder.append(", pStmtPool=");
+        builder.append(pStmtPool);
+        builder.append(", accessToUnderlyingConnectionAllowed=");
+        builder.append(accessToUnderlyingConnectionAllowed);
+        builder.append("]");
+        return builder.toString();
     }
 }

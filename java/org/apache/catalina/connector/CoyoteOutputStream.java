@@ -18,6 +18,7 @@ package org.apache.catalina.connector;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.util.Objects;
 
 import javax.servlet.ServletOutputStream;
 import javax.servlet.WriteListener;
@@ -77,7 +78,12 @@ public class CoyoteOutputStream extends ServletOutputStream {
     @Override
     public void write(int i) throws IOException {
         boolean nonBlocking = checkNonBlockingWrite();
-        ob.writeByte(i);
+        try {
+            ob.writeByte(i);
+        } catch (IOException ioe) {
+            ob.setErrorException(ioe);
+            throw ioe;
+        }
         if (nonBlocking) {
             checkRegisterForWrite();
         }
@@ -93,7 +99,12 @@ public class CoyoteOutputStream extends ServletOutputStream {
     @Override
     public void write(byte[] b, int off, int len) throws IOException {
         boolean nonBlocking = checkNonBlockingWrite();
-        ob.write(b, off, len);
+        try {
+            ob.write(b, off, len);
+        } catch (IOException ioe) {
+            ob.setErrorException(ioe);
+            throw ioe;
+        }
         if (nonBlocking) {
             checkRegisterForWrite();
         }
@@ -101,8 +112,14 @@ public class CoyoteOutputStream extends ServletOutputStream {
 
 
     public void write(ByteBuffer from) throws IOException {
+        Objects.requireNonNull(from);
         boolean nonBlocking = checkNonBlockingWrite();
-        ob.write(from);
+        try {
+            ob.write(from);
+        } catch (IOException ioe) {
+            ob.setErrorException(ioe);
+            throw ioe;
+        }
         if (nonBlocking) {
             checkRegisterForWrite();
         }
@@ -115,7 +132,12 @@ public class CoyoteOutputStream extends ServletOutputStream {
     @Override
     public void flush() throws IOException {
         boolean nonBlocking = checkNonBlockingWrite();
-        ob.flush();
+        try {
+            ob.flush();
+        } catch (IOException ioe) {
+            ob.setErrorException(ioe);
+            throw ioe;
+        }
         if (nonBlocking) {
             checkRegisterForWrite();
         }
@@ -123,12 +145,10 @@ public class CoyoteOutputStream extends ServletOutputStream {
 
 
     /**
-     * Checks for concurrent writes which are not permitted. This object has no
-     * state information so the call chain is
+     * Checks for concurrent writes which are not permitted. This object has no state information so the call chain is
      * CoyoteOutputStream->OutputBuffer->CoyoteResponse.
      *
-     * @return <code>true</code> if this OutputStream is currently in
-     *         non-blocking mode.
+     * @return <code>true</code> if this OutputStream is currently in non-blocking mode.
      */
     private boolean checkNonBlockingWrite() {
         boolean nonBlocking = !ob.isBlocking();
@@ -140,12 +160,10 @@ public class CoyoteOutputStream extends ServletOutputStream {
 
 
     /**
-     * Checks to see if there is data left in the Coyote output buffers (NOT the
-     * servlet output buffer) and if so registers the associated socket for
-     * write so the buffers will be emptied. The container will take care of
-     * this. As far as the app is concerned, there is a non-blocking write in
-     * progress. It doesn't have visibility of whether the data is buffered in
-     * the socket buffer or the Coyote buffers.
+     * Checks to see if there is data left in the Coyote output buffers (NOT the servlet output buffer) and if so
+     * registers the associated socket for write so the buffers will be emptied. The container will take care of this.
+     * As far as the app is concerned, there is a non-blocking write in progress. It doesn't have visibility of whether
+     * the data is buffered in the socket buffer or the Coyote buffers.
      */
     private void checkRegisterForWrite() {
         ob.checkRegisterForWrite();
@@ -154,11 +172,19 @@ public class CoyoteOutputStream extends ServletOutputStream {
 
     @Override
     public void close() throws IOException {
-        ob.close();
+        try {
+            ob.close();
+        } catch (IOException ioe) {
+            ob.setErrorException(ioe);
+            throw ioe;
+        }
     }
 
     @Override
     public boolean isReady() {
+        if (ob == null) {
+            throw new IllegalStateException(sm.getString("coyoteOutputStream.null"));
+        }
         return ob.isReady();
     }
 

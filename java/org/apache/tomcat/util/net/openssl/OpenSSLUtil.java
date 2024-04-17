@@ -35,7 +35,7 @@ import org.apache.tomcat.util.res.StringManager;
 public class OpenSSLUtil extends SSLUtilBase {
 
     private static final Log log = LogFactory.getLog(OpenSSLUtil.class);
-    private static final StringManager sm = StringManager.getManager(OpenSSLContext.class);
+    private static final StringManager sm = StringManager.getManager(OpenSSLUtil.class);
 
 
     public OpenSSLUtil(SSLHostConfigCertificate certificate) {
@@ -73,8 +73,13 @@ public class OpenSSLUtil extends SSLUtilBase {
         return new OpenSSLContext(certificate, negotiableProtocols);
     }
 
-
+    @Deprecated
     public static X509KeyManager chooseKeyManager(KeyManager[] managers) throws Exception {
+        return chooseKeyManager(managers, true);
+    }
+
+
+    public static X509KeyManager chooseKeyManager(KeyManager[] managers, boolean throwOnMissing) throws Exception {
         if (managers == null) {
             return null;
         }
@@ -88,7 +93,12 @@ public class OpenSSLUtil extends SSLUtilBase {
                 return (X509KeyManager) manager;
             }
         }
-        throw new IllegalStateException(sm.getString("openssl.keyManagerMissing"));
+        if (throwOnMissing) {
+            throw new IllegalStateException(sm.getString("openssl.keyManagerMissing"));
+        }
+
+        log.warn(sm.getString("openssl.keyManagerMissing.warn"));
+        return null;
     }
 
 
@@ -110,7 +120,7 @@ public class OpenSSLUtil extends SSLUtilBase {
             // KeyStoreException or IOException if it doesn't understand the
             // provided file.
             if (certificate.getCertificateFile() != null) {
-                String msg = sm.getString("openssl.nonJsseCertficate",
+                String msg = sm.getString("openssl.nonJsseCertificate",
                         certificate.getCertificateFile(), certificate.getCertificateKeyFile());
                 if (log.isDebugEnabled()) {
                     log.info(msg, e);

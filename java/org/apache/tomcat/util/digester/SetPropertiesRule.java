@@ -14,8 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
-
 package org.apache.tomcat.util.digester;
 
 
@@ -46,26 +44,21 @@ public class SetPropertiesRule extends Rule {
 
         // Populate the corresponding properties of the top object
         Object top = digester.peek();
-        if (digester.log.isDebugEnabled()) {
-            if (top != null) {
-                digester.log.debug("[SetPropertiesRule]{" + digester.match +
-                                   "} Set " + top.getClass().getName() +
-                                   " properties");
-            } else {
-                digester.log.debug("[SetPropertiesRule]{" + digester.match +
-                                   "} Set NULL properties");
-            }
+        if (digester.log.isTraceEnabled()) {
+            digester.log.trace("[SetPropertiesRule]{" + digester.match +
+                    "} Set " + top.getClass().getName() +
+                    " properties");
         }
 
         for (int i = 0; i < attributes.getLength(); i++) {
             String name = attributes.getLocalName(i);
-            if ("".equals(name)) {
+            if (name.isEmpty()) {
                 name = attributes.getQName(i);
             }
             String value = attributes.getValue(i);
 
-            if (digester.log.isDebugEnabled()) {
-                digester.log.debug("[SetPropertiesRule]{" + digester.match +
+            if (digester.log.isTraceEnabled()) {
+                digester.log.trace("[SetPropertiesRule]{" + digester.match +
                         "} Setting property '" + name + "' to '" +
                         value + "'");
             }
@@ -86,8 +79,6 @@ public class SetPropertiesRule extends Rule {
      */
     @Override
     public String toString() {
-        StringBuilder sb = new StringBuilder("SetPropertiesRule[");
-        sb.append("]");
-        return sb.toString();
+        return "SetPropertiesRule[]";
     }
 }

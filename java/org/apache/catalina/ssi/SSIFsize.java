@@ -20,6 +20,9 @@ package org.apache.catalina.ssi;
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.text.DecimalFormat;
+
+import org.apache.tomcat.util.res.StringManager;
+
 /**
  * Implements the Server-side #fsize command
  *
@@ -29,40 +32,36 @@ import java.text.DecimalFormat;
  * @author David Becker
  */
 public final class SSIFsize implements SSICommand {
-    static final int ONE_KILOBYTE = 1024;
-    static final int ONE_MEGABYTE = 1024 * 1024;
+    private static final StringManager sm = StringManager.getManager(SSIFsize.class);
+    static final int ONE_KIBIBYTE = 1024;
+    static final int ONE_MEBIBYTE = 1024 * 1024;
 
 
     /**
      * @see SSICommand
      */
     @Override
-    public long process(SSIMediator ssiMediator, String commandName,
-            String[] paramNames, String[] paramValues, PrintWriter writer) {
+    public long process(SSIMediator ssiMediator, String commandName, String[] paramNames, String[] paramValues,
+            PrintWriter writer) {
         long lastModified = 0;
         String configErrMsg = ssiMediator.getConfigErrMsg();
         for (int i = 0; i < paramNames.length; i++) {
             String paramName = paramNames[i];
             String paramValue = paramValues[i];
-            String substitutedValue = ssiMediator
-                    .substituteVariables(paramValue);
+            String substitutedValue = ssiMediator.substituteVariables(paramValue);
             try {
-                if (paramName.equalsIgnoreCase("file")
-                        || paramName.equalsIgnoreCase("virtual")) {
+                if (paramName.equalsIgnoreCase("file") || paramName.equalsIgnoreCase("virtual")) {
                     boolean virtual = paramName.equalsIgnoreCase("virtual");
-                    lastModified = ssiMediator.getFileLastModified(
-                            substitutedValue, virtual);
-                    long size = ssiMediator.getFileSize(substitutedValue,
-                            virtual);
+                    lastModified = ssiMediator.getFileLastModified(substitutedValue, virtual);
+                    long size = ssiMediator.getFileSize(substitutedValue, virtual);
                     String configSizeFmt = ssiMediator.getConfigSizeFmt();
                     writer.write(formatSize(size, configSizeFmt));
                 } else {
-                    ssiMediator.log("#fsize--Invalid attribute: " + paramName);
+                    ssiMediator.log(sm.getString("ssiCommand.invalidAttribute", paramName));
                     writer.write(configErrMsg);
                 }
             } catch (IOException e) {
-                ssiMediator.log("#fsize--Couldn't get size for file: "
-                        + substitutedValue, e);
+                ssiMediator.log(sm.getString("ssiFsize.noSize", substitutedValue), e);
                 writer.write(configErrMsg);
             }
         }
@@ -72,7 +71,7 @@ public final class SSIFsize implements SSICommand {
 
     public String repeat(char aChar, int numChars) {
         if (numChars < 0) {
-            throw new IllegalArgumentException("Num chars can't be negative");
+            throw new IllegalArgumentException(sm.getString("ssiFsize.invalidNumChars"));
         }
         StringBuilder buf = new StringBuilder();
         for (int i = 0; i < numChars; i++) {
@@ -92,8 +91,9 @@ public final class SSIFsize implements SSICommand {
     }
 
 
-    //We try to mimic Apache here, as we do everywhere
-    //All the 'magic' numbers are from the util_script.c Apache source file.
+    // We try to mimic httpd here, as we do everywhere.
+    // All the 'magic' numbers are from the util_script.c httpd source file.
+    // Should use KiB and MiB in output but use k and M for consistency with httpd.
     protected String formatSize(long size, String format) {
         String retString = "";
         if (format.equalsIgnoreCase("bytes")) {
@@ -104,17 +104,16 @@ public final class SSIFsize implements SSICommand {
                 retString = "-";
             } else if (size == 0) {
                 retString = "0k";
-            } else if (size < ONE_KILOBYTE) {
+            } else if (size < ONE_KIBIBYTE) {
                 retString = "1k";
-            } else if (size < ONE_MEGABYTE) {
-                retString = Long.toString((size + 512) / ONE_KILOBYTE);
+            } else if (size < ONE_MEBIBYTE) {
+                retString = Long.toString((size + 512) / ONE_KIBIBYTE);
                 retString += "k";
-            } else if (size < 99 * ONE_MEGABYTE) {
+            } else if (size < 99 * ONE_MEBIBYTE) {
                 DecimalFormat decimalFormat = new DecimalFormat("0.0M");
-                retString = decimalFormat.format(size / (double)ONE_MEGABYTE);
+                retString = decimalFormat.format(size / (double) ONE_MEBIBYTE);
             } else {
-                retString = Long.toString((size + (529 * ONE_KILOBYTE))
-                        / ONE_MEGABYTE);
+                retString = Long.toString((size + (529 * ONE_KIBIBYTE)) / ONE_MEBIBYTE);
                 retString += "M";
             }
             retString = padLeft(retString, 5);

@@ -18,6 +18,9 @@ package org.apache.catalina.ssi;
 
 
 import java.io.PrintWriter;
+
+import org.apache.tomcat.util.res.StringManager;
+
 /**
  * Implements the Server-side #set command
  *
@@ -26,13 +29,14 @@ import java.io.PrintWriter;
  * @author David Becker
  */
 public class SSISet implements SSICommand {
+    private static final StringManager sm = StringManager.getManager(SSISet.class);
+
     /**
      * @see SSICommand
      */
     @Override
-    public long process(SSIMediator ssiMediator, String commandName,
-            String[] paramNames, String[] paramValues, PrintWriter writer)
-            throws SSIStopProcessingException {
+    public long process(SSIMediator ssiMediator, String commandName, String[] paramNames, String[] paramValues,
+            PrintWriter writer) throws SSIStopProcessingException {
         long lastModified = 0;
         String errorMessage = ssiMediator.getConfigErrMsg();
         String variableName = null;
@@ -43,18 +47,16 @@ public class SSISet implements SSICommand {
                 variableName = paramValue;
             } else if (paramName.equalsIgnoreCase("value")) {
                 if (variableName != null) {
-                    String substitutedValue = ssiMediator
-                            .substituteVariables(paramValue);
-                    ssiMediator.setVariableValue(variableName,
-                            substitutedValue);
+                    String substitutedValue = ssiMediator.substituteVariables(paramValue);
+                    ssiMediator.setVariableValue(variableName, substitutedValue);
                     lastModified = System.currentTimeMillis();
                 } else {
-                    ssiMediator.log("#set--no variable specified");
+                    ssiMediator.log(sm.getString("ssiSet.noVariable"));
                     writer.write(errorMessage);
                     throw new SSIStopProcessingException();
                 }
             } else {
-                ssiMediator.log("#set--Invalid attribute: " + paramName);
+                ssiMediator.log(sm.getString("ssiCommand.invalidAttribute", paramName));
                 writer.write(errorMessage);
                 throw new SSIStopProcessingException();
             }

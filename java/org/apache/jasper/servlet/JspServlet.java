@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.jasper.servlet;
 
 import java.io.FileNotFoundException;
@@ -142,7 +141,9 @@ public class JspServlet extends HttpServlet implements PeriodicEventListener {
                 throw new ServletException("Could not precompile jsp: " + jspFile, e);
             } catch (PrivilegedActionException e) {
                 Throwable t = e.getCause();
-                if (t instanceof ServletException) throw (ServletException)t;
+                if (t instanceof ServletException) {
+                    throw (ServletException)t;
+                }
                 throw new ServletException("Could not precompile jsp: " + jspFile, e);
             }
         }
@@ -316,23 +317,19 @@ public class JspServlet extends HttpServlet implements PeriodicEventListener {
             }
         }
 
-        if (log.isDebugEnabled()) {
-            log.debug("JspEngine --> " + jspUri);
-            log.debug("\t     ServletPath: " + request.getServletPath());
-            log.debug("\t        PathInfo: " + request.getPathInfo());
-            log.debug("\t        RealPath: " + context.getRealPath(jspUri));
-            log.debug("\t      RequestURI: " + request.getRequestURI());
-            log.debug("\t     QueryString: " + request.getQueryString());
+        if (log.isTraceEnabled()) {
+            log.trace("JspEngine --> " + jspUri);
+            log.trace("\t     ServletPath: " + request.getServletPath());
+            log.trace("\t        PathInfo: " + request.getPathInfo());
+            log.trace("\t        RealPath: " + context.getRealPath(jspUri));
+            log.trace("\t      RequestURI: " + request.getRequestURI());
+            log.trace("\t     QueryString: " + request.getQueryString());
         }
 
         try {
             boolean precompile = preCompile(request);
             serviceJspFile(request, response, jspUri, precompile);
-        } catch (RuntimeException e) {
-            throw e;
-        } catch (ServletException e) {
-            throw e;
-        } catch (IOException e) {
+        } catch (RuntimeException | IOException | ServletException e) {
             throw e;
         } catch (Throwable e) {
             ExceptionUtils.handleThrowable(e);
@@ -343,8 +340,8 @@ public class JspServlet extends HttpServlet implements PeriodicEventListener {
 
     @Override
     public void destroy() {
-        if (log.isDebugEnabled()) {
-            log.debug("JspServlet.destroy()");
+        if (log.isTraceEnabled()) {
+            log.trace("JspServlet.destroy()");
         }
 
         rctxt.destroy();
@@ -398,21 +395,18 @@ public class JspServlet extends HttpServlet implements PeriodicEventListener {
         String includeRequestUri =
             (String)request.getAttribute(RequestDispatcher.INCLUDE_REQUEST_URI);
 
+        String msg = Localizer.getMessage("jsp.error.file.not.found",jspUri);
         if (includeRequestUri != null) {
             // This file was included. Throw an exception as
             // a response.sendError() will be ignored
-            String msg =
-                Localizer.getMessage("jsp.error.file.not.found",jspUri);
             // Strictly, filtering this is an application
             // responsibility but just in case...
             throw new ServletException(Escape.htmlElementContent(msg));
         } else {
             try {
-                response.sendError(HttpServletResponse.SC_NOT_FOUND,
-                        request.getRequestURI());
+                response.sendError(HttpServletResponse.SC_NOT_FOUND, msg);
             } catch (IllegalStateException ise) {
-                log.error(Localizer.getMessage("jsp.error.file.not.found",
-                        jspUri));
+                log.error(msg);
             }
         }
         return;

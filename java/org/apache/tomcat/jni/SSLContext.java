@@ -14,16 +14,12 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  */
-
 package org.apache.tomcat.jni;
 
+import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
-/** SSL Context
- *
- * @author Mladen Turk
- */
 public final class SSLContext {
 
     public static final byte[] DEFAULT_SESSION_ID_CONTEXT =
@@ -69,7 +65,10 @@ public final class SSLContext {
      * Set Session context id. Usually host:port combination.
      * @param ctx Context to use.
      * @param id  String that uniquely identifies this context.
+     *
+     * @deprecated Unused. Will be removed in Tomcat 10.1
      */
+    @Deprecated
     public static native void setContextId(long ctx, String id);
 
     /**
@@ -90,7 +89,10 @@ public final class SSLContext {
      * @param ctx Server or Client context to use.
      * @param bio BIO handle to use, created with SSL.newBIO
      * @param dir BIO direction (1 for input 0 for output).
+     *
+     * @deprecated Unused. Will be removed in Tomcat 10.1
      */
+    @Deprecated
     public static native void setBIO(long ctx, long bio, int dir);
 
     /**
@@ -139,7 +141,10 @@ public final class SSLContext {
      * The default is normal shutdown behaviour as described by the TLS standard.
      * @param ctx Server or Client context to use.
      * @param mode True to set the quiet shutdown.
+     *
+     * @deprecated Unused. Will be removed in Tomcat 10.1
      */
+    @Deprecated
     public static native void setQuietShutdown(long ctx, boolean mode);
 
     /**
@@ -216,7 +221,7 @@ public final class SSLContext {
      * Point setCertificateFile at a PEM encoded certificate.  If
      * the certificate is encrypted, then you will be prompted for a
      * pass phrase.  Note that a kill -HUP will prompt again. A test
-     * certificate can be generated with `make certificate' under
+     * certificate can be generated with 'make certificate' under
      * built time. Keep in mind that if you've both a RSA and a DSA
      * certificate you can configure both in parallel (to also allow
      * the use of DSA ciphers, etc.)
@@ -343,7 +348,10 @@ public final class SSLContext {
      * Set file for randomness
      * @param ctx Server or Client context to use.
      * @param file random file.
+     *
+     * @deprecated Unused. Will be removed in Tomcat 10.1
      */
+    @Deprecated
     public static native void setRandom(long ctx, String file);
 
     /**
@@ -357,7 +365,10 @@ public final class SSLContext {
      * </PRE>
      * @param ctx Server or Client context to use.
      * @param type Shutdown type to use.
+     *
+     * @deprecated Unused. Will be removed in Tomcat 10.1
      */
+    @Deprecated
     public static native void setShutdownType(long ctx, int type);
 
     /**
@@ -395,6 +406,7 @@ public final class SSLContext {
      */
     public static native void setVerify(long ctx, int level, int depth);
 
+    @Deprecated
     public static native int setALPN(long ctx, byte[] proto, int len);
 
     /**
@@ -416,7 +428,10 @@ public final class SSLContext {
         if (sniCallBack == null) {
             return 0;
         }
-        return sniCallBack.getSslContext(sniHostName);
+        // Can't be sure OpenSSL is going to provide the SNI value in lower case
+        // so convert it before looking up the SSLContext
+        String hostName = (sniHostName == null) ? null : sniHostName.toLowerCase(Locale.ENGLISH);
+        return sniCallBack.getSslContext(hostName);
     }
 
     /**
@@ -441,7 +456,10 @@ public final class SSLContext {
      *                    via connections initiated using
      *                    <code>defaultSSLContext</code> to the correct  OpenSSL
      *                    SSLContext
+     *
+     * @deprecated Unused. Will be removed in Tomcat 10.1
      */
+    @Deprecated
     public static void registerDefault(Long defaultSSLContext,
             SNICallBack sniCallBack) {
         sniCallBacks.put(defaultSSLContext, sniCallBack);
@@ -453,7 +471,10 @@ public final class SSLContext {
      *
      * @param defaultSSLContext The Java representation of a pointer to the
      *                          OpenSSL SSLContext that will no longer be used
+     *
+     * @deprecated Unused. Will be removed in Tomcat 10.1
      */
+    @Deprecated
     public static void unregisterDefault(Long defaultSSLContext) {
         sniCallBacks.remove(defaultSSLContext);
     }
@@ -464,19 +485,20 @@ public final class SSLContext {
      * select an OpenSSL SSLContext based on the host name requested by the
      * client.
      */
-    public static interface SNICallBack {
+    public interface SNICallBack {
 
         /**
          * This callback is made during the TLS handshake when the client uses
          * the SNI extension to request a specific TLS host.
          *
-         * @param sniHostName The host name requested by the client
+         * @param sniHostName The host name requested by the client - must be in
+         *                    lower case
          *
          * @return The Java representation of the pointer to the OpenSSL
          *         SSLContext to use for the given host or zero if no SSLContext
          *         could be identified
          */
-        public long getSslContext(String sniHostName);
+        long getSslContext(String sniHostName);
     }
 
     /**
@@ -506,7 +528,10 @@ public final class SSLContext {
      * @param nextProtos protocols in priority order
      * @param selectorFailureBehavior see {@link SSL#SSL_SELECTOR_FAILURE_NO_ADVERTISE}
      *                                and {@link SSL#SSL_SELECTOR_FAILURE_CHOOSE_MY_LAST_PROTOCOL}
+     *
+     * @deprecated Unused. Will be removed in Tomcat 10.1.x
      */
+    @Deprecated
     public static native void setNpnProtos(long ctx, String[] nextProtos, int selectorFailureBehavior);
 
     /**
@@ -524,7 +549,10 @@ public final class SSLContext {
      * @param cert DH param file (can be generated from e.g. {@code openssl dhparam -rand - 2048 > dhparam.pem} -
      *             see the <a href="https://www.openssl.org/docs/apps/dhparam.html">OpenSSL documentation</a>).
      * @throws Exception An error occurred
+     *
+     * @deprecated Unused. Will be removed in Tomcat 10.1
      */
+    @Deprecated
     public static native void setTmpDH(long ctx, String cert)
             throws Exception;
 
@@ -534,7 +562,10 @@ public final class SSLContext {
      * @param curveName the name of the elliptic curve to use
      *             (available names can be obtained from {@code openssl ecparam -list_curves}).
      * @throws Exception An error occurred
+     *
+     * @deprecated Unused. Will be removed in Tomcat 10.1
      */
+    @Deprecated
     public static native void setTmpECDHByCurveName(long ctx, String curveName)
             throws Exception;
 

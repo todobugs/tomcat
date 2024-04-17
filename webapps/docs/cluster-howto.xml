@@ -127,8 +127,12 @@ Tomcat cluster. These include:</p>
   <li>private LAN</li>
   <li>a Virtual Private Network (VPN)</li>
   <li>IPSEC</li>
-  <li>Encrypt cluster traffic using the <a href="config/cluster-interceptor.html#org.apache.catalina.tribes.group.interceptors.EncryptInterceptor_Attributes">EncryptInterceptor</a></li>
 </ul>
+
+<p>The <a href="cluster-interceptor.html#org.apache.catalina.tribes.group.interceptors.EncryptInterceptor_Attributes">EncryptInterceptor</a>
+provides confidentiality and integrity protection but it does not protect
+against all risks associated with running a Tomcat cluster on an untrusted
+network, particularly DoS attacks.</p>
 
 </section>
 
@@ -217,10 +221,24 @@ should be completed:</p>
     sent over the wire and reinstantiated on all the other cluster nodes.
     Synchronous vs. asynchronous is configured using the <code>channelSendOptions</code>
     flag and is an integer value. The default value for the <code>SimpleTcpCluster/DeltaManager</code> combo is
-    8, which is asynchronous. You can read more on the <a href="tribes/introduction.html">send flag(overview)</a> or the
-    <doc path="/api/org/apache/catalina/tribes/Channel.html">send flag(javadoc)</doc>.
-    During async replication, the request is returned before the data has been replicated. async replication yields shorter
-    request times, and synchronous replication guarantees the session to be replicated before the request returns.
+    8, which is asynchronous.
+    See the <a href="config/cluster.html#SimpleTcpCluster_Attributes">configuration reference</a>
+    for more discussion on the various <code>channelSendOptions</code> values.
+</p>
+<p>
+    For convenience, <code>channelSendOptions</code> can be set by name(s) rather than integer,
+    which are then translated to their integer value upon startup.  The valid option names are:
+    "asynchronous" (alias "async"), "byte_message" (alias "byte"), "multicast", "secure",
+    "synchronized_ack" (alias "sync"), "udp", "use_ack".  Use comma to separate multiple names,
+    e.g. pass "async, multicast" for the options
+    <code>SEND_OPTIONS_ASYNCHRONOUS | SEND_OPTIONS_MULTICAST</code>.
+</p>
+<p>
+  You can read more on the <a href="tribes/introduction.html">send flag(overview)</a> or the
+  <doc path="/api/org/apache/catalina/tribes/Channel.html">send flag(javadoc)</doc>.
+  During async replication, the request is returned before the data has been replicated. async
+  replication yields shorter request times, and synchronous replication guarantees the session
+  to be replicated before the request returns.
 </p>
 </section>
 
@@ -244,7 +262,7 @@ should be completed:</p>
 <p>
     <b>Hint:</b><br/>
     With attribute <i>sessionIdAttribute</i> you can change the request attribute name that included the old session id.
-    Default attribute name is <i>org.apache.catalina.ha.session.JvmRouteOrignalSessionID</i>.
+    Default attribute name is <i>org.apache.catalina.ha.session.JvmRouteOriginalSessionID</i>.
 </p>
 <p>
     <b>Trick:</b><br/>
@@ -681,7 +699,7 @@ should be completed:</p>
 </section>
 
 <section name="FAQ">
-<p>Please see <a href="https://wiki.apache.org/tomcat/FAQ/Clustering">the clustering section of the FAQ</a>.</p>
+<p>Please see <a href="https://cwiki.apache.org/confluence/display/TOMCAT/Clustering">the clustering section of the FAQ</a>.</p>
 </section>
 
 </body>

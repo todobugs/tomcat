@@ -14,8 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
-
 package org.apache.naming;
 
 import java.util.Hashtable;
@@ -129,8 +127,8 @@ public class SelectorContext implements Context {
     public Object lookup(Name name)
         throws NamingException {
 
-        if (log.isDebugEnabled()) {
-            log.debug(sm.getString("selectorContext.methodUsingName", "lookup",
+        if (log.isTraceEnabled()) {
+            log.trace(sm.getString("selectorContext.methodUsingName", "lookup",
                     name));
         }
 
@@ -152,8 +150,8 @@ public class SelectorContext implements Context {
     public Object lookup(String name)
         throws NamingException {
 
-        if (log.isDebugEnabled()) {
-            log.debug(sm.getString("selectorContext.methodUsingString", "lookup",
+        if (log.isTraceEnabled()) {
+            log.trace(sm.getString("selectorContext.methodUsingString", "lookup",
                     name));
         }
 
@@ -329,8 +327,8 @@ public class SelectorContext implements Context {
     public NamingEnumeration<NameClassPair> list(Name name)
         throws NamingException {
 
-        if (log.isDebugEnabled()) {
-            log.debug(sm.getString("selectorContext.methodUsingName", "list",
+        if (log.isTraceEnabled()) {
+            log.trace(sm.getString("selectorContext.methodUsingName", "list",
                     name));
         }
 
@@ -351,8 +349,8 @@ public class SelectorContext implements Context {
     public NamingEnumeration<NameClassPair> list(String name)
         throws NamingException {
 
-        if (log.isDebugEnabled()) {
-            log.debug(sm.getString("selectorContext.methodUsingString", "list",
+        if (log.isTraceEnabled()) {
+            log.trace(sm.getString("selectorContext.methodUsingString", "list",
                     name));
         }
 
@@ -377,8 +375,8 @@ public class SelectorContext implements Context {
     public NamingEnumeration<Binding> listBindings(Name name)
         throws NamingException {
 
-        if (log.isDebugEnabled()) {
-            log.debug(sm.getString("selectorContext.methodUsingName",
+        if (log.isTraceEnabled()) {
+            log.trace(sm.getString("selectorContext.methodUsingName",
                     "listBindings", name));
         }
 
@@ -399,8 +397,8 @@ public class SelectorContext implements Context {
     public NamingEnumeration<Binding> listBindings(String name)
         throws NamingException {
 
-        if (log.isDebugEnabled()) {
-            log.debug(sm.getString("selectorContext.methodUsingString",
+        if (log.isTraceEnabled()) {
+            log.trace(sm.getString("selectorContext.methodUsingString",
                     "listBindings", name));
         }
 
@@ -509,8 +507,8 @@ public class SelectorContext implements Context {
     public Object lookupLink(Name name)
         throws NamingException {
 
-        if (log.isDebugEnabled()) {
-            log.debug(sm.getString("selectorContext.methodUsingName",
+        if (log.isTraceEnabled()) {
+            log.trace(sm.getString("selectorContext.methodUsingName",
                     "lookupLink", name));
         }
 
@@ -531,8 +529,8 @@ public class SelectorContext implements Context {
     public Object lookupLink(String name)
         throws NamingException {
 
-        if (log.isDebugEnabled()) {
-            log.debug(sm.getString("selectorContext.methodUsingString",
+        if (log.isTraceEnabled()) {
+            log.trace(sm.getString("selectorContext.methodUsingString",
                     "lookupLink", name));
         }
 

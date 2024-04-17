@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.jasper.compiler;
 
 import javax.servlet.jsp.tagext.TagAttributeInfo;
@@ -33,7 +32,7 @@ class JasperTagInfo extends TagInfo {
 
     private final String dynamicAttrsMapName;
 
-    public JasperTagInfo(String tagName,
+    JasperTagInfo(String tagName,
             String tagClassName,
             String bodyContent,
             String infoString,

@@ -14,8 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
-
 package org.apache.catalina.ant;
 
 
@@ -109,8 +107,7 @@ public class JMXSetTask extends AbstractCatalinaTask {
     public void execute() throws BuildException {
         super.execute();
         if (bean == null || attribute == null || value == null) {
-            throw new BuildException
-                ("Must specify 'bean', 'attribute' and 'value' attributes");
+            throw new BuildException("Must specify 'bean', 'attribute' and 'value' attributes");
         }
         log("Setting attribute " + attribute +
                             " in bean " + bean +
@@ -120,8 +117,7 @@ public class JMXSetTask extends AbstractCatalinaTask {
                     + "&att=" + URLEncoder.encode(attribute, getCharset())
                     + "&val=" + URLEncoder.encode(value, getCharset()));
         } catch (UnsupportedEncodingException e) {
-            throw new BuildException
-                ("Invalid 'charset' attribute: " + getCharset());
+            throw new BuildException("Invalid 'charset' attribute: " + getCharset());
         }
     }
 }

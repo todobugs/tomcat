@@ -34,14 +34,16 @@ public class DOMWriter {
     /** Default Encoding */
     private static final String PRINTWRITER_ENCODING = "UTF8";
 
-    /** Print writer.
+    /**
+     * Print writer.
      *
      * @deprecated Will be made private in Tomcat 9.
      */
     @Deprecated
     protected final PrintWriter out;
 
-    /** Canonical output.
+    /**
+     * Canonical output.
      *
      * @deprecated Will be made private in Tomcat 9.
      */
@@ -99,8 +101,7 @@ public class DOMWriter {
                 out.print('<');
                 out.print(node.getLocalName());
                 Attr attrs[] = sortAttributes(node.getAttributes());
-                for (int i = 0; i < attrs.length; i++) {
-                    Attr attr = attrs[i];
+                for (Attr attr : attrs) {
                     out.print(' ');
                     out.print(attr.getLocalName());
 

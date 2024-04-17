@@ -19,6 +19,7 @@ package org.apache.tomcat.util.compat;
 import java.io.File;
 import java.io.IOException;
 import java.lang.reflect.AccessibleObject;
+import java.lang.reflect.Field;
 import java.net.URI;
 import java.net.URL;
 import java.net.URLConnection;
@@ -41,30 +42,63 @@ public class JreCompat {
     private static final int RUNTIME_MAJOR_VERSION = 7;
 
     private static final JreCompat instance;
-    private static StringManager sm =
-            StringManager.getManager(JreCompat.class.getPackage().getName());
-    private static final boolean jre9Available;
     private static final boolean jre8Available;
+    private static final boolean jre9Available;
+    private static final boolean jre11Available;
+    private static final boolean jre16Available;
+    private static final boolean jre19Available;
+    private static final boolean jre21Available;
+    private static final StringManager sm = StringManager.getManager(JreCompat.class);
+
 
 
     static {
-        // This is Tomcat 8 with a minimum Java version of Java 7. The latest
-        // Java version the optional features require is Java 9.
+        // This is Tomcat 8 with a minimum Java version of Java 7.
         // Look for the highest supported JVM first
-        if (Jre9Compat.isSupported()) {
-            instance = new Jre9Compat();
+        if (Jre21Compat.isSupported()) {
+            instance = new Jre21Compat();
+            jre21Available = true;
+            jre19Available = true;
+            jre16Available = true;
             jre9Available = true;
             jre8Available = true;
-        }
-        else if (Jre8Compat.isSupported()) {
+        } else if (Jre19Compat.isSupported()) {
+            instance = new Jre19Compat();
+            jre21Available = false;
+            jre19Available = true;
+            jre16Available = true;
+            jre9Available = true;
+            jre8Available = true;
+        } else if (Jre16Compat.isSupported()) {
+            instance = new Jre16Compat();
+            jre21Available = false;
+            jre19Available = false;
+            jre16Available = true;
+            jre9Available = true;
+            jre8Available = true;
+        } else if (Jre9Compat.isSupported()) {
+            instance = new Jre9Compat();
+            jre21Available = false;
+            jre19Available = false;
+            jre16Available = false;
+            jre9Available = true;
+            jre8Available = true;
+        } else if (Jre8Compat.isSupported()) {
             instance = new Jre8Compat();
+            jre21Available = false;
+            jre19Available = false;
+            jre16Available = false;
             jre9Available = false;
             jre8Available = true;
         } else {
             instance = new JreCompat();
+            jre21Available = false;
+            jre19Available = false;
+            jre16Available = false;
             jre9Available = false;
             jre8Available = false;
         }
+        jre11Available = instance.jarFileRuntimeMajorVersion() >= 11;
     }
 
 
@@ -73,12 +107,42 @@ public class JreCompat {
     }
 
 
-    // Java 7 implementation of Java 8 methods
+    public static boolean isAlpnSupported() {
+        return isJre9Available() || (isJre8Available() && Jre8Compat.isAlpnSupported());
+    }
+
 
     public static boolean isJre8Available() {
         return jre8Available;
     }
 
+
+    public static boolean isJre9Available() {
+        return jre9Available;
+    }
+
+
+    public static boolean isJre11Available() {
+        return jre11Available;
+    }
+
+
+    public static boolean isJre16Available() {
+        return jre16Available;
+    }
+
+
+    public static boolean isJre19Available() {
+        return jre19Available;
+    }
+
+
+    public static boolean isJre21Available() {
+        return jre21Available;
+    }
+
+
+    // Java 7 implementation of Java 8 methods
 
     @SuppressWarnings("unused")
     public void setUseServerCipherSuitesOrder(SSLParameters engine, boolean useCipherSuitesOrder) {
@@ -93,11 +157,6 @@ public class JreCompat {
 
 
     // Java 7 implementation of Java 9 methods
-
-    public static boolean isJre9Available() {
-        return jre9Available;
-    }
-
 
     /**
      * Test if the provided exception is an instance of
@@ -117,9 +176,9 @@ public class JreCompat {
     /**
      * Set the application protocols the server will accept for ALPN
      *
-     * @param sslParameters    The SSL parameters for a connection
-     * @param protocols        The application protocols to be allowed for that
-     *                         connection
+     * @param sslParameters The SSL parameters for a connection
+     * @param protocols     The application protocols to be allowed for that
+     *                      connection
      */
     public void setApplicationProtocols(SSLParameters sslParameters, String[] protocols) {
         throw new UnsupportedOperationException(sm.getString("jreCompat.noApplicationProtocols"));
@@ -227,7 +286,7 @@ public class JreCompat {
      * @return {code true} if the AccessibleObject can be accessed otherwise
      *         {code false}
      */
-    public boolean canAcccess(Object base, AccessibleObject accessibleObject) {
+    public boolean canAccess(Object base, AccessibleObject accessibleObject) {
         // Java 8 doesn't support modules so default to true
         return true;
     }
@@ -243,5 +302,102 @@ public class JreCompat {
      */
     public boolean isExported(Class<?> type) {
         return true;
+    }
+
+
+    /**
+     * What is the module of the given class?
+     *
+     * @param type  The class to test
+     *
+     * @return Always {@code true} for Java 8. {@code true} if the enclosing
+     *         package is exported for Java 9+
+     */
+    public String getModuleName(Class<?> type) {
+        return "NO_MODULE_JAVA_8";
+    }
+
+
+    // Java 7 implementations of Java 19 methods
+
+    /**
+     * Obtains the executor, if any, used to create the provided thread.
+     *
+     * @param thread    The thread to examine
+     *
+     * @return  The executor, if any, that created the provided thread
+     *
+     * @throws NoSuchFieldException
+     *              If a field used via reflection to obtain the executor cannot
+     *              be found
+     * @throws SecurityException
+     *              If a security exception occurs while trying to identify the
+     *              executor
+     * @throws IllegalArgumentException
+     *              If the instance object does not match the class of the field
+     *              when obtaining a field value via reflection
+     * @throws IllegalAccessException
+     *              If a field is not accessible due to access restrictions
+     */
+    public Object getExecutor(Thread thread)
+            throws NoSuchFieldException, SecurityException, IllegalArgumentException, IllegalAccessException {
+
+        Object result = null;
+
+        // Runnable wrapped by Thread
+        // "target" in Sun/Oracle JDK
+        // "runnable" in IBM JDK
+        // "action" in Apache Harmony
+        Object target = null;
+        for (String fieldName : new String[] { "target", "runnable", "action" }) {
+            try {
+                Field targetField = thread.getClass().getDeclaredField(fieldName);
+                targetField.setAccessible(true);
+                target = targetField.get(thread);
+                break;
+            } catch (NoSuchFieldException nfe) {
+                continue;
+            }
+        }
+
+        // "java.util.concurrent" code is in public domain,
+        // so all implementations are similar including our
+        // internal fork.
+        if (target != null && target.getClass().getCanonicalName() != null &&
+                (target.getClass().getCanonicalName().equals(
+                        "org.apache.tomcat.util.threads.ThreadPoolExecutor.Worker") ||
+                        target.getClass().getCanonicalName().equals(
+                                "java.util.concurrent.ThreadPoolExecutor.Worker"))) {
+            Field executorField = target.getClass().getDeclaredField("this$0");
+            executorField.setAccessible(true);
+            result = executorField.get(target);
+        }
+
+        return result;
+    }
+
+
+    // Java 7 implementations of Java 21 methods
+
+    /**
+     * Create a thread builder for virtual threads using the given name to name the threads.
+     *
+     * @param name The base name for the threads
+     *
+     * @return The thread buidler for virtual threads
+     */
+    public Object createVirtualThreadBuilder(String name) {
+        throw new UnsupportedOperationException(sm.getString("jreCompat.noVirtualThreads"));
+    }
+
+
+    /**
+     * Create a thread with the given thread builder and use it to execute the given runnable.
+     *
+     * @param threadBuilder The thread builder to use to create a thread
+     * @param command       The command to run
+     */
+    public void threadBuilderStart(Object threadBuilder, Runnable command) {
+        throw new UnsupportedOperationException(sm.getString("jreCompat.noVirtualThreads"));
     }
 }

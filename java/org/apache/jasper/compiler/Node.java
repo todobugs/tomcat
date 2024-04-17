@@ -18,7 +18,6 @@ package org.apache.jasper.compiler;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Vector;
 
 import javax.el.ELContext;
 import javax.el.ELException;
@@ -95,7 +94,7 @@ abstract class Node implements TagConstants {
     /**
      * Zero-arg Constructor.
      */
-    public Node() {
+    Node() {
     }
 
     /**
@@ -106,7 +105,7 @@ abstract class Node implements TagConstants {
      * @param parent
      *            The enclosing node
      */
-    public Node(Mark start, Node parent) {
+    Node(Mark start, Node parent) {
         this.startMark = start;
         addToParent(parent);
     }
@@ -125,7 +124,7 @@ abstract class Node implements TagConstants {
      * @param parent
      *            The enclosing node
      */
-    public Node(String qName, String localName, Attributes attrs, Mark start,
+    Node(String qName, String localName, Attributes attrs, Mark start,
             Node parent) {
         this.qName = qName;
         this.localName = localName;
@@ -153,7 +152,7 @@ abstract class Node implements TagConstants {
      * @param parent
      *            The enclosing node
      */
-    public Node(String qName, String localName, Attributes attrs,
+    Node(String qName, String localName, Attributes attrs,
             Attributes nonTaglibXmlnsAttrs, Attributes taglibAttrs, Mark start,
             Node parent) {
         this.qName = qName;
@@ -172,7 +171,7 @@ abstract class Node implements TagConstants {
      * local name @param text The text associated with this node @param start
      * The location of the jsp page @param parent The enclosing node
      */
-    public Node(String qName, String localName, String text, Mark start,
+    Node(String qName, String localName, String text, Mark start,
             Node parent) {
         this.qName = qName;
         this.localName = localName;
@@ -399,9 +398,6 @@ abstract class Node implements TagConstants {
         }
     }
 
-    /***************************************************************************
-     * Child classes
-     */
 
     /**
      * Represents the root of a Jsp page or Jsp document
@@ -460,8 +456,9 @@ abstract class Node implements TagConstants {
 
             // Figure out and set the parent root
             Node r = parent;
-            while ((r != null) && !(r instanceof Node.Root))
+            while ((r != null) && !(r instanceof Node.Root)) {
                 r = r.getParent();
+            }
             parentRoot = (Node.Root) r;
         }
 
@@ -542,7 +539,7 @@ abstract class Node implements TagConstants {
      */
     public static class JspRoot extends Node {
 
-        public JspRoot(String qName, Attributes attrs,
+        JspRoot(String qName, Attributes attrs,
                 Attributes nonTaglibXmlnsAttrs, Attributes taglibAttrs,
                 Mark start, Node parent) {
             super(qName, ROOT_ACTION, attrs, nonTaglibXmlnsAttrs, taglibAttrs,
@@ -560,18 +557,18 @@ abstract class Node implements TagConstants {
      */
     public static class PageDirective extends Node {
 
-        private final Vector<String> imports;
+        private final List<String> imports;
 
-        public PageDirective(Attributes attrs, Mark start, Node parent) {
+        PageDirective(Attributes attrs, Mark start, Node parent) {
             this(JSP_PAGE_DIRECTIVE_ACTION, attrs, null, null, start, parent);
         }
 
-        public PageDirective(String qName, Attributes attrs,
+        PageDirective(String qName, Attributes attrs,
                 Attributes nonTaglibXmlnsAttrs, Attributes taglibAttrs,
                 Mark start, Node parent) {
             super(qName, PAGE_DIRECTIVE_ACTION, attrs, nonTaglibXmlnsAttrs,
                     taglibAttrs, start, parent);
-            imports = new Vector<>();
+            imports = new ArrayList<>();
         }
 
         @Override
@@ -627,11 +624,11 @@ abstract class Node implements TagConstants {
      */
     public static class IncludeDirective extends Node {
 
-        public IncludeDirective(Attributes attrs, Mark start, Node parent) {
+        IncludeDirective(Attributes attrs, Mark start, Node parent) {
             this(JSP_INCLUDE_DIRECTIVE_ACTION, attrs, null, null, start, parent);
         }
 
-        public IncludeDirective(String qName, Attributes attrs,
+        IncludeDirective(String qName, Attributes attrs,
                 Attributes nonTaglibXmlnsAttrs, Attributes taglibAttrs,
                 Mark start, Node parent) {
             super(qName, INCLUDE_DIRECTIVE_ACTION, attrs, nonTaglibXmlnsAttrs,
@@ -649,7 +646,7 @@ abstract class Node implements TagConstants {
      */
     public static class TaglibDirective extends Node {
 
-        public TaglibDirective(Attributes attrs, Mark start, Node parent) {
+        TaglibDirective(Attributes attrs, Mark start, Node parent) {
             super(JSP_TAGLIB_DIRECTIVE_ACTION, TAGLIB_DIRECTIVE_ACTION, attrs,
                     start, parent);
         }
@@ -664,18 +661,18 @@ abstract class Node implements TagConstants {
      * Represents a tag directive
      */
     public static class TagDirective extends Node {
-        private final Vector<String> imports;
+        private final List<String> imports;
 
-        public TagDirective(Attributes attrs, Mark start, Node parent) {
+        TagDirective(Attributes attrs, Mark start, Node parent) {
             this(JSP_TAG_DIRECTIVE_ACTION, attrs, null, null, start, parent);
         }
 
-        public TagDirective(String qName, Attributes attrs,
+        TagDirective(String qName, Attributes attrs,
                 Attributes nonTaglibXmlnsAttrs, Attributes taglibAttrs,
                 Mark start, Node parent) {
             super(qName, TAG_DIRECTIVE_ACTION, attrs, nonTaglibXmlnsAttrs,
                     taglibAttrs, start, parent);
-            imports = new Vector<>();
+            imports = new ArrayList<>();
         }
 
         @Override
@@ -716,12 +713,12 @@ abstract class Node implements TagConstants {
      */
     public static class AttributeDirective extends Node {
 
-        public AttributeDirective(Attributes attrs, Mark start, Node parent) {
+        AttributeDirective(Attributes attrs, Mark start, Node parent) {
             this(JSP_ATTRIBUTE_DIRECTIVE_ACTION, attrs, null, null, start,
                     parent);
         }
 
-        public AttributeDirective(String qName, Attributes attrs,
+        AttributeDirective(String qName, Attributes attrs,
                 Attributes nonTaglibXmlnsAttrs, Attributes taglibAttrs,
                 Mark start, Node parent) {
             super(qName, ATTRIBUTE_DIRECTIVE_ACTION, attrs,
@@ -739,12 +736,12 @@ abstract class Node implements TagConstants {
      */
     public static class VariableDirective extends Node {
 
-        public VariableDirective(Attributes attrs, Mark start, Node parent) {
+        VariableDirective(Attributes attrs, Mark start, Node parent) {
             this(JSP_VARIABLE_DIRECTIVE_ACTION, attrs, null, null, start,
                     parent);
         }
 
-        public VariableDirective(String qName, Attributes attrs,
+        VariableDirective(String qName, Attributes attrs,
                 Attributes nonTaglibXmlnsAttrs, Attributes taglibAttrs,
                 Mark start, Node parent) {
             super(qName, VARIABLE_DIRECTIVE_ACTION, attrs, nonTaglibXmlnsAttrs,
@@ -758,15 +755,15 @@ abstract class Node implements TagConstants {
     }
 
     /**
-     * Represents a <jsp:invoke> tag file action
+     * Represents a &lt;jsp:invoke> tag file action
      */
     public static class InvokeAction extends Node {
 
-        public InvokeAction(Attributes attrs, Mark start, Node parent) {
+        InvokeAction(Attributes attrs, Mark start, Node parent) {
             this(JSP_INVOKE_ACTION, attrs, null, null, start, parent);
         }
 
-        public InvokeAction(String qName, Attributes attrs,
+        InvokeAction(String qName, Attributes attrs,
                 Attributes nonTaglibXmlnsAttrs, Attributes taglibAttrs,
                 Mark start, Node parent) {
             super(qName, INVOKE_ACTION, attrs, nonTaglibXmlnsAttrs,
@@ -780,15 +777,15 @@ abstract class Node implements TagConstants {
     }
 
     /**
-     * Represents a <jsp:doBody> tag file action
+     * Represents a &lt;jsp:doBody> tag file action
      */
     public static class DoBodyAction extends Node {
 
-        public DoBodyAction(Attributes attrs, Mark start, Node parent) {
+        DoBodyAction(Attributes attrs, Mark start, Node parent) {
             this(JSP_DOBODY_ACTION, attrs, null, null, start, parent);
         }
 
-        public DoBodyAction(String qName, Attributes attrs,
+        DoBodyAction(String qName, Attributes attrs,
                 Attributes nonTaglibXmlnsAttrs, Attributes taglibAttrs,
                 Mark start, Node parent) {
             super(qName, DOBODY_ACTION, attrs, nonTaglibXmlnsAttrs,
@@ -806,7 +803,7 @@ abstract class Node implements TagConstants {
      */
     public static class Comment extends Node {
 
-        public Comment(String text, Mark start, Node parent) {
+        Comment(String text, Mark start, Node parent) {
             super(null, null, text, start, parent);
         }
 
@@ -821,12 +818,12 @@ abstract class Node implements TagConstants {
      */
     public abstract static class ScriptingElement extends Node {
 
-        public ScriptingElement(String qName, String localName, String text,
+        ScriptingElement(String qName, String localName, String text,
                 Mark start, Node parent) {
             super(qName, localName, text, start, parent);
         }
 
-        public ScriptingElement(String qName, String localName,
+        ScriptingElement(String qName, String localName,
                 Attributes nonTaglibXmlnsAttrs, Attributes taglibAttrs,
                 Mark start, Node parent) {
             super(qName, localName, null, nonTaglibXmlnsAttrs, taglibAttrs,
@@ -878,12 +875,12 @@ abstract class Node implements TagConstants {
      */
     public static class Declaration extends ScriptingElement {
 
-        public Declaration(String text, Mark start, Node parent) {
+        Declaration(String text, Mark start, Node parent) {
             super(JSP_DECLARATION_ACTION, DECLARATION_ACTION, text, start,
                     parent);
         }
 
-        public Declaration(String qName, Attributes nonTaglibXmlnsAttrs,
+        Declaration(String qName, Attributes nonTaglibXmlnsAttrs,
                 Attributes taglibAttrs, Mark start, Node parent) {
             super(qName, DECLARATION_ACTION, nonTaglibXmlnsAttrs, taglibAttrs,
                     start, parent);
@@ -901,11 +898,11 @@ abstract class Node implements TagConstants {
      */
     public static class Expression extends ScriptingElement {
 
-        public Expression(String text, Mark start, Node parent) {
+        Expression(String text, Mark start, Node parent) {
             super(JSP_EXPRESSION_ACTION, EXPRESSION_ACTION, text, start, parent);
         }
 
-        public Expression(String qName, Attributes nonTaglibXmlnsAttrs,
+        Expression(String qName, Attributes nonTaglibXmlnsAttrs,
                 Attributes taglibAttrs, Mark start, Node parent) {
             super(qName, EXPRESSION_ACTION, nonTaglibXmlnsAttrs, taglibAttrs,
                     start, parent);
@@ -922,11 +919,11 @@ abstract class Node implements TagConstants {
      */
     public static class Scriptlet extends ScriptingElement {
 
-        public Scriptlet(String text, Mark start, Node parent) {
+        Scriptlet(String text, Mark start, Node parent) {
             super(JSP_SCRIPTLET_ACTION, SCRIPTLET_ACTION, text, start, parent);
         }
 
-        public Scriptlet(String qName, Attributes nonTaglibXmlnsAttrs,
+        Scriptlet(String qName, Attributes nonTaglibXmlnsAttrs,
                 Attributes taglibAttrs, Mark start, Node parent) {
             super(qName, SCRIPTLET_ACTION, nonTaglibXmlnsAttrs, taglibAttrs,
                     start, parent);
@@ -948,7 +945,7 @@ abstract class Node implements TagConstants {
 
         private final char type;
 
-        public ELExpression(char type, String text, Mark start, Node parent) {
+        ELExpression(char type, String text, Mark start, Node parent) {
             super(null, null, text, start, parent);
             this.type = type;
         }
@@ -978,11 +975,11 @@ abstract class Node implements TagConstants {
 
         private JspAttribute value;
 
-        public ParamAction(Attributes attrs, Mark start, Node parent) {
+        ParamAction(Attributes attrs, Mark start, Node parent) {
             this(JSP_PARAM_ACTION, attrs, null, null, start, parent);
         }
 
-        public ParamAction(String qName, Attributes attrs,
+        ParamAction(String qName, Attributes attrs,
                 Attributes nonTaglibXmlnsAttrs, Attributes taglibAttrs,
                 Mark start, Node parent) {
             super(qName, PARAM_ACTION, attrs, nonTaglibXmlnsAttrs, taglibAttrs,
@@ -1008,11 +1005,11 @@ abstract class Node implements TagConstants {
      */
     public static class ParamsAction extends Node {
 
-        public ParamsAction(Mark start, Node parent) {
+        ParamsAction(Mark start, Node parent) {
             this(JSP_PARAMS_ACTION, null, null, start, parent);
         }
 
-        public ParamsAction(String qName, Attributes nonTaglibXmlnsAttrs,
+        ParamsAction(String qName, Attributes nonTaglibXmlnsAttrs,
                 Attributes taglibAttrs, Mark start, Node parent) {
             super(qName, PARAMS_ACTION, null, nonTaglibXmlnsAttrs, taglibAttrs,
                     start, parent);
@@ -1029,11 +1026,11 @@ abstract class Node implements TagConstants {
      */
     public static class FallBackAction extends Node {
 
-        public FallBackAction(Mark start, Node parent) {
+        FallBackAction(Mark start, Node parent) {
             this(JSP_FALLBACK_ACTION, null, null, start, parent);
         }
 
-        public FallBackAction(String qName, Attributes nonTaglibXmlnsAttrs,
+        FallBackAction(String qName, Attributes nonTaglibXmlnsAttrs,
                 Attributes taglibAttrs, Mark start, Node parent) {
             super(qName, FALLBACK_ACTION, null, nonTaglibXmlnsAttrs,
                     taglibAttrs, start, parent);
@@ -1052,11 +1049,11 @@ abstract class Node implements TagConstants {
 
         private JspAttribute page;
 
-        public IncludeAction(Attributes attrs, Mark start, Node parent) {
+        IncludeAction(Attributes attrs, Mark start, Node parent) {
             this(JSP_INCLUDE_ACTION, attrs, null, null, start, parent);
         }
 
-        public IncludeAction(String qName, Attributes attrs,
+        IncludeAction(String qName, Attributes attrs,
                 Attributes nonTaglibXmlnsAttrs, Attributes taglibAttrs,
                 Mark start, Node parent) {
             super(qName, INCLUDE_ACTION, attrs, nonTaglibXmlnsAttrs,
@@ -1084,11 +1081,11 @@ abstract class Node implements TagConstants {
 
         private JspAttribute page;
 
-        public ForwardAction(Attributes attrs, Mark start, Node parent) {
+        ForwardAction(Attributes attrs, Mark start, Node parent) {
             this(JSP_FORWARD_ACTION, attrs, null, null, start, parent);
         }
 
-        public ForwardAction(String qName, Attributes attrs,
+        ForwardAction(String qName, Attributes attrs,
                 Attributes nonTaglibXmlnsAttrs, Attributes taglibAttrs,
                 Mark start, Node parent) {
             super(qName, FORWARD_ACTION, attrs, nonTaglibXmlnsAttrs,
@@ -1114,11 +1111,11 @@ abstract class Node implements TagConstants {
      */
     public static class GetProperty extends Node {
 
-        public GetProperty(Attributes attrs, Mark start, Node parent) {
+        GetProperty(Attributes attrs, Mark start, Node parent) {
             this(JSP_GET_PROPERTY_ACTION, attrs, null, null, start, parent);
         }
 
-        public GetProperty(String qName, Attributes attrs,
+        GetProperty(String qName, Attributes attrs,
                 Attributes nonTaglibXmlnsAttrs, Attributes taglibAttrs,
                 Mark start, Node parent) {
             super(qName, GET_PROPERTY_ACTION, attrs, nonTaglibXmlnsAttrs,
@@ -1138,11 +1135,11 @@ abstract class Node implements TagConstants {
 
         private JspAttribute value;
 
-        public SetProperty(Attributes attrs, Mark start, Node parent) {
+        SetProperty(Attributes attrs, Mark start, Node parent) {
             this(JSP_SET_PROPERTY_ACTION, attrs, null, null, start, parent);
         }
 
-        public SetProperty(String qName, Attributes attrs,
+        SetProperty(String qName, Attributes attrs,
                 Attributes nonTaglibXmlnsAttrs, Attributes taglibAttrs,
                 Mark start, Node parent) {
             super(qName, SET_PROPERTY_ACTION, attrs, nonTaglibXmlnsAttrs,
@@ -1170,11 +1167,11 @@ abstract class Node implements TagConstants {
 
         private JspAttribute beanName;
 
-        public UseBean(Attributes attrs, Mark start, Node parent) {
+        UseBean(Attributes attrs, Mark start, Node parent) {
             this(JSP_USE_BEAN_ACTION, attrs, null, null, start, parent);
         }
 
-        public UseBean(String qName, Attributes attrs,
+        UseBean(String qName, Attributes attrs,
                 Attributes nonTaglibXmlnsAttrs, Attributes taglibAttrs,
                 Mark start, Node parent) {
             super(qName, USE_BEAN_ACTION, attrs, nonTaglibXmlnsAttrs,
@@ -1204,11 +1201,11 @@ abstract class Node implements TagConstants {
 
         private JspAttribute height;
 
-        public PlugIn(Attributes attrs, Mark start, Node parent) {
+        PlugIn(Attributes attrs, Mark start, Node parent) {
             this(JSP_PLUGIN_ACTION, attrs, null, null, start, parent);
         }
 
-        public PlugIn(String qName, Attributes attrs,
+        PlugIn(String qName, Attributes attrs,
                 Attributes nonTaglibXmlnsAttrs, Attributes taglibAttrs,
                 Mark start, Node parent) {
             super(qName, PLUGIN_ACTION, attrs, nonTaglibXmlnsAttrs,
@@ -1244,7 +1241,7 @@ abstract class Node implements TagConstants {
 
         private JspAttribute[] jspAttrs;
 
-        public UninterpretedTag(String qName, String localName,
+        UninterpretedTag(String qName, String localName,
                 Attributes attrs, Attributes nonTaglibXmlnsAttrs,
                 Attributes taglibAttrs, Mark start, Node parent) {
             super(qName, localName, attrs, nonTaglibXmlnsAttrs, taglibAttrs,
@@ -1266,7 +1263,7 @@ abstract class Node implements TagConstants {
     }
 
     /**
-     * Represents a <jsp:element>.
+     * Represents a &lt;jsp:element>.
      */
     public static class JspElement extends Node {
 
@@ -1274,11 +1271,11 @@ abstract class Node implements TagConstants {
 
         private JspAttribute nameAttr;
 
-        public JspElement(Attributes attrs, Mark start, Node parent) {
+        JspElement(Attributes attrs, Mark start, Node parent) {
             this(JSP_ELEMENT_ACTION, attrs, null, null, start, parent);
         }
 
-        public JspElement(String qName, Attributes attrs,
+        JspElement(String qName, Attributes attrs,
                 Attributes nonTaglibXmlnsAttrs, Attributes taglibAttrs,
                 Mark start, Node parent) {
             super(qName, ELEMENT_ACTION, attrs, nonTaglibXmlnsAttrs,
@@ -1314,11 +1311,11 @@ abstract class Node implements TagConstants {
     }
 
     /**
-     * Represents a <jsp:output>.
+     * Represents a &lt;jsp:output>.
      */
     public static class JspOutput extends Node {
 
-        public JspOutput(String qName, Attributes attrs,
+        JspOutput(String qName, Attributes attrs,
                 Attributes nonTaglibXmlnsAttrs, Attributes taglibAttrs,
                 Mark start, Node parent) {
             super(qName, OUTPUT_ACTION, attrs, nonTaglibXmlnsAttrs,
@@ -1398,10 +1395,27 @@ abstract class Node implements TagConstants {
         }
     }
 
+
+    public abstract static class ChildInfoBase extends Node {
+
+        private final ChildInfo childInfo = new ChildInfo();
+
+        ChildInfoBase(String qName, String localName, Attributes attrs,
+                Attributes nonTaglibXmlnsAttrs, Attributes taglibAttrs, Mark start,
+                Node parent) {
+            super(qName, localName, attrs, nonTaglibXmlnsAttrs, taglibAttrs, start, parent);
+        }
+
+        public ChildInfo getChildInfo() {
+            return childInfo;
+        }
+    }
+
+
     /**
      * Represents a custom tag
      */
-    public static class CustomTag extends Node {
+    public static class CustomTag extends ChildInfoBase {
 
         private final String uri;
 
@@ -1422,8 +1436,6 @@ abstract class Node implements TagConstants {
         private VariableInfo[] varInfos;
 
         private final int customNestingLevel;
-
-        private final ChildInfo childInfo;
 
         private final boolean implementsIterationTag;
 
@@ -1464,7 +1476,7 @@ abstract class Node implements TagConstants {
         /*
          * Constructor for custom action implemented by tag handler.
          */
-        public CustomTag(String qName, String prefix, String localName,
+        CustomTag(String qName, String prefix, String localName,
                 String uri, Attributes attrs, Mark start, Node parent,
                 TagInfo tagInfo, Class<?> tagHandlerClass) {
             this(qName, prefix, localName, uri, attrs, null, null, start,
@@ -1474,7 +1486,7 @@ abstract class Node implements TagConstants {
         /*
          * Constructor for custom action implemented by tag handler.
          */
-        public CustomTag(String qName, String prefix, String localName,
+        CustomTag(String qName, String prefix, String localName,
                 String uri, Attributes attrs, Attributes nonTaglibXmlnsAttrs,
                 Attributes taglibAttrs, Mark start, Node parent,
                 TagInfo tagInfo, Class<?> tagHandlerClass) {
@@ -1487,7 +1499,6 @@ abstract class Node implements TagConstants {
             this.tagFileInfo = null;
             this.tagHandlerClass = tagHandlerClass;
             this.customNestingLevel = makeCustomNestingLevel();
-            this.childInfo = new ChildInfo();
 
             this.implementsIterationTag = IterationTag.class
                     .isAssignableFrom(tagHandlerClass);
@@ -1506,7 +1517,7 @@ abstract class Node implements TagConstants {
         /*
          * Constructor for custom action implemented by tag file.
          */
-        public CustomTag(String qName, String prefix, String localName,
+        CustomTag(String qName, String prefix, String localName,
                 String uri, Attributes attrs, Mark start, Node parent,
                 TagFileInfo tagFileInfo) {
             this(qName, prefix, localName, uri, attrs, null, null, start,
@@ -1516,7 +1527,7 @@ abstract class Node implements TagConstants {
         /*
          * Constructor for custom action implemented by tag file.
          */
-        public CustomTag(String qName, String prefix, String localName,
+        CustomTag(String qName, String prefix, String localName,
                 String uri, Attributes attrs, Attributes nonTaglibXmlnsAttrs,
                 Attributes taglibAttrs, Mark start, Node parent,
                 TagFileInfo tagFileInfo) {
@@ -1529,7 +1540,6 @@ abstract class Node implements TagConstants {
             this.tagFileInfo = tagFileInfo;
             this.tagInfo = tagFileInfo.getTagInfo();
             this.customNestingLevel = makeCustomNestingLevel();
-            this.childInfo = new ChildInfo();
 
             this.implementsIterationTag = false;
             this.implementsBodyTag = false;
@@ -1564,10 +1574,6 @@ abstract class Node implements TagConstants {
 
         public JspAttribute[] getJspAttributes() {
             return jspAttrs;
-        }
-
-        public ChildInfo getChildInfo() {
-            return childInfo;
         }
 
         public void setTagData(TagData tagData) {
@@ -1673,6 +1679,9 @@ abstract class Node implements TagConstants {
             case VariableInfo.NESTED:
                 this.nestedScriptingVars = vec;
                 break;
+            default:
+                throw new IllegalArgumentException(
+                        Localizer.getMessage("jsp.error.page.invalid.varscope", Integer.valueOf(scope)));
             }
         }
 
@@ -1693,6 +1702,9 @@ abstract class Node implements TagConstants {
             case VariableInfo.NESTED:
                 vec = this.nestedScriptingVars;
                 break;
+            default:
+                throw new IllegalArgumentException(
+                        Localizer.getMessage("jsp.error.page.invalid.varscope", Integer.valueOf(scope)));
             }
 
             return vec;
@@ -1718,9 +1730,9 @@ abstract class Node implements TagConstants {
             boolean result = false;
 
             TagAttributeInfo[] attributes = tagInfo.getAttributes();
-            for (int i = 0; i < attributes.length; i++) {
-                if (attributes[i].getName().equals(name)
-                        && attributes[i].isFragment()) {
+            for (TagAttributeInfo attribute : attributes) {
+                if (attribute.getName().equals(name)
+                        && attribute.isFragment()) {
                     result = true;
                     break;
                 }
@@ -1825,7 +1837,7 @@ abstract class Node implements TagConstants {
 
         private CustomTag tag; // The tag this attribute belongs to
 
-        public AttributeGenerator(Mark start, String name, CustomTag tag) {
+        AttributeGenerator(Mark start, String name, CustomTag tag) {
             super(start, null);
             this.name = name;
             this.tag = tag;
@@ -1850,7 +1862,7 @@ abstract class Node implements TagConstants {
      */
     public static class JspText extends Node {
 
-        public JspText(String qName, Attributes nonTaglibXmlnsAttrs,
+        JspText(String qName, Attributes nonTaglibXmlnsAttrs,
                 Attributes taglibAttrs, Mark start, Node parent) {
             super(qName, TEXT_ACTION, null, nonTaglibXmlnsAttrs, taglibAttrs,
                     start, parent);
@@ -1865,7 +1877,7 @@ abstract class Node implements TagConstants {
     /**
      * Represents a Named Attribute (&lt;jsp:attribute&gt;)
      */
-    public static class NamedAttribute extends Node {
+    public static class NamedAttribute extends ChildInfoBase {
 
         // A unique temporary variable name suitable for code generation
         private String temporaryVariableName;
@@ -1877,19 +1889,17 @@ abstract class Node implements TagConstants {
         // used with a <jsp:element>, otherwise false
         private JspAttribute omit;
 
-        private final ChildInfo childInfo;
-
         private final String name;
 
         private String localName;
 
         private String prefix;
 
-        public NamedAttribute(Attributes attrs, Mark start, Node parent) {
+        NamedAttribute(Attributes attrs, Mark start, Node parent) {
             this(JSP_ATTRIBUTE_ACTION, attrs, null, null, start, parent);
         }
 
-        public NamedAttribute(String qName, Attributes attrs,
+        NamedAttribute(String qName, Attributes attrs,
                 Attributes nonTaglibXmlnsAttrs, Attributes taglibAttrs,
                 Mark start, Node parent) {
 
@@ -1899,7 +1909,6 @@ abstract class Node implements TagConstants {
                 // (if null or true, leave default of true)
                 trim = false;
             }
-            childInfo = new ChildInfo();
             name = this.getAttributeValue("name");
             if (name != null) {
                 // Mandatory attribute "name" will be checked in Validator
@@ -1928,10 +1937,6 @@ abstract class Node implements TagConstants {
 
         public String getPrefix() {
             return this.prefix;
-        }
-
-        public ChildInfo getChildInfo() {
-            return this.childInfo;
         }
 
         public boolean isTrim() {
@@ -1998,28 +2003,21 @@ abstract class Node implements TagConstants {
     /**
      * Represents a JspBody node (&lt;jsp:body&gt;)
      */
-    public static class JspBody extends Node {
+    public static class JspBody extends ChildInfoBase {
 
-        private final ChildInfo childInfo;
-
-        public JspBody(Mark start, Node parent) {
+        JspBody(Mark start, Node parent) {
             this(JSP_BODY_ACTION, null, null, start, parent);
         }
 
-        public JspBody(String qName, Attributes nonTaglibXmlnsAttrs,
+        JspBody(String qName, Attributes nonTaglibXmlnsAttrs,
                 Attributes taglibAttrs, Mark start, Node parent) {
             super(qName, BODY_ACTION, null, nonTaglibXmlnsAttrs, taglibAttrs,
                     start, parent);
-            this.childInfo = new ChildInfo();
         }
 
         @Override
         public void accept(Visitor v) throws JasperException {
             v.visit(this);
-        }
-
-        public ChildInfo getChildInfo() {
-            return childInfo;
         }
     }
 
@@ -2030,7 +2028,7 @@ abstract class Node implements TagConstants {
 
         private ArrayList<Integer> extraSmap = null;
 
-        public TemplateText(String text, Mark start, Node parent) {
+        TemplateText(String text, Mark start, Node parent) {
             super(null, null, text, start, parent);
         }
 
@@ -2098,10 +2096,6 @@ abstract class Node implements TagConstants {
             return extraSmap;
         }
     }
-
-    /***************************************************************************
-     * Auxiliary classes used in Node
-     */
 
     /**
      * Represents attributes that can be request time expressions.
@@ -2211,7 +2205,6 @@ abstract class Node implements TagConstants {
         }
 
         /**
-         *
          * @return return true if there's TagAttributeInfo meaning we need to
          *         assign a ValueExpression
          */
@@ -2220,7 +2213,6 @@ abstract class Node implements TagConstants {
         }
 
         /**
-         *
          * @return return true if there's TagAttributeInfo meaning we need to
          *         assign a MethodExpression
          */
@@ -2345,13 +2337,13 @@ abstract class Node implements TagConstants {
 
         private boolean generatedInBuffer;
 
-        public Nodes() {
-            list = new Vector<>();
+        Nodes() {
+            list = new ArrayList<>();
         }
 
-        public Nodes(Node.Root root) {
+        Nodes(Node.Root root) {
             this.root = root;
-            list = new Vector<>();
+            list = new ArrayList<>();
             list.add(root);
         }
 
@@ -2427,6 +2419,8 @@ abstract class Node implements TagConstants {
         /**
          * This method provides a place to put actions that are common to all
          * nodes. Override this in the child visitor class if need to.
+         *
+         * @param n The node to visit
          */
         @SuppressWarnings("unused")
         protected void doVisit(Node n) throws JasperException {
@@ -2435,6 +2429,8 @@ abstract class Node implements TagConstants {
 
         /**
          * Visit the body of a node, using the current visitor
+         *
+         * @param n The node to visit
          */
         protected void visitBody(Node n) throws JasperException {
             if (n.getBody() != null) {

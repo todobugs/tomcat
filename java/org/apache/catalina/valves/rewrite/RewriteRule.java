@@ -47,20 +47,20 @@ public class RewriteRule {
             positive = false;
             patternString = patternString.substring(1);
         }
-        int flags = 0;
+        int flags = Pattern.DOTALL;
         if (isNocase()) {
             flags |= Pattern.CASE_INSENSITIVE;
         }
         Pattern.compile(patternString, flags);
         // Parse conditions
-        for (int i = 0; i < conditions.length; i++) {
-            conditions[i].parse(maps);
+        for (RewriteCond condition : conditions) {
+            condition.parse(maps);
         }
         // Parse flag which have substitution values
         if (isEnv()) {
-            for (int i = 0; i < envValue.size(); i++) {
+            for (String s : envValue) {
                 Substitution newEnvSubstitution = new Substitution();
-                newEnvSubstitution.setSub(envValue.get(i));
+                newEnvSubstitution.setSub(s);
                 newEnvSubstitution.parse(maps);
                 envSubstitution.add(newEnvSubstitution);
                 envResult.add(new ThreadLocal<String>());
@@ -89,7 +89,7 @@ public class RewriteRule {
         Pattern pattern = this.pattern.get();
         if (pattern == null) {
             // Parse the pattern
-            int flags = 0;
+            int flags = Pattern.DOTALL;
             if (isNocase()) {
                 flags |= Pattern.CASE_INSENSITIVE;
             }
@@ -164,9 +164,9 @@ public class RewriteRule {
      *  can be chained with the following rule, etc.). This has the following
      *  effect: if a rule matches, then processing continues as usual, i.e.,
      *  the flag has no effect. If the rule does not match, then all following
-     *  chained rules are skipped. For instance, use it to remove the ``.www''
+     *  chained rules are skipped. For instance, use it to remove the ".www"
      *  part inside a per-directory rule set when you let an external redirect
-     *  happen (where the ``.www'' part should not to occur!).
+     *  happen (where the ".www" part should not to occur!).
      */
     protected boolean chain = false;
 
@@ -272,11 +272,11 @@ public class RewriteRule {
      */
     protected boolean nosubreq = false;
 
-    /**
+    /*
      *  Note: No proxy
      */
 
-    /**
+    /*
      * Note: No passthrough
      */
 
@@ -299,13 +299,13 @@ public class RewriteRule {
 
     /**
      *  Prefix Substitution with http://thishost[:thisport]/ (which makes the
-     *  new URL a URI) to force a external redirection. If no code is given
+     *  new URL a URI) to force an external redirection. If no code is given
      *  an HTTP response of 302 (FOUND, previously MOVED TEMPORARILY) is used.
      *  If you want to  use other response codes in the range 300-399 just
      *  specify them as a number or use one of the following symbolic names:
      *  temp (default), permanent, seeother. Use it for rules which should
      *  canonicalize the URL and give it back to the client, e.g., translate
-     *  ``/~'' into ``/u/'' or always append a slash to /u/user, etc. Note:
+     *  "/~" into "/u/" or always append a slash to /u/user, etc. Note:
      *  When you use this flag, make sure that the substitution field is a
      *  valid URL! If not, you are redirecting to an invalid location!
      *  And remember that this flag itself only prefixes the URL with
@@ -334,6 +334,11 @@ public class RewriteRule {
      */
     protected boolean type = false;
     protected String typeValue = null;
+
+    /**
+     * Allows skipping the next valve in the Catalina pipeline.
+     */
+    protected boolean valveSkip = false;
 
     public boolean isEscapeBackReferences() {
         return escapeBackReferences;
@@ -560,4 +565,13 @@ public class RewriteRule {
     public void setCookieHttpOnly(boolean cookieHttpOnly) {
         this.cookieHttpOnly = cookieHttpOnly;
     }
+
+    public boolean isValveSkip() {
+        return this.valveSkip;
+    }
+
+    public void setValveSkip(boolean valveSkip) {
+        this.valveSkip = valveSkip;
+    }
+
 }

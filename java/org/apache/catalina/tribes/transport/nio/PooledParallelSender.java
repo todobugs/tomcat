@@ -21,7 +21,6 @@ import java.io.IOException;
 import org.apache.catalina.tribes.ChannelException;
 import org.apache.catalina.tribes.ChannelMessage;
 import org.apache.catalina.tribes.Member;
-import org.apache.catalina.tribes.transport.AbstractSender;
 import org.apache.catalina.tribes.transport.DataSender;
 import org.apache.catalina.tribes.transport.PooledSender;
 import org.apache.catalina.tribes.util.StringManager;
@@ -39,12 +38,15 @@ public class PooledParallelSender extends PooledSender implements PooledParallel
             ChannelException cx = new ChannelException(sm.getString(
                     "pooledParallelSender.unable.retrieveSender.timeout",
                     Long.toString(getMaxWait())));
-            for (int i = 0; i < destination.length; i++)
-                cx.addFaultyMember(destination[i], new NullPointerException(sm.getString("pooledParallelSender.unable.retrieveSender")));
+            for (Member member : destination) {
+                cx.addFaultyMember(member, new NullPointerException(sm.getString("pooledParallelSender.unable.retrieveSender")));
+            }
             throw cx;
         } else {
             try {
-                if (!sender.isConnected()) sender.connect();
+                if (!sender.isConnected()) {
+                    sender.connect();
+                }
                 sender.sendMessage(destination, message);
                 sender.keepalive();
             } catch (ChannelException x) {
@@ -60,7 +62,7 @@ public class PooledParallelSender extends PooledSender implements PooledParallel
     public DataSender getNewDataSender() {
         try {
             ParallelNioSender sender = new ParallelNioSender();
-            AbstractSender.transferProperties(this,sender);
+            transferProperties(this,sender);
             return sender;
         } catch ( IOException x ) {
             throw new RuntimeException(sm.getString("pooledParallelSender.unable.open"),x);

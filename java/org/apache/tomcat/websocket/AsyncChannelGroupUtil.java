@@ -30,14 +30,12 @@ import org.apache.tomcat.util.res.StringManager;
 import org.apache.tomcat.util.threads.ThreadPoolExecutor;
 
 /**
- * This is a utility class that enables multiple {@link WsWebSocketContainer}
- * instances to share a single {@link AsynchronousChannelGroup} while ensuring
- * that the group is destroyed when no longer required.
+ * This is a utility class that enables multiple {@link WsWebSocketContainer} instances to share a single
+ * {@link AsynchronousChannelGroup} while ensuring that the group is destroyed when no longer required.
  */
 public class AsyncChannelGroupUtil {
 
-    private static final StringManager sm =
-            StringManager.getManager(AsyncChannelGroupUtil.class);
+    private static final StringManager sm = StringManager.getManager(AsyncChannelGroupUtil.class);
 
     private static AsynchronousChannelGroup group = null;
     private static int usageCount = 0;
@@ -74,31 +72,26 @@ public class AsyncChannelGroupUtil {
     private static AsynchronousChannelGroup createAsynchronousChannelGroup() {
         // Need to do this with the right thread context class loader else the
         // first web app to call this will trigger a leak
-        ClassLoader original = Thread.currentThread().getContextClassLoader();
+        Thread currentThread = Thread.currentThread();
+        ClassLoader original = currentThread.getContextClassLoader();
 
         try {
-            Thread.currentThread().setContextClassLoader(
-                    AsyncIOThreadFactory.class.getClassLoader());
+            currentThread.setContextClassLoader(AsyncIOThreadFactory.class.getClassLoader());
 
             // These are the same settings as the default
             // AsynchronousChannelGroup
             int initialSize = Runtime.getRuntime().availableProcessors();
-            ExecutorService executorService = new ThreadPoolExecutor(
-                    0,
-                    Integer.MAX_VALUE,
-                    Long.MAX_VALUE, TimeUnit.MILLISECONDS,
-                    new SynchronousQueue<Runnable>(),
-                    new AsyncIOThreadFactory());
+            ExecutorService executorService = new ThreadPoolExecutor(0, Integer.MAX_VALUE, 60,
+                    TimeUnit.SECONDS, new SynchronousQueue<Runnable>(), new AsyncIOThreadFactory());
 
             try {
-                return AsynchronousChannelGroup.withCachedThreadPool(
-                        executorService, initialSize);
+                return AsynchronousChannelGroup.withCachedThreadPool(executorService, initialSize);
             } catch (IOException e) {
                 // No good reason for this to happen.
                 throw new IllegalStateException(sm.getString("asyncChannelGroup.createFail"));
             }
         } finally {
-            Thread.currentThread().setContextClassLoader(original);
+            currentThread.setContextClassLoader(original);
         }
     }
 
@@ -130,7 +123,7 @@ public class AsyncChannelGroupUtil {
 
             private final Runnable r;
 
-            public NewThreadPrivilegedAction(Runnable r) {
+            NewThreadPrivilegedAction(Runnable r) {
                 this.r = r;
             }
 

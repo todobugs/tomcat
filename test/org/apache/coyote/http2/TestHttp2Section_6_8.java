@@ -20,11 +20,8 @@ import org.junit.Assert;
 import org.junit.Test;
 
 /**
- * Unit tests for Section 6.8 of
- * <a href="https://tools.ietf.org/html/rfc7540">RFC 7540</a>.
- * <br>
- * The order of tests in this class is aligned with the order of the
- * requirements in the RFC.
+ * Unit tests for Section 6.8 of <a href="https://tools.ietf.org/html/rfc7540">RFC 7540</a>. <br>
+ * The order of tests in this class is aligned with the order of the requirements in the RFC.
  */
 public class TestHttp2Section_6_8 extends Http2TestBase {
 
@@ -47,7 +44,7 @@ public class TestHttp2Section_6_8 extends Http2TestBase {
         getTomcatInstance().getConnector().pause();
 
         // Go away
-        parser.readFrame(true);
+        parser.readFrame();
         Assert.assertEquals("0-Goaway-[2147483647]-[0]-[null]", output.getTrace());
         output.clearTrace();
 
@@ -59,14 +56,14 @@ public class TestHttp2Section_6_8 extends Http2TestBase {
         // Should be ignored
         sendSimpleGetRequest(5);
 
-        parser.readFrame(true);
-        parser.readFrame(true);
+        parser.readFrame();
+        parser.readFrame();
 
-        Assert.assertEquals(getSimpleResponseTrace(3),  output.getTrace());
+        Assert.assertEquals(getSimpleResponseTrace(3), output.getTrace());
         output.clearTrace();
 
         // Finally the go away frame
-        parser.readFrame(true);
+        parser.readFrame();
         Assert.assertEquals("0-Goaway-[3]-[0]-[null]", output.getTrace());
     }
 
@@ -76,12 +73,12 @@ public class TestHttp2Section_6_8 extends Http2TestBase {
         // HTTP2 upgrade
         http2Connect();
 
-        sendGoaway(1, 1, Http2Error.NO_ERROR.getCode(), null);
+        sendGoaway(1, 1, Http2Error.NO_ERROR.getCode());
 
         handleGoAwayResponse(1);
     }
 
 
     // TODO Test header processing and window size processing for ignored
-    //      streams
+    // streams
 }

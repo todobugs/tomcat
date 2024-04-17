@@ -14,7 +14,6 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  */
-
 package org.apache.tomcat.util.net;
 
 import java.security.KeyManagementException;
@@ -35,20 +34,20 @@ import javax.net.ssl.TrustManager;
  */
 public interface SSLContext {
 
-    public void init(KeyManager[] kms, TrustManager[] tms,
+    void init(KeyManager[] kms, TrustManager[] tms,
             SecureRandom sr) throws KeyManagementException;
 
-    public void destroy();
+    void destroy();
 
-    public SSLSessionContext getServerSessionContext();
+    SSLSessionContext getServerSessionContext();
 
-    public SSLEngine createSSLEngine();
+    SSLEngine createSSLEngine();
 
-    public SSLServerSocketFactory getServerSocketFactory();
+    SSLServerSocketFactory getServerSocketFactory();
 
-    public SSLParameters getSupportedSSLParameters();
+    SSLParameters getSupportedSSLParameters();
 
-    public X509Certificate[] getCertificateChain(String alias);
+    X509Certificate[] getCertificateChain(String alias);
 
-    public X509Certificate[] getAcceptedIssuers();
+    X509Certificate[] getAcceptedIssuers();
 }

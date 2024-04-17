@@ -14,7 +14,6 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  */
-
 package org.apache.catalina.core;
 
 import javax.naming.InitialContext;
@@ -49,7 +48,7 @@ public class TestNamingContextListener extends TomcatBaseTest {
         Tomcat tomcat = getTomcatInstance();
 
         // No file system docBase required
-        Context ctx = tomcat.addContext("", null);
+        Context ctx = getProgrammaticRootContext();
 
         // Enable JNDI - it is disabled by default
         tomcat.enableNaming();
@@ -96,7 +95,7 @@ public class TestNamingContextListener extends TomcatBaseTest {
         Tomcat tomcat = getTomcatInstance();
 
         // No file system docBase required
-        Context ctx = tomcat.addContext("", null);
+        Context ctx = getProgrammaticRootContext();
 
         // Enable JNDI - it is disabled by default
         tomcat.enableNaming();

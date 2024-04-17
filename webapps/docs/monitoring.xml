@@ -100,7 +100,7 @@ controlRole tomcat]]></source>
     <b>Tip</b>: The password file should be read-only and only accessible by the
     operating system user Tomcat is running as.
     </li>
-    <li>Alterantively, you can configure a JAAS login module with:
+    <li>Alternatively, you can configure a JAAS login module with:
 <source><![CDATA[  -Dcom.sun.management.jmxremote.login.config=%login.module.name%]]></source></li>
     </ol>
 
@@ -153,12 +153,12 @@ senderAddress=${cluster.server.address},senderPort=${cluster.server.port}"
     />
     <!-- get current maxActiveSession from ClusterTest application
        echo it to Ant output and store at
-       property <em>clustertest.maxActiveSessions.orginal</em>
+       property <em>clustertest.maxActiveSessions.original</em>
     -->
     <jmx:get
       name="Catalina:type=Manager,context=/ClusterTest,host=localhost"
       attribute="maxActiveSessions"
-      resultproperty="clustertest.maxActiveSessions.orginal"
+      resultproperty="clustertest.maxActiveSessions.original"
       echo="true"
     />
     <!-- set maxActiveSession to 100
@@ -555,8 +555,7 @@ List of Attributes
 
   <tr>
     <td>operation</td>
-    <td>Existing MBean operation (see Tomcat
-        <a href="funcspecs/fs-admin-opers.html">funcspecs/fs-admin-opers.html</a>).
+    <td>Existing MBean operation
     </td>
     <td></td>
   </tr>

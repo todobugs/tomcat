@@ -27,6 +27,7 @@ import org.apache.coyote.http11.OutputFilter;
 import org.apache.juli.logging.Log;
 import org.apache.juli.logging.LogFactory;
 import org.apache.tomcat.util.buf.ByteChunk;
+import org.apache.tomcat.util.res.StringManager;
 
 /**
  * Gzip output filter.
@@ -36,6 +37,7 @@ import org.apache.tomcat.util.buf.ByteChunk;
 public class GzipOutputFilter implements OutputFilter {
 
     protected static final Log log = LogFactory.getLog(GzipOutputFilter.class);
+    private static final StringManager sm = StringManager.getManager(GzipOutputFilter.class);
 
 
     // ----------------------------------------------------- Instance Variables
@@ -84,9 +86,10 @@ public class GzipOutputFilter implements OutputFilter {
         int len = chunk.remaining();
         if (chunk.hasArray()) {
             compressionStream.write(chunk.array(), chunk.arrayOffset() + chunk.position(), len);
+            chunk.position(chunk.position() + len);
         } else {
             byte[] bytes = new byte[len];
-            chunk.put(bytes);
+            chunk.get(bytes);
             compressionStream.write(bytes, 0, len);
         }
         return len;
@@ -108,13 +111,13 @@ public class GzipOutputFilter implements OutputFilter {
     public void flush() throws IOException {
         if (compressionStream != null) {
             try {
-                if (log.isDebugEnabled()) {
-                    log.debug("Flushing the compression stream!");
+                if (log.isTraceEnabled()) {
+                    log.trace("Flushing the compression stream!");
                 }
                 compressionStream.flush();
             } catch (IOException e) {
                 if (log.isDebugEnabled()) {
-                    log.debug("Ignored exception while flushing gzip filter", e);
+                    log.debug(sm.getString("gzipOutputFilter.flushFail"), e);
                 }
             }
         }

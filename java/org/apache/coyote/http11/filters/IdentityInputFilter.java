@@ -14,7 +14,6 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  */
-
 package org.apache.coyote.http11.filters;
 
 import java.io.IOException;
@@ -35,19 +34,16 @@ import org.apache.tomcat.util.res.StringManager;
  */
 public class IdentityInputFilter implements InputFilter, ApplicationBufferHandler {
 
-    private static final StringManager sm = StringManager.getManager(
-            IdentityInputFilter.class.getPackage().getName());
+    private static final StringManager sm = StringManager.getManager(IdentityInputFilter.class);
 
 
     // -------------------------------------------------------------- Constants
-
 
     protected static final String ENCODING_NAME = "identity";
     protected static final ByteChunk ENCODING = new ByteChunk();
 
 
     // ----------------------------------------------------- Static Initializer
-
 
     static {
         ENCODING.setBytes(ENCODING_NAME.getBytes(StandardCharsets.ISO_8859_1),
@@ -56,7 +52,6 @@ public class IdentityInputFilter implements InputFilter, ApplicationBufferHandle
 
 
     // ----------------------------------------------------- Instance Variables
-
 
     /**
      * Content length.
@@ -214,7 +209,8 @@ public class IdentityInputFilter implements InputFilter, ApplicationBufferHandle
      */
     @Override
     public int available() {
-        return 0;
+        // No data buffered here. Try the next filter in the chain.
+        return buffer.available();
     }
 
 

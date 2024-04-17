@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.jasper;
 
 import java.io.File;
@@ -115,7 +114,7 @@ public final class EmbeddedServletOptions implements Options {
     /**
      * Need to have this as is for versions 4 and 5 of IE. Can be set from
      * the initParams so if it changes in the future all that is needed is
-     * to have a jsp initParam of type ieClassId="<value>"
+     * to have a jsp initParam of type ieClassId="&lt;value>"
      */
     private String ieClassId = "clsid:8AD9C840-044E-11D1-B3E9-00805F499D93";
 
@@ -652,12 +651,14 @@ public final class EmbeddedServletOptions implements Options {
         }
 
         String ieClassId = config.getInitParameter("ieClassId");
-        if (ieClassId != null)
+        if (ieClassId != null) {
             this.ieClassId = ieClassId;
+        }
 
         String classpath = config.getInitParameter("classpath");
-        if (classpath != null)
+        if (classpath != null) {
             this.classpath = classpath;
+        }
 
         /*
          * scratchdir
@@ -670,25 +671,18 @@ public final class EmbeddedServletOptions implements Options {
         if (dir != null) {
             scratchDir = new File(dir);
         } else {
-            // First try the Servlet 2.2 javax.servlet.context.tempdir property
             scratchDir = (File) context.getAttribute(ServletContext.TEMPDIR);
-            if (scratchDir == null) {
-                // Not running in a Servlet 2.2 container.
-                // Try to get the JDK 1.2 java.io.tmpdir property
-                dir = System.getProperty("java.io.tmpdir");
-                if (dir != null)
-                    scratchDir = new File(dir);
-            }
         }
-        if (this.scratchDir == null) {
+        if (scratchDir == null) {
             log.fatal(Localizer.getMessage("jsp.error.no.scratch.dir"));
             return;
         }
 
         if (!(scratchDir.exists() && scratchDir.canRead() &&
-                scratchDir.canWrite() && scratchDir.isDirectory()))
+                scratchDir.canWrite() && scratchDir.isDirectory())) {
             log.fatal(Localizer.getMessage("jsp.error.bad.scratch.dir",
                     scratchDir.getAbsolutePath()));
+        }
 
         this.compiler = config.getInitParameter("compiler");
 

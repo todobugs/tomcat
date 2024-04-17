@@ -20,7 +20,7 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
-import java.net.URL;
+import java.net.URI;
 import java.util.Enumeration;
 import java.util.Properties;
 
@@ -47,6 +47,7 @@ public class CatalinaProperties {
 
     /**
      * @param name The property name
+     *
      * @return specified property value
      */
     public static String getProperty(String name) {
@@ -63,7 +64,7 @@ public class CatalinaProperties {
         try {
             String configUrl = System.getProperty("catalina.config");
             if (configUrl != null) {
-                is = (new URL(configUrl)).openStream();
+                is = new URI(configUrl).toURL().openStream();
             }
         } catch (Throwable t) {
             handleThrowable(t);
@@ -82,8 +83,7 @@ public class CatalinaProperties {
 
         if (is == null) {
             try {
-                is = CatalinaProperties.class.getResourceAsStream
-                    ("/org/apache/catalina/startup/catalina.properties");
+                is = CatalinaProperties.class.getResourceAsStream("/org/apache/catalina/startup/catalina.properties");
             } catch (Throwable t) {
                 handleThrowable(t);
             }

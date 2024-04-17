@@ -18,18 +18,20 @@ package org.apache.tomcat.util.buf;
 
 import java.io.Serializable;
 
+import org.apache.tomcat.util.res.StringManager;
+
 /**
  * Base class for the *Chunk implementation to reduce duplication.
  */
 public abstract class AbstractChunk implements Cloneable, Serializable {
 
     private static final long serialVersionUID = 1L;
+    protected static final StringManager sm = StringManager.getManager(AbstractChunk.class);
 
     /*
-     * JVMs may limit the maximum array size to slightly less than
-     * Integer.MAX_VALUE. On markt's desktop the limit is MAX_VALUE - 2.
-     * Comments in the JRE source code for ArrayList and other classes indicate
-     * that it may be as low as MAX_VALUE - 8 on some systems.
+     * JVMs may limit the maximum array size to slightly less than Integer.MAX_VALUE. On markt's desktop the limit is
+     * MAX_VALUE - 2. Comments in the JRE source code for ArrayList and other classes indicate that it may be as low as
+     * MAX_VALUE - 8 on some systems.
      */
     public static final int ARRAY_MAX_SIZE = Integer.MAX_VALUE - 8;
 
@@ -45,10 +47,9 @@ public abstract class AbstractChunk implements Cloneable, Serializable {
 
 
     /**
-     * Maximum amount of data in this buffer. If -1 or not set, the buffer will
-     * grow to {{@link #ARRAY_MAX_SIZE}. Can be smaller than the current buffer
-     * size ( which will not shrink ). When the limit is reached, the buffer
-     * will be flushed (if out is set) or throw exception.
+     * Maximum amount of data in this buffer. If -1 or not set, the buffer will grow to {{@link #ARRAY_MAX_SIZE}. Can be
+     * smaller than the current buffer size ( which will not shrink ). When the limit is reached, the buffer will be
+     * flushed (if out is set) or throw exception.
      *
      * @param limit The new limit
      */

@@ -21,15 +21,10 @@ import org.apache.catalina.tribes.util.StringManager;
 import org.apache.juli.logging.Log;
 import org.apache.juli.logging.LogFactory;
 
-/**
- *
- *
- * @version 1.0
- */
 public class BufferPool {
     private static final Log log = LogFactory.getLog(BufferPool.class);
 
-    public static final int DEFAULT_POOL_SIZE = 100*1024*1024; //100MB
+    public static final int DEFAULT_POOL_SIZE = 100*1024*1024; //100 MiB
 
     protected static final StringManager sm = StringManager.getManager(BufferPool.class);
 
@@ -43,16 +38,23 @@ public class BufferPool {
     }
 
     public XByteBuffer getBuffer(int minSize, boolean discard) {
-        if ( pool != null ) return pool.getBuffer(minSize, discard);
-        else return new XByteBuffer(minSize,discard);
+        if ( pool != null ) {
+            return pool.getBuffer(minSize, discard);
+        } else {
+            return new XByteBuffer(minSize,discard);
+        }
     }
 
     public void returnBuffer(XByteBuffer buffer) {
-        if ( pool != null ) pool.returnBuffer(buffer);
+        if ( pool != null ) {
+            pool.returnBuffer(buffer);
+        }
     }
 
     public void clear() {
-        if ( pool != null ) pool.clear();
+        if ( pool != null ) {
+            pool.clear();
+        }
     }
 
 
@@ -72,13 +74,13 @@ public class BufferPool {
     }
 
 
-    public static interface BufferPoolAPI {
-        public void setMaxSize(int bytes);
+    public interface BufferPoolAPI {
+        void setMaxSize(int bytes);
 
-        public XByteBuffer getBuffer(int minSize, boolean discard);
+        XByteBuffer getBuffer(int minSize, boolean discard);
 
-        public void returnBuffer(XByteBuffer buffer);
+        void returnBuffer(XByteBuffer buffer);
 
-        public void clear();
+        void clear();
     }
 }

@@ -208,8 +208,9 @@ class Parser implements TagConstants {
 
         // Get the qualified name
         String qName = parseName();
-        if (qName == null)
+        if (qName == null) {
             return false;
+        }
 
         boolean ignoreEL = pageInfo.isELIgnored();
 
@@ -228,13 +229,15 @@ class Parser implements TagConstants {
         }
 
         reader.skipSpaces();
-        if (!reader.matches("="))
+        if (!reader.matches("=")) {
             err.jspError(reader.mark(), "jsp.error.attribute.noequal");
+        }
 
         reader.skipSpaces();
         char quote = (char) reader.nextChar();
-        if (quote != '\'' && quote != '"')
+        if (quote != '\'' && quote != '"') {
             err.jspError(reader.mark(), "jsp.error.attribute.noquote");
+        }
 
         String watchString = "";
         if (reader.matches("<%=")) {
@@ -271,7 +274,7 @@ class Parser implements TagConstants {
     }
 
     /**
-     * AttributeValueDouble ::= (QuotedChar - '"')* ('"' | <TRANSLATION_ERROR>)
+     * AttributeValueDouble ::= (QuotedChar - '"')* ('"' | &lt;TRANSLATION_ERROR>)
      * RTAttributeValueDouble ::= ((QuotedChar - '"')* - ((QuotedChar-'"')'%>"')
      * ('%>"' | TRANSLATION_ERROR)
      */
@@ -302,8 +305,9 @@ class Parser implements TagConstants {
         } catch (IllegalArgumentException iae) {
             err.jspError(start, iae.getMessage());
         }
-        if (watch.length() == 1) // quote
+        if (watch.length() == 1) {
             return ret;
+        }
 
         // Put back delimiter '<%=' and '%>', since they are needed if the
         // attribute does not allow RTexpression.
@@ -481,7 +485,7 @@ class Parser implements TagConstants {
             parseIncludeDirective(parent);
         } else if (reader.matches("taglib")) {
             if (directivesOnly) {
-                // No need to get the tagLibInfo objects. This alos suppresses
+                // No need to get the tagLibInfo objects. This also suppresses
                 // parsing of any tag files used in this tag file.
                 return;
             }
@@ -832,7 +836,7 @@ class Parser implements TagConstants {
     }
 
     /**
-     * Param ::= '<jsp:param' S Attributes S? EmptyBody S?
+     * Param ::= '&lt;jsp:param' S Attributes S? EmptyBody S?
      */
     private void parseParam(Node parent) throws JasperException {
         if (!reader.matches("<jsp:param")) {
@@ -1021,8 +1025,8 @@ class Parser implements TagConstants {
      * Attempts to parse 'JspAttributeAndBody' production. Returns true if it
      * matched, or false if not. Assumes EmptyBody is okay as well.
      *
-     * JspAttributeAndBody ::= ( '>' # S? ( '<jsp:attribute' NamedAttributes )? '<jsp:body' (
-     * JspBodyBody | <TRANSLATION_ERROR> ) S? ETag )
+     * JspAttributeAndBody ::= ( '>' # S? ( '&lt;jsp:attribute' NamedAttributes )? '&lt;jsp:body' (
+     * JspBodyBody | &lt;TRANSLATION_ERROR> ) S? ETag )
      */
     private boolean parseJspAttributeAndBody(Node parent, String tag,
             String bodyType) throws JasperException {
@@ -1303,8 +1307,9 @@ class Parser implements TagConstants {
      */
     private void parseTemplateText(Node parent) {
 
-        if (!reader.hasMoreInput())
+        if (!reader.hasMoreInput()) {
             return;
+        }
 
         CharArrayWriter ttext = new CharArrayWriter();
 
@@ -1735,19 +1740,19 @@ class Parser implements TagConstants {
     }
 
     /**
-     * Determine the body type of <jsp:attribute> from the enclosing node
+     * Determine the body type of &lt;jsp:attribute> from the enclosing node
      */
     private String getAttributeBodyType(Node n, String name) {
 
         if (n instanceof Node.CustomTag) {
             TagInfo tagInfo = ((Node.CustomTag) n).getTagInfo();
             TagAttributeInfo[] tldAttrs = tagInfo.getAttributes();
-            for (int i = 0; i < tldAttrs.length; i++) {
-                if (name.equals(tldAttrs[i].getName())) {
-                    if (tldAttrs[i].isFragment()) {
+            for (TagAttributeInfo tldAttr : tldAttrs) {
+                if (name.equals(tldAttr.getName())) {
+                    if (tldAttr.isFragment()) {
                         return TagInfo.BODY_CONTENT_SCRIPTLESS;
                     }
-                    if (tldAttrs[i].canBeRequestTime()) {
+                    if (tldAttr.canBeRequestTime()) {
                         return TagInfo.BODY_CONTENT_JSP;
                     }
                 }

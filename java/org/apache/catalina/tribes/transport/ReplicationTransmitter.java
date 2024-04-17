@@ -16,6 +16,8 @@
  */
 package org.apache.catalina.tribes.transport;
 
+import java.io.IOException;
+
 import javax.management.ObjectName;
 
 import org.apache.catalina.tribes.Channel;
@@ -72,11 +74,13 @@ public class ReplicationTransmitter implements ChannelSender {
      * @see org.apache.catalina.tribes.ChannelSender#start()
      */
     @Override
-    public void start() throws java.io.IOException {
+    public synchronized void start() throws IOException {
         getTransport().connect();
         // register jmx
         JmxRegistry jmxRegistry = JmxRegistry.getRegistry(channel);
-        if (jmxRegistry != null) this.oname = jmxRegistry.registerJmx(",component=Sender", transport);
+        if (jmxRegistry != null) {
+            this.oname = jmxRegistry.registerJmx(",component=Sender", transport);
+        }
     }
 
     /**
@@ -101,7 +105,9 @@ public class ReplicationTransmitter implements ChannelSender {
      */
     @Override
     public void heartbeat() {
-        if (getTransport()!=null) getTransport().keepalive();
+        if (getTransport()!=null) {
+            getTransport().keepalive();
+        }
     }
 
     /**

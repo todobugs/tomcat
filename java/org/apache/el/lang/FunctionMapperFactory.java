@@ -14,12 +14,13 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.el.lang;
 
 import java.lang.reflect.Method;
 
 import javax.el.FunctionMapper;
+
+import org.apache.el.util.MessageFactory;
 
 /**
  * @author Jacob Hookom [jacob@hookom.net]
@@ -31,14 +32,14 @@ public class FunctionMapperFactory extends FunctionMapper {
 
     public FunctionMapperFactory(FunctionMapper mapper) {
         if (mapper == null) {
-            throw new NullPointerException("FunctionMapper target cannot be null");
+            throw new NullPointerException(MessageFactory.get("error.noFunctionMapperTarget"));
         }
         this.target = mapper;
     }
 
 
     /* (non-Javadoc)
-     * @see javax.el.FunctionMapper#resolveFunction(java.lang.String, java.lang.String)
+     * @see javax.el.FunctionMapper#resolveFunction(String, String)
      */
     @Override
     public Method resolveFunction(String prefix, String localName) {

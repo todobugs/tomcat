@@ -26,6 +26,7 @@ import java.util.concurrent.ConcurrentMap;
 
 import javax.el.FunctionMapper;
 
+import org.apache.el.util.MessageFactory;
 import org.apache.el.util.ReflectionUtil;
 
 
@@ -42,8 +43,7 @@ public class FunctionMapperImpl extends FunctionMapper implements
     /*
      * (non-Javadoc)
      *
-     * @see javax.el.FunctionMapper#resolveFunction(java.lang.String,
-     *      java.lang.String)
+     * @see javax.el.FunctionMapper#resolveFunction(String, String)
      */
     @Override
     public Method resolveFunction(String prefix, String localName) {
@@ -98,10 +98,10 @@ public class FunctionMapperImpl extends FunctionMapper implements
 
         public Function(String prefix, String localName, Method m) {
             if (localName == null) {
-                throw new NullPointerException("LocalName cannot be null");
+                throw new NullPointerException(MessageFactory.get("error.nullLocalName"));
             }
             if (m == null) {
-                throw new NullPointerException("Method cannot be null");
+                throw new NullPointerException(MessageFactory.get("error.nullMethod"));
             }
             this.prefix = prefix;
             this.localName = localName;
@@ -121,18 +121,15 @@ public class FunctionMapperImpl extends FunctionMapper implements
         public void writeExternal(ObjectOutput out) throws IOException {
             out.writeUTF((this.prefix != null) ? this.prefix : "");
             out.writeUTF(this.localName);
-            // make sure m isn't null
-            getMethod();
-            out.writeUTF((this.owner != null) ?
-                     this.owner :
-                     this.m.getDeclaringClass().getName());
-            out.writeUTF((this.name != null) ?
-                     this.name :
-                     this.m.getName());
-            out.writeObject((this.types != null) ?
-                     this.types :
-                     ReflectionUtil.toTypeNameArray(this.m.getParameterTypes()));
-
+            if (this.owner != null && this.name != null && this.types != null) {
+                out.writeUTF(this.owner);
+                out.writeUTF(this.name);
+                out.writeObject(this.types);
+            } else {
+                out.writeUTF(this.m.getDeclaringClass().getName());
+                out.writeUTF(this.m.getName());
+                out.writeObject(ReflectionUtil.toTypeNameArray(this.m.getParameterTypes()));
+            }
         }
 
         /*
@@ -145,7 +142,9 @@ public class FunctionMapperImpl extends FunctionMapper implements
                 ClassNotFoundException {
 
             this.prefix = in.readUTF();
-            if ("".equals(this.prefix)) this.prefix = null;
+            if (this.prefix.isEmpty()) {
+                this.prefix = null;
+            }
             this.localName = in.readUTF();
             this.owner = in.readUTF();
             this.name = in.readUTF();
@@ -159,7 +158,7 @@ public class FunctionMapperImpl extends FunctionMapper implements
                     Class<?>[] p = ReflectionUtil.toTypeArray(this.types);
                     this.m = t.getMethod(this.name, p);
                 } catch (Exception e) {
-                    e.printStackTrace();
+                    // Ignore: this results in ELException after further resolution
                 }
             }
             return this.m;

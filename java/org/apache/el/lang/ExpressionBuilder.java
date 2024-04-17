@@ -41,6 +41,7 @@ import org.apache.el.parser.ELParser;
 import org.apache.el.parser.Node;
 import org.apache.el.parser.NodeVisitor;
 import org.apache.el.util.ConcurrentCache;
+import org.apache.el.util.ExceptionUtils;
 import org.apache.el.util.MessageFactory;
 
 /**
@@ -95,12 +96,12 @@ public final class ExpressionBuilder implements NodeVisitor {
         }
     }
 
-    public static final Node createNode(String expr) throws ELException {
+    public static Node createNode(String expr) throws ELException {
         Node n = createNodeInternal(expr);
         return n;
     }
 
-    private static final Node createNodeInternal(String expr)
+    private static Node createNodeInternal(String expr)
             throws ELException {
         if (expr == null) {
             throw new ELException(MessageFactory.get("error.null"));
@@ -126,11 +127,12 @@ public final class ExpressionBuilder implements NodeVisitor {
                     Node child = null;
                     for (int i = 0; i < numChildren; i++) {
                         child = n.jjtGetChild(i);
-                        if (child instanceof AstLiteralExpression)
+                        if (child instanceof AstLiteralExpression) {
                             continue;
-                        if (type == null)
+                        }
+                        if (type == null) {
                             type = child.getClass();
-                        else {
+                        } else {
                             if (!type.equals(child.getClass())) {
                                 throw new ELException(MessageFactory.get(
                                         "error.mixed", expr));
@@ -144,9 +146,10 @@ public final class ExpressionBuilder implements NodeVisitor {
                     n = n.jjtGetChild(0);
                 }
                 expressionCache.put(expr, n);
-            } catch (Exception e) {
+            } catch (Throwable t) {
+                ExceptionUtils.handleThrowable(t);
                 throw new ELException(
-                        MessageFactory.get("error.parseFail", expr), e);
+                        MessageFactory.get("error.parseFail", expr), t);
             } finally {
                 if (parser != null) {
                     parserCache.push(parser);
@@ -230,7 +233,7 @@ public final class ExpressionBuilder implements NodeVisitor {
                         "" + methodParameterCount, "" + node.jjtGetChild(0).jjtGetNumChildren()));
             }
         } else if (node instanceof AstIdentifier && this.varMapper != null) {
-            String variable = ((AstIdentifier) node).getImage();
+            String variable = node.getImage();
 
             // simply capture it
             this.varMapper.resolveVariable(variable);
@@ -258,8 +261,7 @@ public final class ExpressionBuilder implements NodeVisitor {
             return new MethodExpressionLiteral(expression, expectedReturnType,
                     expectedParamTypes);
         } else {
-            throw new ELException("Not a Valid Method Expression: "
-                    + expression);
+            throw new ELException(MessageFactory.get("error.invalidMethodExpression", expression));
         }
     }
 
@@ -284,11 +286,11 @@ public final class ExpressionBuilder implements NodeVisitor {
         private Object[] stack;
 
 
-        public SynchronizedStack() {
+        SynchronizedStack() {
             this(DEFAULT_SIZE, DEFAULT_LIMIT);
         }
 
-        public SynchronizedStack(int size, int limit) {
+        SynchronizedStack(int size, int limit) {
             this.size = size;
             this.limit = limit;
             stack = new Object[size];

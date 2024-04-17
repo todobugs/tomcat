@@ -14,19 +14,19 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  */
-
 package org.apache.naming;
 
 import java.text.MessageFormat;
-import java.util.Hashtable;
+import java.util.HashMap;
 import java.util.Locale;
+import java.util.Map;
 import java.util.MissingResourceException;
 import java.util.ResourceBundle;
 
 /**
  * An internationalization / localization helper class which reduces
  * the bother of handling ResourceBundles and takes care of the
- * common cases of message formating which otherwise require the
+ * common cases of message formatting which otherwise require the
  * creation of Object arrays and such.
  *
  * <p>The StringManager operates on a package basis. One StringManager
@@ -92,13 +92,13 @@ public class StringManager {
     }
 
     /**
-        Get a string from the underlying resource bundle or return
-        null if the String is not found.
-
-        @param key to desired resource String
-        @return resource String matching <i>key</i> from underlying
-                bundle or null if not found.
-        @throws IllegalArgumentException if <i>key</i> is null.
+     *  Get a string from the underlying resource bundle or return
+     *  null if the String is not found.
+     *
+     *  @param key to desired resource String
+     *  @return resource String matching <i>key</i> from underlying
+     *          bundle or null if not found.
+     *  @throws IllegalArgumentException if <i>key</i> is null.
      */
     public String getString(String key) {
         if(key == null){
@@ -156,8 +156,7 @@ public class StringManager {
     // STATIC SUPPORT METHODS
     // --------------------------------------------------------------
 
-    private static final Hashtable<String, StringManager> managers =
-            new Hashtable<>();
+    private static final Map<String, StringManager> managers = new HashMap<>();
 
     /**
      * Get the StringManager for a particular package. If a manager for

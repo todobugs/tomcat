@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.catalina.storeconfig;
 
 import java.io.PrintWriter;
@@ -71,20 +70,6 @@ public class StandardServerSF extends StoreFactoryBase {
             LifecycleListener listeners[] = ((Lifecycle) server)
                     .findLifecycleListeners();
             storeElementArray(aWriter, indent, listeners);
-            /*LifecycleListener listener = null;
-            for (int i = 0; listener == null && i < listeners.length; i++)
-                if (listeners[i] instanceof ServerLifecycleListener)
-                    listener = listeners[i];
-            if (listener != null) {
-                StoreDescription elementDesc = getRegistry()
-                        .findDescription(
-                                StandardServer.class.getName()
-                                        + ".[ServerLifecycleListener]");
-                if (elementDesc != null) {
-                    elementDesc.getStoreFactory().store(aWriter, indent,
-                            listener);
-                }
-            }*/
             // Store nested <GlobalNamingResources> element
             NamingResourcesImpl globalNamingResources = server
                     .getGlobalNamingResources();

@@ -16,13 +16,20 @@
  */
 package org.apache.tomcat.jni;
 
-/** Poll
+/**
+ * Poll
  *
  * @author Mladen Turk
+ *
+ * @deprecated  The scope of the APR/Native Library will be reduced in Tomcat
+ *              10.1.x / Tomcat Native 2.x onwards to only include those
+ *              components required to provide OpenSSL integration with the NIO
+ *              and NIO2 connectors.
  */
+@Deprecated
 public class Poll {
 
-    /**
+    /*
      * Poll return values
      */
     /** Can read without blocking */
@@ -38,20 +45,24 @@ public class Poll {
     /** Descriptor invalid */
     public static final int APR_POLLNVAL = 0x040;
 
-    /**
+    /*
      * Pollset Flags
      */
     /** Adding or Removing a Descriptor is thread safe */
     public static final int APR_POLLSET_THREADSAFE = 0x001;
 
 
-    /** Used in apr_pollfd_t to determine what the apr_descriptor is
+    /* Used in apr_pollfd_t to determine what the apr_descriptor is
      * apr_datatype_e enum
      */
-    public static final int APR_NO_DESC       = 0; /** nothing here */
-    public static final int APR_POLL_SOCKET   = 1; /** descriptor refers to a socket */
-    public static final int APR_POLL_FILE     = 2; /** descriptor refers to a file */
-    public static final int APR_POLL_LASTDESC = 3; /** descriptor is the last one in the list */
+    /** nothing here */
+    public static final int APR_NO_DESC       = 0;
+    /** descriptor refers to a socket */
+    public static final int APR_POLL_SOCKET   = 1;
+    /** descriptor refers to a file */
+    public static final int APR_POLL_FILE     = 2;
+    /** descriptor is the last one in the list */
+    public static final int APR_POLL_LASTDESC = 3;
 
     /**
      * Setup a pollset object.

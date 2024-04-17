@@ -56,7 +56,7 @@ public class ServletWriter implements AutoCloseable {
     }
 
 
-    // -------------------- Access informations --------------------
+    // -------------------- Access information --------------------
 
     public int getJavaLine() {
         return javaLine;
@@ -67,14 +67,16 @@ public class ServletWriter implements AutoCloseable {
 
     public void pushIndent() {
         virtual_indent += TAB_WIDTH;
-        if (virtual_indent >= 0 && virtual_indent <= SPACES.length())
+        if (virtual_indent >= 0 && virtual_indent <= SPACES.length()) {
             indent = virtual_indent;
+        }
     }
 
     public void popIndent() {
         virtual_indent -= TAB_WIDTH;
-        if (virtual_indent >= 0 && virtual_indent <= SPACES.length())
+        if (virtual_indent >= 0 && virtual_indent <= SPACES.length()) {
             indent = virtual_indent;
+        }
     }
 
     /**
@@ -95,14 +97,14 @@ public class ServletWriter implements AutoCloseable {
     }
 
     /**
-     * Prints the current indention
+     * Prints the current indentation
      */
     public void printin() {
         writer.print(SPACES.substring(0, indent));
     }
 
     /**
-     * Prints the current indention, followed by the given string
+     * Prints the current indentation, followed by the given string
      * @param s The string
      */
     public void printin(String s) {
@@ -111,7 +113,7 @@ public class ServletWriter implements AutoCloseable {
     }
 
     /**
-     * Prints the current indention, and then the string, and a '\n'.
+     * Prints the current indentation, and then the string, and a '\n'.
      * @param s The string
      */
     public void printil(String s) {

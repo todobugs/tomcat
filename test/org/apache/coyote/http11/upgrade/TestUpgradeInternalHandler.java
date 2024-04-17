@@ -39,7 +39,6 @@ import javax.servlet.http.HttpUpgradeHandler;
 import javax.servlet.http.WebConnection;
 
 import org.junit.Assert;
-import org.junit.Assume;
 import org.junit.Test;
 
 import static org.apache.catalina.startup.SimpleHttpClient.CRLF;
@@ -59,10 +58,6 @@ public class TestUpgradeInternalHandler extends TomcatBaseTest {
 
     @Test
     public void testUpgradeInternal() throws Exception {
-        Assume.assumeTrue(
-                "Only supported on NIO 2",
-                getTomcatInstance().getConnector().getProtocolHandlerClassName().contains("Nio2"));
-
         UpgradeConnection uc = doUpgrade(EchoAsync.class);
         PrintWriter pw = new PrintWriter(uc.getWriter());
         BufferedReader reader = uc.getReader();
@@ -87,9 +82,10 @@ public class TestUpgradeInternalHandler extends TomcatBaseTest {
             Class<? extends HttpUpgradeHandler> upgradeHandlerClass) throws Exception {
         // Setup Tomcat instance
         Tomcat tomcat = getTomcatInstance();
+        Assert.assertTrue(tomcat.getConnector().setProperty("useAsyncIO", "true"));
 
         // No file system docBase required
-        Context ctx = tomcat.addContext("", null);
+        Context ctx = getProgrammaticRootContext();
 
         UpgradeServlet servlet = new UpgradeServlet(upgradeHandlerClass);
         Tomcat.addServlet(ctx, "servlet", servlet);
@@ -132,7 +128,7 @@ public class TestUpgradeInternalHandler extends TomcatBaseTest {
 
         private final Class<? extends HttpUpgradeHandler> upgradeHandlerClass;
 
-        public UpgradeServlet(Class<? extends HttpUpgradeHandler> upgradeHandlerClass) {
+        UpgradeServlet(Class<? extends HttpUpgradeHandler> upgradeHandlerClass) {
             this.upgradeHandlerClass = upgradeHandlerClass;
         }
 
@@ -149,7 +145,7 @@ public class TestUpgradeInternalHandler extends TomcatBaseTest {
         private final Writer writer;
         private final BufferedReader reader;
 
-        public UpgradeConnection(Socket socket) {
+        UpgradeConnection(Socket socket) {
             this.socket = socket;
             InputStream is;
             OutputStream os;
@@ -227,7 +223,7 @@ public class TestUpgradeInternalHandler extends TomcatBaseTest {
             }, buffer);
             System.out.println("CompletionState: " + state);
             // Test zero length write used by websockets
-            state = wrapper.write(BlockingMode.BLOCK, 10, TimeUnit.SECONDS, null, SocketWrapperBase.COMPLETE_WRITE_WITH_COMPLETION, new CompletionHandler<Long, Void>() {
+            wrapper.write(BlockingMode.BLOCK, 10, TimeUnit.SECONDS, null, SocketWrapperBase.COMPLETE_WRITE_WITH_COMPLETION, new CompletionHandler<Long, Void>() {
                 @Override
                 public void completed(Long result, Void attachment) {
                     System.out.println("Write: " + result.longValue());
@@ -282,6 +278,10 @@ public class TestUpgradeInternalHandler extends TomcatBaseTest {
         public void setSslSupport(SSLSupport sslSupport) {
             // NO-OP
         }
-    }
 
+        @Override
+        public UpgradeInfo getUpgradeInfo() {
+            return null;
+        }
+    }
 }

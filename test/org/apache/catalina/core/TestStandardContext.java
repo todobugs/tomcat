@@ -19,6 +19,7 @@ package org.apache.catalina.core;
 import java.io.File;
 import java.io.IOException;
 import java.io.PrintWriter;
+import java.lang.reflect.Method;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Set;
@@ -47,11 +48,13 @@ import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 
 import org.hamcrest.CoreMatchers;
+import org.hamcrest.MatcherAssert;
 
 import org.junit.Assert;
 import org.junit.Test;
 
 import org.apache.catalina.Context;
+import org.apache.catalina.Engine;
 import org.apache.catalina.Host;
 import org.apache.catalina.Lifecycle;
 import org.apache.catalina.LifecycleEvent;
@@ -147,7 +150,7 @@ public class TestStandardContext extends TomcatBaseTest {
 
     private static final class Bug46243Client extends SimpleHttpClient {
 
-        public Bug46243Client(int port) {
+        Bug46243Client(int port) {
             setPort(port);
         }
 
@@ -414,7 +417,7 @@ public class TestStandardContext extends TomcatBaseTest {
         Tomcat tomcat = getTomcatInstance();
 
         // No file system docBase required
-        Context ctx = tomcat.addContext("", null);
+        Context ctx = getProgrammaticRootContext();
 
         // Setup realm
         TesterMapRealm realm = new TesterMapRealm();
@@ -483,7 +486,7 @@ public class TestStandardContext extends TomcatBaseTest {
         Tomcat tomcat = getTomcatInstance();
 
         // No file system docBase required
-        Context ctx = tomcat.addContext("", null);
+        Context ctx = getProgrammaticRootContext();
 
         ctx.setDenyUncoveredHttpMethods(enableDeny);
 
@@ -564,7 +567,7 @@ public class TestStandardContext extends TomcatBaseTest {
         Tomcat tomcat = getTomcatInstance();
 
         // No file system docBase required
-        Context ctx = tomcat.addContext("", null);
+        Context ctx = getProgrammaticRootContext();
 
         // Add ServletContainerInitializer
         Bug51376SCI sci = new Bug51376SCI(loadOnStartUp);
@@ -734,7 +737,9 @@ public class TestStandardContext extends TomcatBaseTest {
         private Context context;
 
         private synchronized void init() throws Exception {
-            if (init) return;
+            if (init) {
+              return;
+            }
 
             Tomcat tomcat = getTomcatInstance();
             context = tomcat.addContext("", TEMP_DIR);
@@ -985,7 +990,7 @@ public class TestStandardContext extends TomcatBaseTest {
         Context context = new StandardContext();
 
         context.setResourceOnlyServlets("a,b,c");
-        Assert.assertThat(Arrays.asList(context.getResourceOnlyServlets().split(",")),
+        MatcherAssert.assertThat(Arrays.asList(context.getResourceOnlyServlets().split(",")),
                 CoreMatchers.hasItems("a", "b", "c"));
     }
 
@@ -1052,5 +1057,26 @@ public class TestStandardContext extends TomcatBaseTest {
                 throws ServletException, IOException {
             resp.getWriter().print("OK");
         }
+    }
+
+
+    @Test
+    public void testNamingContextName() throws Exception {
+        Engine engine = new StandardEngine();
+        engine.setName("engine");
+
+        Host host = new StandardHost();
+        host.setName("host");
+        host.setParent(engine);
+
+        Context context = new StandardContext();
+        context.setName("context");
+        context.setParent(host);
+
+        Method m = StandardContext.class.getDeclaredMethod("getNamingContextName");
+        m.setAccessible(true);
+        String result = (String) m.invoke(context);
+
+        Assert.assertEquals("/engine/hostcontext", result);
     }
 }

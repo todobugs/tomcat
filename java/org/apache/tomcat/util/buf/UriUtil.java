@@ -18,6 +18,8 @@ package org.apache.tomcat.util.buf;
 
 import java.io.File;
 import java.net.MalformedURLException;
+import java.net.URI;
+import java.net.URISyntaxException;
 import java.net.URL;
 import java.util.regex.Pattern;
 
@@ -27,7 +29,7 @@ import java.util.regex.Pattern;
 public final class UriUtil {
 
     private static final char[] HEX =
-        {'0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E', 'F'};
+            { '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E', 'F' };
 
     private static final Pattern PATTERN_EXCLAMATION_MARK = Pattern.compile("!/");
     private static final Pattern PATTERN_CARET = Pattern.compile("\\^/");
@@ -46,12 +48,11 @@ public final class UriUtil {
         } else {
             WAR_SEPARATOR = custom + "/";
             PATTERN_CUSTOM = Pattern.compile(Pattern.quote(WAR_SEPARATOR));
-            StringBuffer sb = new StringBuffer(custom.length() * 3);
+            StringBuilder sb = new StringBuilder(custom.length() * 3);
             // Deliberately use the platform's default encoding
             byte[] ba = custom.getBytes();
-            for (int j = 0; j < ba.length; j++) {
+            for (byte toEncode : ba) {
                 // Converting each byte in the buffer
-                byte toEncode = ba[j];
                 sb.append('%');
                 int low = toEncode & 0x0f;
                 int high = (toEncode & 0xf0) >> 4;
@@ -69,13 +70,12 @@ public final class UriUtil {
 
 
     /**
-     * Determine if the character is allowed in the scheme of a URI.
-     * See RFC 2396, Section 3.1
+     * Determine if the character is allowed in the scheme of a URI. See RFC 2396, Section 3.1
      *
      * @param c The character to test
      *
-     * @return {@code true} if a the character is allowed, otherwise {code
-     *         @false}
+     * @return {@code true} if a the character is allowed, otherwise {@code
+     *         false}
      */
     private static boolean isSchemeChar(char c) {
         return Character.isLetterOrDigit(c) || c == '+' || c == '-' || c == '.';
@@ -91,11 +91,11 @@ public final class UriUtil {
      */
     public static boolean hasScheme(CharSequence uri) {
         int len = uri.length();
-        for(int i=0; i < len ; i++) {
+        for (int i = 0; i < len; i++) {
             char c = uri.charAt(i);
-            if(c == ':') {
+            if (c == ':') {
                 return i > 0;
-            } else if(!UriUtil.isSchemeChar(c)) {
+            } else if (!isSchemeChar(c)) {
                 return false;
             }
         }
@@ -137,20 +137,16 @@ public final class UriUtil {
 
 
     /*
-     * When testing on markt's desktop each iteration was taking ~1420ns when
-     * using String.replaceAll().
+     * When testing on markt's desktop each iteration was taking ~1420ns when using String.replaceAll().
      *
-     * Switching the implementation to use pre-compiled patterns and
-     * Pattern.matcher(input).replaceAll(replacement) reduced this by ~10%.
+     * Switching the implementation to use pre-compiled patterns and Pattern.matcher(input).replaceAll(replacement)
+     * reduced this by ~10%.
      *
-     * Note: Given the very small absolute time of a single iteration, even for
-     *       a web application with 1000 JARs this is only going to add ~3ms.
-     *       It is therefore unlikely that further optimisation will be
-     *       necessary.
+     * Note: Given the very small absolute time of a single iteration, even for a web application with 1000 JARs this is
+     * only going to add ~3ms. It is therefore unlikely that further optimisation will be necessary.
      */
     /*
-     * Pulled out into a separate method in case we need to handle other unusual
-     * sequences in the future.
+     * Pulled out into a separate method in case we need to handle other unusual sequences in the future.
      */
     private static String makeSafeForJarUrl(String input) {
         // Since "!/" has a special meaning in a JAR URL, make sure that the
@@ -167,8 +163,7 @@ public final class UriUtil {
 
 
     /**
-     * Convert a URL of the form <code>war:file:...</code> to
-     * <code>jar:file:...</code>.
+     * Convert a URL of the form <code>war:file:...</code> to <code>jar:file:...</code>.
      *
      * @param warUrl The WAR URL to convert
      *
@@ -193,5 +188,68 @@ public final class UriUtil {
 
     public static String getWarSeparator() {
         return WAR_SEPARATOR;
+    }
+
+
+    /**
+     * Does the provided path start with <code>file:/</code> or <code>&lt;protocol&gt;://</code>.
+     *
+     * @param path The path to test
+     *
+     * @return {@code true} if the supplied path starts with once of the recognised sequences.
+     */
+    public static boolean isAbsoluteURI(String path) {
+        // Special case as only a single /
+        if (path.startsWith("file:/")) {
+            return true;
+        }
+
+        // Start at the beginning of the path and skip over any valid protocol
+        // characters
+        int i = 0;
+        while (i < path.length() && isSchemeChar(path.charAt(i))) {
+            i++;
+        }
+        // Need at least one protocol character. False positives with Windows
+        // drives such as C:/... will be caught by the later test for "://"
+        if (i == 0) {
+            return false;
+        }
+        // path starts with something that might be a protocol. Look for a
+        // following "://"
+        if (i + 2 < path.length() && path.charAt(i++) == ':' && path.charAt(i++) == '/' && path.charAt(i) == '/') {
+            return true;
+        }
+        return false;
+    }
+
+
+    /**
+     * Replicates the behaviour of {@link URI#resolve(String)} and adds support for URIs of the form
+     * {@code jar:file:/... }.
+     *
+     * @param base   The base URI to resolve against
+     * @param target The path to resolve
+     *
+     * @return The resulting URI as per {@link URI#resolve(String)}
+     *
+     * @throws MalformedURLException If the base URI cannot be converted to a URL
+     * @throws URISyntaxException    If the resulting URL cannot be converted to a URI
+     */
+    public static URI resolve(URI base, String target) throws MalformedURLException, URISyntaxException {
+        if (base.getScheme().equals("jar")) {
+            /*
+             * Previously used: new URL(base.toURL(), target).toURI() This delegated the work to the jar stream handler
+             * which correctly resolved the target against the base.
+             *
+             * Deprecation of all the URL constructors mean a different approach is required.
+             */
+            URI fileUri = new URI(base.getSchemeSpecificPart());
+            URI fileUriResolved = fileUri.resolve(target);
+
+            return new URI("jar:" + fileUriResolved.toString());
+        } else {
+            return base.resolve(target);
+        }
     }
 }

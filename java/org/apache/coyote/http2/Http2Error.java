@@ -16,8 +16,8 @@
  */
 package org.apache.coyote.http2;
 
-public enum Http2Error {
-
+enum Http2Error {
+    // @formatter:off
     NO_ERROR            (0x00),
     PROTOCOL_ERROR      (0x01),
     INTERNAL_ERROR      (0x02),
@@ -32,20 +32,21 @@ public enum Http2Error {
     ENHANCE_YOUR_CALM   (0x0b),
     INADEQUATE_SECURITY (0x0c),
     HTTP_1_1_REQUIRED   (0x0d);
+    // @formatter:on
 
     private final long code;
 
-    private Http2Error(long code) {
+    Http2Error(long code) {
         this.code = code;
     }
 
 
-    public long getCode() {
+    long getCode() {
         return code;
     }
 
 
-    public byte[] getCodeBytes() {
+    byte[] getCodeBytes() {
         byte[] codeByte = new byte[4];
         ByteUtil.setFourBytes(codeByte, 0, code);
         return codeByte;

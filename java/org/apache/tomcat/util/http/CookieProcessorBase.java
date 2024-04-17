@@ -22,16 +22,17 @@ import java.util.Date;
 import java.util.Locale;
 import java.util.TimeZone;
 
+import javax.servlet.http.Cookie;
+import javax.servlet.http.HttpServletRequest;
+
 public abstract class CookieProcessorBase implements CookieProcessor {
 
-    private static final String COOKIE_DATE_PATTERN = "EEE, dd-MMM-yyyy HH:mm:ss z";
+    private static final String COOKIE_DATE_PATTERN = "EEE, dd MMM yyyy HH:mm:ss z";
 
-    protected static final ThreadLocal<DateFormat> COOKIE_DATE_FORMAT =
-        new ThreadLocal<DateFormat>() {
+    protected static final ThreadLocal<DateFormat> COOKIE_DATE_FORMAT = new ThreadLocal<DateFormat>() {
         @Override
         protected DateFormat initialValue() {
-            DateFormat df =
-                new SimpleDateFormat(COOKIE_DATE_PATTERN, Locale.US);
+            DateFormat df = new SimpleDateFormat(COOKIE_DATE_PATTERN, Locale.US);
             df.setTimeZone(TimeZone.getTimeZone("GMT"));
             return df;
         }
@@ -45,11 +46,59 @@ public abstract class CookieProcessorBase implements CookieProcessor {
 
     private SameSiteCookies sameSiteCookies = SameSiteCookies.UNSET;
 
+    private boolean partitioned = false;
+
+
     public SameSiteCookies getSameSiteCookies() {
         return sameSiteCookies;
     }
 
     public void setSameSiteCookies(String sameSiteCookies) {
         this.sameSiteCookies = SameSiteCookies.fromString(sameSiteCookies);
+    }
+
+
+    /**
+     * Should the {@code Partitioned} attribute be added by default to cookies created for this web application.
+     * <p>
+     * The name of the attribute used to indicate a partitioned cookie as part of
+     * <a href="https://developers.google.com/privacy-sandbox/3pcd#partitioned">CHIPS</a> is not defined by an RFC and
+     * may change in a non-backwards compatible way once equivalent functionality is included in an RFC.
+     *
+     * @return {@code true} if the {@code Partitioned} attribute should be added by default to cookies created for this
+     *             web application, otherwise {@code false}
+     */
+    public boolean getPartitioned() {
+        return partitioned;
+    }
+
+
+    /**
+     * Configure whether the {@code Partitioned} attribute should be added by default to cookies created for this web
+     * application.
+     * <p>
+     * The name of the attribute used to indicate a partitioned cookie as part of
+     * <a href="https://developers.google.com/privacy-sandbox/3pcd#partitioned">CHIPS</a> is not defined by an RFC and
+     * may change in a non-backwards compatible way once equivalent functionality is included in an RFC.
+     *
+     * @param partitioned {@code true} if the {@code Partitioned} attribute should be added by default to cookies
+     *                        created for this web application, otherwise {@code false}
+     */
+    public void setPartitioned(boolean partitioned) {
+        this.partitioned = partitioned;
+    }
+
+
+    /**
+     * {@inheritDoc}
+     *
+     * @deprecated This implementation calls the deprecated {@link #generateHeader(Cookie)} method. Implementors should
+     *                 not rely on this method as it is present only for transitional compatibility and will be removed
+     *                 in Tomcat 9.
+     */
+    @Deprecated
+    @Override
+    public String generateHeader(Cookie cookie, HttpServletRequest request) {
+        return generateHeader(cookie);
     }
 }

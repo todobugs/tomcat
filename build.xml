@@ -16,7 +16,10 @@
   limitations under the License.
 -->
 <project name="Tomcat 8.5" default="deploy" basedir="."
-  xmlns:if="ant:if" xmlns:unless="ant:unless">
+  xmlns:if="ant:if"
+  xmlns:unless="ant:unless"
+  xmlns:jacoco="antlib:org.jacoco.ant"
+  >
 
   <!-- ===================== Initialize Property Values ==================== -->
 
@@ -31,28 +34,50 @@
   <!-- property values you may customize.                                    -->
   <property file="${user.home}/build.properties"/>
   <property file="build.properties"/>
+  <property file="build.properties.release"/>
   <property file="build.properties.default"/>
+
+  <!-- Check Ant Version -->
+  <fail message="Ant version ${ant.version.required} or newer is required (${ant.version} is installed)">
+    <condition>
+      <not><antversion atleast="${ant.version.required}" /></not>
+    </condition>
+  </fail>
+  <!-- Additional Ant version check for release builds -->
+  <fail message="Ant version 1.10.2 or newer is required (${ant.version} is installed)">
+    <condition>
+      <and>
+        <isset property="ant.tstamp.now.iso"/>
+        <not><antversion atleast="1.10.2" /></not>
+      </and>
+    </condition>
+  </fail>
 
   <!-- Project Name -->
   <property name="project"               value="apache-tomcat" />
 
   <!-- Version numbers -->
-  <property name="version"               value="${version.major}.${version.minor}.${version.build}${version.suffix}" />
+  <!-- Keep in sync with webapps/docs/tomcat-docs.xsl -->
+  <property name="version"               value="${version.major}.${version.minor}.${version.build}${version.suffix}${version.dev}" />
   <property name="version.number"        value="${version.major}.${version.minor}.${version.build}.${version.patch}" />
   <property name="version.major.minor"   value="${version.major}.${version.minor}" />
 
   <!-- constant to declare a file binary for md5sum -->
   <property name="md5sum.binary-prefix"  value=" *" />
 
-  <!-- Exact spec versions (for the manifests) -->
-  <property name="servlet.revision"      value="FR" />
-  <property name="jsp.revision"          value="FR" />
-  <property name="el.revision"           value="FR" />
-  <property name="websocket.revision"    value="FR" />
-  <!-- MR B but this was first 1.1 release so use FR -->
-  <property name="jaspic.revision"       value="FR" />
-  <!-- MR 2 but this was first 1.2 release so use FR -->
-  <property name="annotation.revision"   value="FR" />
+  <!-- Exact spec versions (for the manifests etc.) -->
+  <property name="servlet.spec.version"    value="3.1" />
+  <property name="servlet.revision"        value="FR" />
+  <property name="jsp.spec.version"        value="2.3" />
+  <property name="jsp.revision"            value="FR" />
+  <property name="el.spec.version"         value="3.0" />
+  <property name="el.revision"             value="FR" />
+  <property name="websocket.spec.version"  value="1.1" />
+  <property name="websocket.revision"      value="FR" />
+  <property name="jaspic.spec.version"     value="1.1" />
+  <property name="jaspic.revision"         value="FR" />
+  <property name="annotation.spec.version" value="1.2" />
+  <property name="annotation.revision"     value="FR" />
 
   <!-- Release artifact base names -->
   <property name="final.name"            value="${project}-${version}" />
@@ -70,8 +95,10 @@
   <property name="tomcat.embed.sources"  value="${tomcat.output}/embed-src-jars"/>
   <property name="tomcat.extras"         value="${tomcat.output}/extras"/>
   <property name="tomcat.extras.sources" value="${tomcat.output}/extras-src-jars"/>
+  <property name="tomcat.i18n"           value="${tomcat.output}/i18n"/>
   <property name="tomcat.manifests"      value="${tomcat.output}/manifests"/>
   <property name="tomcat.release"        value="${tomcat.output}/release"/>
+  <property name="tomcat.release.verify" value="${tomcat.output}/verify" />
   <property name="tomcat.src.jars"       value="${tomcat.output}/src-jars"/>
   <property name="test.classes"          value="${tomcat.output}/testclasses"/>
   <property name="test.run.classes"      value="${tomcat.output}/classes"/>
@@ -84,11 +111,21 @@
   <!-- build output directory for jdbc-pool -->
   <property name="tomcat.pool"           value="${tomcat.output}/jdbc-pool"/>
 
-  <!-- Servlet 3.1 spec requires Java 7+ -->
-  <property name="compile.source" value="7"/>
-  <property name="compile.target" value="7"/>
+  <!-- Java EE 7 platform requires Java 7+ -->
+  <!-- Keep in sync with webapps/docs/tomcat-docs.xsl -->
   <property name="compile.release" value="7"/>
   <property name="min.java.version" value="7"/>
+  <property name="build.java.version" value="11"/>
+
+  <!-- Check Java Build Version -->
+  <fail message="Java version ${build.java.version} or newer is required (${java.version} is installed)">
+    <condition>
+      <and>
+        <not><javaversion atleast="${build.java.version}" /></not>
+        <not><isset property="skip.build.java.version"/></not>
+      </and>
+    </condition>
+  </fail>
 
   <!-- Locations to create the JAR artifacts -->
   <!-- Standard JARs -->
@@ -156,10 +193,7 @@
 
   <!-- Extras JARs & source JARs -->
   <property name="catalina-ws.jar" value="${tomcat.extras}/catalina-ws.jar"/>
-  <property name="catalina-jmx-remote.jar" value="${tomcat.extras}/catalina-jmx-remote.jar"/>
-
   <property name="catalina-ws-src.jar" value="${tomcat.extras.sources}/catalina-ws-src.jar"/>
-  <property name="catalina-jmx-remote-src.jar" value="${tomcat.extras.sources}/catalina-jmx-remote-src.jar"/>
 
   <!-- jdbc-pool JARs & source JARs -->
   <property name="tomcat-jdbc.jar" value="${tomcat.pool}/tomcat-jdbc.jar"/>
@@ -170,20 +204,21 @@
   <property name="test.formatter" value="-Dorg.apache.juli.formatter=java.util.logging.SimpleFormatter"/>
   <property name="test.relaxTiming" value="false"/>
 
-  <!-- Cobertura code coverage settings -->
-  <property name="cobertura.out" value="${tomcat.output}/coverage"/>
-  <property name="cobertura.datafile" value="${cobertura.out}/cobertura.ser"/>
-  <property name="tomcat.classes.cobertura" value="${tomcat.classes}-cobertura"/>
-  <property name="cobertura.report.format" value="html"/>
+  <!-- Code coverage settings -->
+  <property name="coverage.out" value="${tomcat.output}/coverage"/>
+  <property name="coverage.datafile" value="${coverage.out}/jacoco.exec"/>
 
-  <!-- FindBugs settings -->
-  <property name="findbugs.out" value="${tomcat.output}/findbugs"/>
-  <property name="findbugs.report.format" value="html"/>
-  <property name="findbugs.report.level" value="low"/>
+  <!-- SpotBugs settings -->
+  <property name="spotbugs.out" value="${tomcat.output}/spotbugs"/>
+  <property name="spotbugs.report.format" value="html"/>
+  <property name="spotbugs.report.level" value="low"/>
 
   <!-- Workaround against http://bugs.sun.com/view_bug.do?bug_id=6202721 -->
   <available file="/dev/urandom" property="test.jvmarg.egd" value="-Djava.security.egd=file:/dev/./urandom"/>
-  <property name="test.jvmarg.egd" value="" />
+  <!-- JREs may fail to start with an empty argument so provide a dummy      -->
+  <!-- value here for those cases, such as Windows, where no value will be   -->
+  <!-- set above.                                                            -->
+  <property name="test.jvmarg.egd" value="-Dignore" />
 
   <!-- Location of OpenSSL binary (file name, not directory) -->
   <!-- The OpenSSL tests cases be disabled by specifying an invalid path here -->
@@ -196,29 +231,9 @@
   <defaultexcludes remove="**/.gitignore" />
   <!--<defaultexcludes echo="true" />-->
 
-  <!-- Java 9 -->
-  <available classname="java.lang.reflect.InaccessibleObjectException"
-             property="java9.javadoc.options"
-             value="-html5"/>
-  <property name="java9.javadoc.options" value=""/>
-
-  <available classname="java.lang.reflect.InaccessibleObjectException"
-             property="java9.test.option.1"
-             value="--add-opens=java.base/java.lang=ALL-UNNAMED"/>
-  <property name="java9.test.option.1" value="-Dtest.1=1"/>
-  <available classname="java.lang.reflect.InaccessibleObjectException"
-             property="java9.test.option.2"
-             value="--add-opens=java.base/java.io=ALL-UNNAMED"/>
-  <property name="java9.test.option.2" value="-Dtest.2=2"/>
-  <available classname="java.lang.reflect.InaccessibleObjectException"
-             property="java9.test.option.3"
-             value="--add-opens=java.rmi/sun.rmi.transport=ALL-UNNAMED"/>
-  <property name="java9.test.option.3" value="-Dtest.3=3"/>
-
   <!-- Classpaths -->
   <path id="compile.classpath">
     <pathelement location="${jdt.jar}"/>
-    <pathelement location="${saaj-api.jar}"/>
   </path>
 
   <path id="tomcat.classpath">
@@ -228,11 +243,13 @@
   <path id="tomcat.test.classpath">
     <pathelement location="${test.basedir}/webapps/examples/WEB-INF/classes"/>
     <pathelement location="${test.classes}"/>
+    <pathelement location="${tomcat.i18n}"/>
     <pathelement location="${junit.jar}"/>
     <pathelement location="${hamcrest.jar}"/>
     <pathelement location="${easymock.jar}"/>
     <pathelement location="${cglib.jar}"/>
     <pathelement location="${objenesis.jar}"/>
+    <pathelement location="${unboundid.jar}"/>
     <path refid="compile.classpath" />
     <path refid="tomcat.classpath" />
   </path>
@@ -245,12 +262,30 @@
     </fileset>
   </path>
 
+  <!-- Classpath filter set -->
+  <filterset id="classpath.filters">
+    <filter token="JAXRPC_JAR" value="${jaxrpc-lib.jar}"/>
+    <filter token="WSDL4J_JAR" value="${wsdl4j-lib.jar}"/>
+    <filter token="ANT_JAR" value="${ant.home}/lib/ant.jar"/>
+    <filter token="JDT_JAR" value="${jdt.jar}"/>
+    <filter token="EASYMOCK_JAR" value="${easymock.jar}"/>
+    <filter token="HAMCREST_JAR" value="${hamcrest.jar}"/>
+    <filter token="CGLIB_JAR" value="${cglib.jar}"/>
+    <filter token="OBJENESIS_JAR" value="${objenesis.jar}"/>
+    <filter token="BND_JAR" value="${bnd.jar}"/>
+    <filter token="UNBOUNDID_JAR" value="${unboundid.jar}"/>
+    <filter token="JUNIT_JAR" value="${junit.jar}"/>
+    <filter token="OUTPUT_DIR" value="${tomcat.output}"/>
+  </filterset>
+
   <!-- Version info filter set -->
   <tstamp>
     <format property="year" pattern="yyyy" locale="en" timezone="UTC"/>
     <format property="today" pattern="MMM d yyyy" locale="en" timezone="UTC"/>
     <format property="today-iso-8601" pattern="yyyy-MM-dd" locale="en" timezone="UTC"/>
     <format property="tstamp" pattern="HH:mm:ss" locale="en" timezone="UTC"/>
+    <format property="tstamp.file" pattern="yyyy-MM-dd HH:mm:ss" timezone="UTC"/>
+    <format property="tstamp.iso.release" pattern="yyyy-MM-dd'T'HH:mm:ssX" timezone="UTC"/>
   </tstamp>
   <filterset id="version.filters">
     <filter token="YEAR" value="${year}"/>
@@ -259,9 +294,17 @@
     <filter token="VERSION_MAJOR" value="${version.major}"/>
     <filter token="VERSION_MAJOR_MINOR" value="${version.major.minor}"/>
     <filter token="VERSION_BUILT" value="${today} ${tstamp} UTC"/>
+    <filter token="VERSION_BUILT_ISO" value="${today-iso-8601}"/>
     <filter token="JDT_VERSION" value="${jdt.version}"/>
     <filter token="GIT_BRANCH" value="${git.branch}"/>
     <filter token="MIN_JAVA_VERSION" value="${min.java.version}"/>
+    <filter token="BUILD_JAVA_VERSION" value="${build.java.version}"/>
+    <filter token="ANT_VERSION_REQUIRED" value="${ant.version.required}"/>
+    <filter token="SERVLET_SPEC_VERSION" value="${servlet.spec.version}"/>
+    <filter token="JSP_SPEC_VERSION" value="${jsp.spec.version}"/>
+    <filter token="EL_SPEC_VERSION" value="${el.spec.version}"/>
+    <filter token="WEBSOCKET_SPEC_VERSION" value="${websocket.spec.version}"/>
+    <filter token="JASPIC_SPEC_VERSION" value="${jaspic.spec.version}"/>
   </filterset>
 
   <!-- Files to change line endings for depending on target platform -->
@@ -271,6 +314,7 @@
     <include name="**/LICENSE"/>
     <include name="**/NOTICE"/>
     <include name="**/RELEASE-NOTES"/>
+    <include name="**/javax.el.ExpressionFactory"/>
     <include name="**/javax.servlet.ServletContainerInitializer"/>
     <include name="**/javax.websocket.ContainerProvider"/>
     <include name="**/javax.websocket.server.ServerEndpointConfig$Configurator"/>
@@ -278,10 +322,13 @@
     <include name="**/*.classpath"/>
     <include name="**/*.css"/>
     <include name="**/*.dtd"/>
+    <include name="**/*.editorconfig"/>
     <include name="**/*.htm"/>
     <include name="**/*.html"/>
+    <include name="**/*.iml"/>
     <include name="**/*.ini"/>
     <include name="**/*.java"/>
+    <include name="**/*.jj"/>
     <include name="**/*.jjt"/>
     <include name="**/*.json"/>
     <include name="**/*.jsp"/>
@@ -302,6 +349,7 @@
     <include name="**/*.project"/>
     <include name="**/*.properties"/>
     <include name="**/*.properties.default"/>
+    <include name="**/*.properties.release"/>
     <include name="**/*.svg"/>
     <include name="**/*.tag"/>
     <include name="**/*.tagx"/>
@@ -312,6 +360,10 @@
     <include name="**/*.xml"/>
     <include name="**/*.xsd"/>
     <include name="**/*.xsl"/>
+    <include name="**/*.xslt"/>
+    <include name="**/*.yaml"/>
+    <include name="**/*.yml"/>
+    <include name="**/Dockerfile"/>
     <!-- Exclude files that use 16-bit encodings. -->
     <!-- This prevents fixcrlf corrupting them during a release -->
     <exclude name="**/bom-none-prolog-utf16?e.jspx"/>
@@ -365,6 +417,7 @@
     <include name="org/apache/catalina/startup/CatalinaProperties.*" />
     <include name="org/apache/catalina/startup/ClassLoaderFactory.*" />
     <include name="org/apache/catalina/startup/ClassLoaderFactory$*.*" />
+    <include name="org/apache/catalina/startup/Constants.*" />
     <include name="org/apache/catalina/startup/SafeForkJoinWorkerThreadFactory.*" />
     <include name="org/apache/catalina/startup/SafeForkJoinWorkerThreadFactory$*.*" />
     <include name="org/apache/catalina/startup/Tool.*" />
@@ -395,6 +448,7 @@
     <include name="org/apache/tomcat/util/res/**" />
     <include name="org/apache/tomcat/util/security/**" />
     <include name="org/apache/tomcat/util/threads/**" />
+    <include name="org/apache/tomcat/util/json/**" />
     <include name="org/apache/tomcat/util/*" />
     <exclude name="org/apache/tomcat/util/bcel" />
     <exclude name="org/apache/tomcat/util/descriptor" />
@@ -418,7 +472,6 @@
     <!-- Modules -->
     <exclude name="org/apache/catalina/ant/**" />
     <exclude name="org/apache/catalina/ha/**" />
-    <exclude name="org/apache/catalina/mbeans/JmxRemote*" />
     <exclude name="org/apache/catalina/tribes/**" />
     <exclude name="org/apache/catalina/storeconfig/**" />
     <exclude name="org/apache/naming/factory/webservices/**" />
@@ -481,13 +534,14 @@
     -->
     <include name="org/apache/coyote/**" />
     <include name="org/apache/tomcat/jni/**" />
-    <include name="org/apache/jk/**" />
     <include name="org/apache/tomcat/util/**" />
+    <exclude name="org/apache/tomcat/util/descriptor/tld/**" />
   </patternset>
 
   <patternset id="files.tomcat-embed-jasper" >
     <patternset refid="files.jasper" />
     <patternset refid="files.jsp-api" />
+    <include name="org/apache/tomcat/util/descriptor/tld/**" />
   </patternset>
 
   <patternset id="files.tomcat-embed-el" >
@@ -513,10 +567,6 @@
   <!-- Pattern sets for extras JARs -->
   <patternset id="files.tomcat-extras-ws">
     <include name="org/apache/naming/factory/webservices/**" />
-  </patternset>
-
-  <patternset id="files.tomcat-extras-jmxremote">
-    <include name="org/apache/catalina/mbeans/JmxRemote*" />
   </patternset>
 
   <!-- =========================== Build targets =========================== -->
@@ -572,7 +622,8 @@
 
     <taskdef resource="${checkstyletask.properties}"
              classpath="${checkstyle.jar}" />
-    <checkstyle config="res/checkstyle/checkstyle.xml">
+    <!-- Main checks -->
+    <checkstyle config="${basedir}/res/checkstyle/checkstyle.xml">
       <fileset dir="." >
         <patternset refid="text.files" />
         <include name="**/*.bat"/>
@@ -582,6 +633,11 @@
         <exclude name="nbproject/**"/>
         <exclude name="output/**"/>
         <exclude name="modules/**"/>
+        <exclude name="test/webapp-fragments/WEB-INF/classes/*.txt"/>
+        <exclude name="test/webapp/bug49nnn/*.txt"/>
+        <exclude name="test/webapp/bug53257/**/*.txt"/>
+        <exclude name="test/webapp/bug66609/*.txt"/>
+        <exclude name="test/webresources/**/*.txt"/>
         <exclude name="**/*.mdl"/>
         <exclude name="**/*.pem"/>
         <exclude name="**/*.svg"/>
@@ -590,17 +646,14 @@
         <!-- Exclude auto-generated files -->
         <exclude name="java/org/apache/el/parser/ELParser*.java" />
         <exclude name="java/org/apache/el/parser/Node.java" />
-        <exclude name="java/org/apache/**/parser/JJT*ParserState.java" />
-        <exclude name="java/org/apache/**/parser/ParseException.java" />
-        <exclude name="java/org/apache/**/parser/SimpleCharStream.java" />
-        <exclude name="java/org/apache/**/parser/Token*.java" />
-        <!-- Exclude simple test files -->
-        <exclude name="test/webapp/bug53257/**/*.txt"/>
-        <exclude name="test/webapp/bug49nnn/bug49464*"/>
-        <exclude name="test/webapp-fragments/WEB-INF/classes/*.txt"/>
-        <exclude name="test/webresources/**"/>
-        <!-- Exclude test files with unusual encodings -->
-        <exclude name="test/webapp/jsp/encoding/**"/>
+        <exclude name="java/org/apache/tomcat/util/json/JSONParser*.java" />
+        <exclude name="**/*.jj" />
+        <exclude name="java/org/apache/**/JJT*ParserState.java" />
+        <exclude name="java/org/apache/**/ParseException.java" />
+        <exclude name="java/org/apache/**/JavaCharStream.java" />
+        <exclude name="java/org/apache/**/SimpleCharStream.java" />
+        <exclude name="java/org/apache/**/Token.java" />
+        <exclude name="java/org/apache/**/TokenMgrError.java" />
         <!-- Exclude developer specific local files -->
         <exclude name="build.properties" />
         <exclude name="res/maven/mvn.properties" />
@@ -614,15 +667,31 @@
       </fileset>
     </checkstyle>
     <!-- javax package checks -->
-    <checkstyle config="res/checkstyle/javax-checkstyle.xml">
+    <checkstyle config="${basedir}/res/checkstyle/javax-checkstyle.xml">
       <fileset dir="java/javax" >
         <include name="**/*.java"/>
       </fileset>
     </checkstyle>
     <!-- org package checks -->
-    <checkstyle config="res/checkstyle/org-checkstyle.xml">
+    <checkstyle config="${basedir}/res/checkstyle/org-checkstyle.xml">
       <fileset dir="java/org" >
         <include name="**/*.java"/>
+      </fileset>
+    </checkstyle>
+    <!-- Tests checks -->
+    <checkstyle config="${basedir}/res/checkstyle/test-checkstyle.xml">
+      <fileset dir="test" >
+        <patternset refid="text.files" />
+        <exclude name=".*/**"/>
+        <exclude name="**/*.pem"/>
+        <!-- Exclude simple test files -->
+        <exclude name="webapp/bug49nnn/bug49464*"/>
+        <exclude name="webapp/bug53257/**/*.txt"/>
+        <exclude name="webapp/bug66609/*.txt"/>
+        <exclude name="webapp-fragments/WEB-INF/classes/*.txt"/>
+        <exclude name="webresources/**"/>
+        <!-- Exclude test files with unusual encodings -->
+        <exclude name="webapp/jsp/encoding/**"/>
       </fileset>
     </checkstyle>
   </target>
@@ -636,8 +705,6 @@
     <javac srcdir="java" destdir="${tomcat.classes}"
            debug="${compile.debug}"
            deprecation="${compile.deprecation}"
-           source="${compile.source}"
-           target="${compile.target}"
            release="${compile.release}"
            encoding="ISO-8859-1"
            includeAntRuntime="true" >
@@ -651,7 +718,7 @@
              classname="org.apache.tomcat.buildutil.CheckEol"
              classpath="${tomcat.classes}" />
 
-    <checkeol>
+    <checkeol mode="LF">
       <fileset dir="." >
         <patternset refid="text.files" />
         <include name="**/*.bat"/>
@@ -691,19 +758,17 @@
     <javac srcdir="java" destdir="${tomcat.classes}"
            debug="${compile.debug}"
            deprecation="${compile.deprecation}"
-           source="${compile.source}"
-           target="${compile.target}"
+           release="${compile.release}"
            encoding="ISO-8859-1"
            includeAntRuntime="true" >
       <!-- Uncomment this to show unchecked warnings:
       <compilerarg value="-Xlint:unchecked"/>
       -->
-      <compilerarg value="-XDignore.symbol.file"/>
       <classpath refid="compile.classpath" />
       <exclude name="org/apache/naming/factory/webservices/**" />
     </javac>
     <!-- Copy static resource files -->
-    <copy todir="${tomcat.classes}" encoding="ISO-8859-1">
+    <copy todir="${tomcat.classes}" encoding="UTF-8">
       <filterset refid="version.filters"/>
       <fileset dir="java">
         <include name="**/*.properties"/>
@@ -719,15 +784,25 @@
     <!-- Convert the message files from UTF-8 to ASCII. This can be removed
     after upgrading to Java 9+ as the minimum JRE and specifying the encoding
     when loading the ResourceBundles -->
-    <native2ascii src="java" dest="${tomcat.classes}" includes="**/LocalStrings*.properties,**/Messages*.properties" encoding="UTF-8"/>
+    <native2ascii src="java" dest="${tomcat.classes}" includes="**/LocalStrings.properties,**/Messages*.properties" encoding="UTF-8"/>
+    <native2ascii src="java" dest="${tomcat.i18n}" includes="**/LocalStrings_*.properties" encoding="UTF-8"/>
 
+    <!-- Ensure consistent line-endings for reproducible builds -->
+    <fixcrlf srcdir="${tomcat.classes}" eol="lf"
+        encoding="UTF-8" fixlast="false" >
+      <patternset refid="text.files" />
+    </fixcrlf>
+    <fixcrlf srcdir="${tomcat.i18n}" eol="lf"
+        encoding="UTF-8" fixlast="false" >
+      <patternset refid="text.files" />
+    </fixcrlf>
   </target>
 
   <target name="build-manifests" unless="manifests.uptodate"
           depends="build-prepare">
     <!-- Filtering tokens for JAR manifests-->
-    <filter token="source.jdk" value="${compile.source}"/>
-    <filter token="target.jdk" value="${compile.target}"/>
+    <filter token="source.jdk" value="${compile.release}"/>
+    <filter token="target.jdk" value="${compile.release}"/>
     <filter token="servlet.revision" value="${servlet.revision}"/>
     <filter token="jsp.revision" value="${jsp.revision}"/>
     <filter token="el.revision" value="${el.revision}"/>
@@ -742,16 +817,28 @@
       <fileset dir="${tomcat.home}/res/META-INF" />
     </copy>
 
+    <!-- Ensure text files in JARs have consistent line endings. Required for
+    reproducible builds. -->
+    <fixcrlf srcdir="${tomcat.manifests}" eol="lf"
+        encoding="ISO-8859-1" fixlast="false" >
+      <patternset refid="text.files" />
+    </fixcrlf>
   </target>
 
   <target name="package" depends="compile,build-manifests" >
-    <!-- Common Annotations 1.2 JAR File -->
+    <!--
+    #### ORDER IS IMPORTANT ####
+    Kept in sync with later Tomcat versions even though Tomcat 8.5.x does
+    not use Bnd.
+      -->
+
+    <!-- Common Annotations JAR File -->
     <jarIt jarfile="${annotations-api.jar}"
       filesDir="${tomcat.classes}"
       filesId="files.annotations-api"
       manifest="${tomcat.manifests}/annotations-api.jar.manifest" />
 
-    <!-- Servlet 3.1 Implementation JAR File -->
+    <!-- Servlet Implementation JAR File -->
     <jarIt jarfile="${servlet-api.jar}"
       filesDir="${tomcat.classes}"
       filesId="files.servlet-api"
@@ -759,35 +846,34 @@
       notice="${tomcat.manifests}/servlet-api.jar.notice"
       license="${tomcat.manifests}/servlet-api.jar.license" />
 
-    <!-- JSP 2.3 Implementation JAR File -->
-    <jarIt jarfile="${jsp-api.jar}"
-      filesDir="${tomcat.classes}"
-      filesId="files.jsp-api"
-      manifest="${tomcat.manifests}/jsp-api.jar.manifest" />
-
-    <!-- EL 3.0 Implementation JAR File -->
+    <!-- EL Implementation JAR File -->
     <jarIt jarfile="${el-api.jar}"
       filesDir="${tomcat.classes}"
       filesId="files.el-api"
       manifest="${tomcat.manifests}/el-api.jar.manifest" />
 
-    <!-- WebSocket 1.1 API JAR File -->
+    <!-- JSP Implementation JAR File -->
+    <jarIt jarfile="${jsp-api.jar}"
+      filesDir="${tomcat.classes}"
+      filesId="files.jsp-api"
+      manifest="${tomcat.manifests}/jsp-api.jar.manifest" />
+
+    <!-- WebSocket API JAR File -->
     <jarIt jarfile="${websocket-api.jar}"
       filesDir="${tomcat.classes}"
       filesId="files.websocket-api"
       manifest="${tomcat.manifests}/websocket-api.jar.manifest" />
 
-    <!-- JASPIC 1.1 API JAR File -->
+    <!-- JASPIC API JAR File -->
     <jarIt jarfile="${jaspic-api.jar}"
       filesDir="${tomcat.classes}"
       filesId="files.jaspic-api"
       manifest="${tomcat.manifests}/jaspic-api.jar.manifest" />
 
-    <!-- WebSocket 1.1 implementation JAR File -->
-    <jarIt jarfile="${tomcat-websocket.jar}"
+    <!-- Tomcat-juli JAR File -->
+    <jarIt jarfile="${tomcat-juli.jar}"
       filesDir="${tomcat.classes}"
-      filesId="files.tomcat-websocket"
-      meta-inf="${tomcat.manifests}/tomcat-websocket.jar"/>
+      filesId="files.tomcat-juli" />
 
     <!-- Bootstrap JAR File -->
     <jarIt jarfile="${bootstrap.jar}"
@@ -795,20 +881,45 @@
       filesId="files.bootstrap"
       manifest="${tomcat.manifests}/bootstrap.jar.manifest" />
 
-    <!-- Tomcat-juli JAR File -->
-    <jarIt jarfile="${tomcat-juli.jar}"
+    <!-- Tomcat Util JAR File -->
+    <jarIt jarfile="${tomcat-util.jar}"
       filesDir="${tomcat.classes}"
-      filesId="files.tomcat-juli" />
+      filesId="files.tomcat-util" />
 
-    <!-- Catalina Main JAR File -->
-    <jarIt jarfile="${catalina.jar}"
+    <!-- Tomcat API JAR File -->
+    <jarIt jarfile="${tomcat-api.jar}"
       filesDir="${tomcat.classes}"
-      filesId="files.catalina" />
+      filesId="files.tomcat-api" />
+
+    <!-- Tomcat Util Scan JAR File -->
+    <jarIt jarfile="${tomcat-util-scan.jar}"
+      filesDir="${tomcat.classes}"
+      filesId="files.tomcat-util-scan" />
+
+    <jarIt jarfile="${tomcat-jni.jar}"
+      filesDir="${tomcat.classes}"
+      filesId="files.tomcat-jni" />
+
+    <!-- Protocol handlers - Coyote -->
+    <jarIt jarfile="${tomcat-coyote.jar}"
+      filesDir="${tomcat.classes}"
+      filesId="files.tomcat-coyote" />
+
+    <!-- WebSocket implementation JAR File -->
+    <jarIt jarfile="${tomcat-websocket.jar}"
+      filesDir="${tomcat.classes}"
+      filesId="files.tomcat-websocket"
+      meta-inf="${tomcat.manifests}/tomcat-websocket.jar" />
 
     <!-- Catalina GroupCom/Tribes JAR File -->
     <jarIt jarfile="${catalina-tribes.jar}"
       filesDir="${tomcat.classes}"
       filesId="files.catalina-tribes" />
+
+    <!-- Catalina Main JAR File -->
+    <jarIt jarfile="${catalina.jar}"
+      filesDir="${tomcat.classes}"
+      filesId="files.catalina" />
 
     <!-- Catalina Cluster/HA JAR File -->
     <jarIt jarfile="${catalina-ha.jar}"
@@ -825,41 +936,17 @@
       filesDir="${tomcat.classes}"
       filesId="files.catalina-storeconfig" />
 
-    <!-- Tomcat API JAR File -->
-    <jarIt jarfile="${tomcat-api.jar}"
-      filesDir="${tomcat.classes}"
-      filesId="files.tomcat-api" />
-
-    <!-- Tomcat Util JAR File -->
-    <jarIt jarfile="${tomcat-util.jar}"
-      filesDir="${tomcat.classes}"
-      filesId="files.tomcat-util" />
-
-    <!-- Tomcat Util Scan JAR File -->
-    <jarIt jarfile="${tomcat-util-scan.jar}"
-      filesDir="${tomcat.classes}"
-      filesId="files.tomcat-util-scan" />
-
-    <!-- Protocol handlers - Coyote -->
-    <jarIt jarfile="${tomcat-coyote.jar}"
-      filesDir="${tomcat.classes}"
-      filesId="files.tomcat-coyote" />
-
-    <jarIt jarfile="${tomcat-jni.jar}"
-      filesDir="${tomcat.classes}"
-      filesId="files.tomcat-jni" />
-
-    <!-- Jasper Implementation JAR File -->
-    <jarIt jarfile="${jasper.jar}"
-      filesDir="${tomcat.classes}"
-      filesId="files.jasper"
-      meta-inf="${tomcat.manifests}/jasper.jar"/>
-
     <!-- Jasper EL Implementation JAR File -->
     <jarIt jarfile="${jasper-el.jar}"
       filesDir="${tomcat.classes}"
       filesId="files.jasper-el"
       meta-inf="${tomcat.manifests}/jasper-el.jar"/>
+
+    <!-- Jasper Implementation JAR File -->
+    <jarIt jarfile="${jasper.jar}"
+      filesDir="${tomcat.classes}"
+      filesId="files.jasper"
+      meta-inf="${tomcat.manifests}/jasper.jar" />
 
     <!-- Re-packaged Apache Commons DBCP 2-->
     <jarIt jarfile="${tomcat-dbcp.jar}"
@@ -868,8 +955,9 @@
 
     <!-- i18n JARs -->
     <jar jarfile="${tomcat.build}/lib/tomcat-i18n-de.jar"
-      manifest="${tomcat.manifests}/default.manifest">
-      <fileset dir="${tomcat.classes}">
+         manifest="${tomcat.manifests}/default.manifest"
+         modificationtime="${tstamp.iso.release}">
+      <fileset dir="${tomcat.i18n}">
         <include name="**/LocalStrings_de.properties" />
       </fileset>
       <zipfileset file="${tomcat.manifests}/default.notice"
@@ -878,8 +966,9 @@
         fullpath="META-INF/LICENSE" />
     </jar>
     <jar jarfile="${tomcat.build}/lib/tomcat-i18n-es.jar"
-      manifest="${tomcat.manifests}/default.manifest">
-      <fileset dir="${tomcat.classes}">
+         manifest="${tomcat.manifests}/default.manifest"
+         modificationtime="${tstamp.iso.release}">
+      <fileset dir="${tomcat.i18n}">
         <include name="**/LocalStrings_es.properties" />
       </fileset>
       <zipfileset file="${tomcat.manifests}/default.notice"
@@ -888,8 +977,9 @@
         fullpath="META-INF/LICENSE" />
     </jar>
     <jar jarfile="${tomcat.build}/lib/tomcat-i18n-fr.jar"
-      manifest="${tomcat.manifests}/default.manifest">
-      <fileset dir="${tomcat.classes}">
+         manifest="${tomcat.manifests}/default.manifest"
+         modificationtime="${tstamp.iso.release}">
+      <fileset dir="${tomcat.i18n}">
         <include name="**/LocalStrings_fr.properties" />
       </fileset>
       <zipfileset file="${tomcat.manifests}/default.notice"
@@ -898,8 +988,9 @@
         fullpath="META-INF/LICENSE" />
     </jar>
     <jar jarfile="${tomcat.build}/lib/tomcat-i18n-ja.jar"
-      manifest="${tomcat.manifests}/default.manifest">
-      <fileset dir="${tomcat.classes}">
+         manifest="${tomcat.manifests}/default.manifest"
+         modificationtime="${tstamp.iso.release}">
+      <fileset dir="${tomcat.i18n}">
         <include name="**/LocalStrings_ja.properties" />
       </fileset>
       <zipfileset file="${tomcat.manifests}/default.notice"
@@ -908,8 +999,9 @@
         fullpath="META-INF/LICENSE" />
     </jar>
     <jar jarfile="${tomcat.build}/lib/tomcat-i18n-ko.jar"
-      manifest="${tomcat.manifests}/default.manifest">
-      <fileset dir="${tomcat.classes}">
+         manifest="${tomcat.manifests}/default.manifest"
+         modificationtime="${tstamp.iso.release}">
+      <fileset dir="${tomcat.i18n}">
         <include name="**/LocalStrings_ko.properties" />
       </fileset>
       <zipfileset file="${tomcat.manifests}/default.notice"
@@ -918,8 +1010,9 @@
         fullpath="META-INF/LICENSE" />
     </jar>
     <jar jarfile="${tomcat.build}/lib/tomcat-i18n-ru.jar"
-      manifest="${tomcat.manifests}/default.manifest">
-      <fileset dir="${tomcat.classes}">
+         manifest="${tomcat.manifests}/default.manifest"
+         modificationtime="${tstamp.iso.release}">
+      <fileset dir="${tomcat.i18n}">
         <include name="**/LocalStrings_ru.properties" />
       </fileset>
       <zipfileset file="${tomcat.manifests}/default.notice"
@@ -928,8 +1021,9 @@
         fullpath="META-INF/LICENSE" />
     </jar>
     <jar jarfile="${tomcat.build}/lib/tomcat-i18n-zh-CN.jar"
-      manifest="${tomcat.manifests}/default.manifest">
-      <fileset dir="${tomcat.classes}">
+         manifest="${tomcat.manifests}/default.manifest"
+         modificationtime="${tstamp.iso.release}">
+      <fileset dir="${tomcat.i18n}">
         <include name="**/LocalStrings_zh_CN.properties" />
       </fileset>
       <zipfileset file="${tomcat.manifests}/default.notice"
@@ -942,9 +1036,15 @@
 
   <target name="build-docs" depends="compile-prepare" description="Builds all documentation from XML sources">
 
+    <!-- Validation of changelog.xml -->
+    <xmlvalidate
+      file="webapps/docs/changelog.xml"
+    />
+
     <copy todir="${tomcat.build}/webapps">
       <fileset dir="webapps">
         <include name="docs/images/**"/>
+        <include name="docs/META-INF/**"/>
         <include name="docs/WEB-INF/**"/>
         <include name="docs/appdev/*.txt"/>
         <include name="docs/appdev/sample/**"/>
@@ -976,8 +1076,6 @@
     <copy   tofile="${tomcat.build}/webapps/docs/appdev/sample/build.xml"
               file="webapps/docs/appdev/build.xml.txt"/>
 
-    <mkdir dir="${tomcat.build}/webapps/docs/funcspecs" />
-
     <!-- XSL processing -->
     <xslt basedir="webapps/docs"
            destdir="${tomcat.build}/webapps/docs"
@@ -1005,23 +1103,6 @@
           includes="*.xml">
       <param name="sitedir" expression="tomcat-${version.major.minor}-doc/"/>
       <param name="subdir" expression="appdev/"/>
-      <param name="relative-path" expression=".."/>
-      <param name="version" expression="${version}"/>
-      <param name="majorversion" expression="${version.major}"/>
-      <param name="majorminorversion" expression="${version.major.minor}"/>
-      <param name="build-date" expression="${today}"/>
-      <param name="build-date-iso-8601" expression="${today-iso-8601}"/>
-      <param name="year" expression="${year}"/>
-    </xslt>
-    <xslt basedir="webapps/docs/funcspecs"
-           destdir="${tomcat.build}/webapps/docs/funcspecs"
-         extension=".html"
-             style="webapps/docs/tomcat-docs.xsl"
- filenameparameter="filename"
-          excludes="project.xml"
-          includes="*.xml">
-      <param name="sitedir" expression="tomcat-${version.major.minor}-doc/"/>
-      <param name="subdir" expression="funcspecs/"/>
       <param name="relative-path" expression=".."/>
       <param name="version" expression="${version}"/>
       <param name="majorversion" expression="${version.major}"/>
@@ -1161,20 +1242,6 @@
     <javac   srcdir="webapps/examples/WEB-INF/classes"
              destdir="${tomcat.build}/webapps/examples/WEB-INF/classes"
              debug="${compile.debug}" deprecation="${compile.deprecation}"
-             source="${compile.source}"
-             target="${compile.target}"
-             release="${compile.release}"
-             classpath="${tomcat.classes}"
-             encoding="ISO-8859-1"
-             includeantruntime="false">
-    </javac>
-
-    <mkdir dir="${tomcat.build}/webapps/examples/jsp/plugin/applet"/>
-    <javac   srcdir="webapps/examples/jsp/plugin/applet"
-             destdir="${tomcat.build}/webapps/examples/jsp/plugin/applet"
-             debug="${compile.debug}" deprecation="${compile.deprecation}"
-             source="${compile.source}"
-             target="${compile.target}"
              release="${compile.release}"
              classpath="${tomcat.classes}"
              encoding="ISO-8859-1"
@@ -1196,6 +1263,8 @@
     <echo message="Building Tomcat JDBC pool libraries"/>
     <ant antfile="${tomcat.jdbc.dir}/build.xml" dir="${tomcat.jdbc.dir}"
          inheritAll="false" target="build">
+      <property name="ant.tstamp.now.iso" value ="${ant.tstamp.now.iso}" />
+      <property name="tstamp.file" value ="${tstamp.file}" />
       <property name="tomcat.pool" value="${tomcat.pool}" />
       <property name="tomcat.juli.jar" value="${tomcat-juli.jar}" />
       <property name="skip.download" value="set"/>
@@ -1302,7 +1371,7 @@
       </fileset>
     </txt2html>
   </target>
-  <target name="embed-jars" description="Create experimental embedded jars"
+  <target name="embed-jars" description="Create embedded jars"
     depends="build-manifests,compile" >
 
     <mkdir dir="${tomcat.embed}" />
@@ -1322,13 +1391,13 @@
            filesId="files.tomcat-embed-core"
            notice="${tomcat.manifests}/servlet-api.jar.notice"
            license="${tomcat.manifests}/servlet-api.jar.license"/>
+    <jarIt jarfile="${tomcat-embed-el.jar}"
+           filesDir="${tomcat.classes}"
+           filesId="files.tomcat-embed-el"/>
     <jarIt jarfile="${tomcat-embed-jasper.jar}"
            filesDir="${tomcat.classes}"
            filesId="files.tomcat-embed-jasper"
            meta-inf="${tomcat.manifests}/jasper.jar"/>
-    <jarIt jarfile="${tomcat-embed-el.jar}"
-           filesDir="${tomcat.classes}"
-           filesId="files.tomcat-embed-el"/>
     <jarIt jarfile="${tomcat-embed-websocket.jar}"
            filesDir="${tomcat.classes}"
            filesId="files.tomcat-embed-websocket"
@@ -1347,12 +1416,12 @@
            filesId="files.tomcat-embed-core"
             notice="${tomcat.manifests}/servlet-api.jar.notice"
             license="${tomcat.manifests}/servlet-api.jar.license"/>
-    <jarIt jarfile="${tomcat-embed-jasper-sources.jar}"
-           filesDir="java"
-           filesId="files.tomcat-embed-jasper"/>
     <jarIt jarfile="${tomcat-embed-el-sources.jar}"
            filesDir="java"
            filesId="files.tomcat-embed-el"/>
+    <jarIt jarfile="${tomcat-embed-jasper-sources.jar}"
+           filesDir="java"
+           filesId="files.tomcat-embed-jasper"/>
     <jarIt jarfile="${tomcat-embed-websocket-sources.jar}"
            filesDir="java"
            filesId="files.tomcat-embed-websocket"/>
@@ -1364,14 +1433,17 @@
   </target>
 
   <target name="embed"
-          description="Creates the experimental embedded release"
+          description="Creates the embedded release"
           depends="embed-jars,embed-sources" >
 
     <fixcrlf srcdir="${tomcat.embed}" eol="crlf"
         encoding="ISO-8859-1" fixlast="false" >
       <patternset refid="text.files" />
     </fixcrlf>
-    <zip destfile="${tomcat.embed}/${final.name}-embed.zip">
+
+    <zip destfile="${tomcat.embed}/${final.name}-embed.zip"
+         modificationtime="${tstamp.iso.release}"
+         encoding="UTF8">
       <fileset dir="${tomcat.embed}">
         <include name="**" />
         <exclude name="*.asc" />
@@ -1386,6 +1458,12 @@
         encoding="ISO-8859-1" fixlast="false" >
       <patternset refid="text.files" />
     </fixcrlf>
+
+    <!-- Reproducible builds: consistent timestamps for distributed files -->
+    <touch datetime="${tstamp.file}" pattern="yyyy-MM-dd HH:mm:ss">
+      <fileset dir="${tomcat.embed}"/>
+    </touch>
+
     <tar longfile="gnu" compression="gzip"
          tarfile="${tomcat.embed}/${final.name}-embed.tar.gz">
       <tarfileset dir="${tomcat.embed}" prefix="${final.name}-embed">
@@ -1406,8 +1484,6 @@
     <javac srcdir="test" destdir="${test.classes}"
            debug="${compile.debug}"
            deprecation="${compile.deprecation}"
-           source="${compile.source}"
-           target="${compile.target}"
            release="${compile.release}"
            encoding="ISO-8859-1"
            includeantruntime="true">
@@ -1421,6 +1497,7 @@
         <include name="META-INF/**"/>
         <include name="**/service-config.txt"/>
         <include name="**/logging-non-rotatable.properties"/>
+        <include name="**/TestStrings.properties"/>
       </fileset>
     </copy>
   </target>
@@ -1431,7 +1508,7 @@
   <property name="junit.formatter.extension" value=".txt" />
 
   <target name="test" description="Runs the JUnit test cases"
-          depends="test-nio,test-nio2,test-apr,cobertura-report,test-status" />
+          depends="test-nio,test-nio2,test-apr,coverage-report,test-status" />
 
   <target name="test-status"
           description="Analyses logs directory and reports on skipped tests, test failures and test errors">
@@ -1469,19 +1546,19 @@
   </target>
 
   <target name="test-nio" description="Runs the JUnit test cases for NIO. Does not stop on errors."
-          depends="test-compile,deploy,cobertura-instrument,test-openssl-exists" if="${execute.test.nio}">
+          depends="setup-jacoco,test-compile,deploy,test-openssl-exists" if="${execute.test.nio}">
     <runtests protocol="org.apache.coyote.http11.Http11NioProtocol"
               extension=".NIO" />
   </target>
 
   <target name="test-nio2" description="Runs the JUnit test cases for NIO2. Does not stop on errors."
-          depends="test-compile,deploy,cobertura-instrument,test-openssl-exists" if="${execute.test.nio2}">
+          depends="setup-jacoco,test-compile,deploy,test-openssl-exists" if="${execute.test.nio2}">
     <runtests protocol="org.apache.coyote.http11.Http11Nio2Protocol"
               extension=".NIO2" />
   </target>
 
   <target name="test-apr" description="Runs the JUnit test cases for APR. Does not stop on errors."
-          depends="test-compile,deploy,test-apr-exists,cobertura-instrument,test-openssl-exists"
+          depends="setup-jacoco,test-compile,deploy,test-apr-exists,test-openssl-exists"
           if="${apr.exists}">
     <runtests protocol="org.apache.coyote.http11.Http11AprProtocol"
               extension=".APR" />
@@ -1508,6 +1585,12 @@
     </condition>
   </target>
 
+  <property name="opens.javalang" value="--add-opens=java.base/java.lang=ALL-UNNAMED"/>
+  <property name="opens.javaio" value="--add-opens=java.base/java.io=ALL-UNNAMED"/>
+  <property name="opens.sunrmi" value="--add-opens=java.rmi/sun.rmi.transport=ALL-UNNAMED"/>
+  <property name="opens.javautil" value="--add-opens=java.base/java.util=ALL-UNNAMED"/>
+  <property name="opens.javautilconcurrent" value="--add-opens=java.base/java.util.concurrent=ALL-UNNAMED"/>
+
   <macrodef name="runtests"
             description="Runs the unit tests using the specified connector.
               Does not stop on errors, but sets 'test.result.error' and 'test.result.failure' properties.">
@@ -1518,176 +1601,132 @@
 
     <sequential>
       <mkdir dir="${test.reports}" />
-      <junit printsummary="yes" fork="yes" dir="." showoutput="${test.verbose}"
-        errorproperty="test.result.error"
-        failureproperty="test.result.failure"
-        haltonfailure="${test.haltonfailure}"
-        threads="${test.threads}">
+      <jacoco:coverage
+          enabled="${test.coverage}"
+          destfile="${coverage.datafile}"
+          >
+        <junit printsummary="yes" fork="yes" dir="." showoutput="${test.verbose}"
+          errorproperty="test.result.error"
+          failureproperty="test.result.failure"
+          haltonfailure="${test.haltonfailure}"
+          threads="${test.threads}">
 
-        <jvmarg value="${test.jvmarg.egd}"/>
-        <jvmarg value="-Dfile.encoding=UTF-8"/>
-        <jvmarg value="-Djava.library.path=${test.apr.loc}"/>
-        <jvmarg value="${test.formatter}"/>
-        <jvmarg value="-Djava.net.preferIPv4Stack=${java.net.preferIPv4Stack}"/>
-        <jvmarg value="-Dorg.apache.tomcat.util.net.NioSelectorShared=${org.apache.tomcat.util.net.NioSelectorShared}"/>
+          <jvmarg value="${test.jvmarg.egd}"/>
+          <jvmarg value="-Dfile.encoding=UTF-8"/>
+          <jvmarg value="-Djava.library.path=${test.apr.loc}"/>
+          <jvmarg value="${test.formatter}"/>
+          <jvmarg value="-Djava.net.preferIPv4Stack=${java.net.preferIPv4Stack}"/>
+          <jvmarg value="-Dorg.apache.tomcat.util.net.NioSelectorShared=${org.apache.tomcat.util.net.NioSelectorShared}"/>
 
-        <!-- Java 9 -->
-        <jvmarg value="${java9.test.option.1}"/>
-        <jvmarg value="${java9.test.option.2}"/>
-        <jvmarg value="${java9.test.option.3}"/>
+          <jvmarg value="${opens.javalang}"/>
+          <jvmarg value="${opens.javaio}"/>
+          <jvmarg value="${opens.sunrmi}"/>
+          <jvmarg value="${opens.javautil}"/>
+          <jvmarg value="${opens.javautilconcurrent}"/>
 
-        <classpath refid="tomcat.test.run.classpath" />
+          <classpath refid="tomcat.test.classpath" />
 
-        <sysproperty key="tomcat.test.temp" value="${test.temp}" />
-        <sysproperty key="tomcat.test.basedir" value="${test.basedir}" />
-        <sysproperty key="tomcat.test.tomcatbuild" value="${tomcat.build}" />
-        <sysproperty key="tomcat.test.protocol" value="@{protocol}" />
-        <sysproperty key="tomcat.test.accesslog" value="${test.accesslog}" />
-        <sysproperty key="tomcat.test.reports" value="${test.reports}" />
-        <sysproperty key="tomcat.test.openssl.path" value="${test.openssl.path}" />
-        <sysproperty key="tomcat.test.openssl.unimplemented" value="${test.openssl.unimplemented}" />
-        <sysproperty key="tomcat.test.relaxTiming" value="${test.relaxTiming}" />
-        <sysproperty key="tomcat.test.sslImplementation" value="${test.sslImplementation}" />
-        <!-- File for Cobertura to write coverage results to -->
-        <sysproperty key="net.sourceforge.cobertura.datafile" file="${cobertura.datafile}" />
+          <sysproperty key="tomcat.test.temp" value="${test.temp}" />
+          <sysproperty key="tomcat.test.basedir" value="${test.basedir}" />
+          <sysproperty key="tomcat.test.tomcatbuild" value="${tomcat.build}" />
+          <sysproperty key="tomcat.test.protocol" value="@{protocol}" />
+          <sysproperty key="tomcat.test.accesslog" value="${test.accesslog}" />
+          <sysproperty key="tomcat.test.reports" value="${test.reports}" />
+          <sysproperty key="tomcat.test.openssl.path" value="${test.openssl.path}" />
+          <sysproperty key="tomcat.test.openssl.unimplemented" value="${test.openssl.unimplemented}" />
+          <sysproperty key="tomcat.test.relaxTiming" value="${test.relaxTiming}" />
+          <sysproperty key="tomcat.test.sslImplementation" value="${test.sslImplementation}" />
 
-        <formatter type="${junit.formatter.type}"
-                   usefile="${junit.formatter.usefile}"
-                   extension="@{extension}${junit.formatter.extension}" />
+          <formatter type="${junit.formatter.type}"
+                     usefile="${junit.formatter.usefile}"
+                     extension="@{extension}${junit.formatter.extension}" />
 
-        <!-- If test.entry is defined, run a single test, otherwise run all valid tests -->
-        <test todir="${test.reports}" name="${test.entry}"
-              if="test.entry" unless="test.entry.methods"
-           />
-        <test todir="${test.reports}" name="${test.entry}" methods="${test.entry.methods}"
-              if="test.entry.methods"
-           />
-        <batchtest todir="${test.reports}" unless="test.entry">
-          <!-- Include all by default -->
-          <fileset dir="test" includes="${test.name}">
-            <!-- Exclude helper classes -->
-            <exclude name="**/Tester*.java" />
-            <!-- Exclude the tests known to fail -->
-            <exclude name="org/apache/catalina/tribes/test/**" />
-            <!-- Exclude the OpenSSL tests unless OpenSSL is available -->
-            <exclude name="org/apache/tomcat/util/net/openssl/ciphers/**" unless="${test.openssl.exists}" />
-            <!-- Exclude performance tests. E.g. on systems with slow/inconsistent timing -->
-            <exclude name="**/*Performance.java" if="${test.excludePerformance}" />
-            <!-- Exclude a configurable list of tests -->
-            <exclude name="${test.exclude}" />
-          </fileset>
-        </batchtest>
-      </junit>
+          <!-- If test.entry is defined, run a single test, otherwise run all valid tests -->
+          <test todir="${test.reports}" name="${test.entry}"
+                if="test.entry" unless="test.entry.methods"
+                />
+          <test todir="${test.reports}" name="${test.entry}" methods="${test.entry.methods}"
+                if="test.entry.methods"
+                />
+          <batchtest todir="${test.reports}" unless="test.entry">
+            <!-- Include all by default -->
+            <fileset dir="test" includes="${test.name}" excludes="${test.exclude}">
+              <!-- Exclude helper classes -->
+              <exclude name="**/Tester*.java" />
+              <!-- Exclude the tests known to fail -->
+              <exclude name="org/apache/catalina/tribes/test/**" />
+              <!-- Exclude the OpenSSL tests unless OpenSSL is available -->
+              <exclude name="org/apache/tomcat/util/net/openssl/ciphers/**" unless="${test.openssl.exists}" />
+              <!-- Exclude performance tests. E.g. on systems with slow/inconsistent timing -->
+              <exclude name="**/*Performance.java" if="${test.excludePerformance}" />
+              <!-- Exclude tests that require large heaps -->
+              <exclude name="**/*LargeHeap.java" unless="${test.includeLargeHeap}" />
+              <!--
+                Avoid running tests which require the SecurityManager with other
+                tests. See below for more details.
+              -->
+              <exclude name="**/*SecurityManager.java" />
+            </fileset>
+          </batchtest>
+          <!--
+             Run tests which require the SecurityManager in their own forked
+             batch to ensure that global/system security settings don't pollute
+             other tests. See SecurityManagerBaseTest.java for more details.
+          -->
+          <batchtest todir="${test.reports}" unless="test.entry" fork="true">
+            <fileset dir="test" includes="**/SecurityManager.java" excludes="${test.exclude}" />
+          </batchtest>
+        </junit>
+      </jacoco:coverage>
     </sequential>
   </macrodef>
 
-  <target name="cobertura-init">
-    <condition property="cobertura.enabled" value="true">
-      <and>
-        <istrue value="${test.cobertura}"/>
-        <equals arg1="1" arg2="${test.threads}"/>
-      </and>
-    </condition>
-    <condition property="cobertura.disabled" value="true">
-      <and>
-        <istrue value="${test.cobertura}"/>
-        <not>
-          <equals arg1="1" arg2="${test.threads}"/>
-        </not>
-      </and>
-    </condition>
-  </target>
-
-  <target name="cobertura-disabled" unless="${cobertura.enabled}"
-          depends="cobertura-init">
-    <!-- Define classpath used to run tests when Cobertura is turned off. -->
-    <path id="tomcat.test.run.classpath">
-      <path refid="tomcat.test.classpath" />
-    </path>
-  </target>
-
-  <target name="cobertura-disabled-log" if="${cobertura.disabled}"
-          depends="cobertura-init">
-    <echo message="Code coverage disabled because test.threads is greater than 1"/>
-  </target>
-
-  <target name="cobertura-instrument"
-          depends="compile,download-cobertura,cobertura-disabled,cobertura-disabled-log"
-          if="${cobertura.enabled}"
-          description="Adds Cobertura instrumentation to the compiled bytecode">
-
-    <path id="cobertura.classpath">
-      <fileset dir="${cobertura.home}">
-        <include name="cobertura-${cobertura.version}.jar" />
-        <include name="lib/**/*.jar" />
-        <exclude name="lib/**/jetty*.jar" />
-        <exclude name="lib/**/servlet-api*.jar" />
-      </fileset>
-      <pathelement path="res/cobertura"/>
-    </path>
-
-    <taskdef classpathref="cobertura.classpath" resource="tasks.properties" />
-
-    <cobertura-instrument datafile="${cobertura.datafile}"
-                          todir="${tomcat.classes.cobertura}">
-      <fileset dir="${tomcat.classes}">
-        <include name="**/*.class"/>
-        <exclude name="**/ClassLoaderLogManager.class"/>
-        <exclude name="**/ClassLoaderLogManager*.class"/>
-        <exclude name="**/FileHandler.class"/>
-        <exclude name="**/AsyncFileHandler.class"/>
-        <exclude name="**/AsyncFileHandler*.class"/>
-        <exclude name="**/OneLineFormatter.class"/>
-        <exclude name="**/OneLineFormatter*.class"/>
-        <exclude name="**/DateFormatCache.class"/>
-        <exclude name="**/DateFormatCache*.class"/>
-      </fileset>
-      <auxClasspath path="${jdt.jar}" />
-    </cobertura-instrument>
-
-    <!-- Define classpath used to run tests -->
-    <!-- The Cobertura instrumented classes must appear first on the classpath -->
-    <path id="tomcat.test.run.classpath">
-      <path location="${tomcat.classes.cobertura}" />
-      <path refid="tomcat.test.classpath" />
-      <path refid="cobertura.classpath"/>
-    </path>
-  </target>
-
-  <target name="cobertura-report" if="${cobertura.enabled}"
+  <target name="coverage-report" if="${test.coverage}"
           depends="test-nio,test-nio2,test-apr"
-          description="Creates report from gathered Cobertura results">
+          description="Creates report from gathered Code coverage results">
 
-    <cobertura-report srcdir="${basedir}/java" destdir="${cobertura.out}"
-                      datafile="${cobertura.datafile}"
-                      format="${cobertura.report.format}"/>
+    <jacoco:report>
+      <executiondata>
+        <file file="${coverage.datafile}"/>
+      </executiondata>
+      <structure name="Tomcat 8.5.x Code Coverage">
+        <classfiles>
+          <fileset dir="${tomcat.classes}"/>
+        </classfiles>
+        <sourcefiles encoding="UTF-8">
+          <fileset dir="java"/>
+        </sourcefiles>
+      </structure>
+      <html destdir="${coverage.out}"/>
+    </jacoco:report>
+
   </target>
 
-  <target name="findbugs"
-          if="${execute.findbugs}"
-          depends="compile,download-findbugs">
+  <target name="spotbugs"
+          if="${execute.spotbugs}"
+          depends="test-compile,download-spotbugs">
 
-    <path id="findbugs.classpath">
-      <fileset file="${findbugs.jar}" />
+    <path id="spotbugs.classpath">
+      <fileset file="${spotbugs.jar}" />
     </path>
 
-    <taskdef classpathref="findbugs.classpath" name="findbugs" classname="edu.umd.cs.findbugs.anttask.FindBugsTask"/>
+    <taskdef classpathref="spotbugs.classpath" name="spotbugs" classname="edu.umd.cs.findbugs.anttask.FindBugsTask"/>
 
-    <mkdir dir="${findbugs.out}" />
+    <mkdir dir="${spotbugs.out}" />
 
-    <findbugs home="${findbugs.home}"
-              output="${findbugs.report.format}"
-              outputFile="${findbugs.out}/findbugs-report.${findbugs.report.format}"
-              reportLevel="${findbugs.report.level}"
-              excludeFilter="res/findbugs/filter-false-positives.xml" >
+    <spotbugs home="${spotbugs.home}"
+              output="${spotbugs.report.format}"
+              outputFile="${spotbugs.out}/spotbugs-report.${spotbugs.report.format}"
+              reportLevel="${spotbugs.report.level}"
+              excludeFilter="res/spotbugs/filter-false-positives.xml" >
       <sourcePath path="${basedir}/java" />
       <class location="${tomcat.classes}" />
       <class location="${test.classes}" />
       <auxClasspath>
-        <fileset file="${jdt.jar}" />
+        <path refid="tomcat.test.classpath"/>
         <fileset file="${ant.core.lib}" />
       </auxClasspath>
-    </findbugs>
+    </spotbugs>
   </target>
 
   <target name="extras-prepare" >
@@ -1734,8 +1773,6 @@
     <javac srcdir="java" destdir="${tomcat.classes}"
            debug="${compile.debug}"
            deprecation="${compile.deprecation}"
-           source="${compile.source}"
-           target="${compile.target}"
            release="${compile.release}"
            encoding="ISO-8859-1"
            includeantruntime="false">
@@ -1755,24 +1792,8 @@
 
   </target>
 
-  <target name="extras-jmx-remote"
-          depends="extras-prepare,compile,build-manifests"
-          description="Build JMX remote extras package">
-
-    <jarIt jarfile="${catalina-jmx-remote.jar}"
-      filesDir="${tomcat.classes}"
-      filesId="files.tomcat-extras-jmxremote" />
-
-    <hashAndSign file="${catalina-jmx-remote.jar}" />
-
-    <jarIt jarfile="${catalina-jmx-remote-src.jar}"
-      filesDir="java"
-      filesId="files.tomcat-extras-jmxremote" />
-
-  </target>
-
   <target name="extras"
-          depends="extras-webservices,extras-jmx-remote"
+          depends="extras-webservices"
           description="Build all extras packages">
   </target>
 
@@ -1868,18 +1889,21 @@ Apache Tomcat ${version} native binaries for Win64 AMD64/EMT64 platform.
       sourcepath="${tomcat.dist}/src/java"
       destdir="${tomcat.dist}/webapps/docs/annotationapi"
       version="true"
-      windowtitle="Common Annotations 1.2 API Documentation - Apache Tomcat ${version}"
-      doctitle="Common Annotations 1.2 API - Apache Tomcat ${version}"
-      header="&lt;b&gt;Common Annotations 1.2 - Apache Tomcat ${version}&lt;/b&gt;"
-      bottom="Copyright &amp;#169; 2000-${year} Apache Software Foundation. All Rights Reserved."
+      windowtitle="Common Annotations ${annotation.spec.version} API Documentation - Apache Tomcat ${version}"
+      doctitle="Common Annotations ${annotation.spec.version} API - Apache Tomcat&lt;sup&gt;&#174;&lt;/sup&gt; ${version}"
+      header="&lt;b&gt;Common Annotations ${annotation.spec.version} - Apache Tomcat&lt;sup&gt;&#174;&lt;/sup&gt; ${version}&lt;/b&gt;"
+      bottom="Copyright &amp;#169; 2000-${year} Apache Software Foundation.
+              &lt;br/&gt;
+              Apache Tomcat, Tomcat, Apache, the Apache Tomcat logo and the Apache logo are either registered trademarks
+              or trademarks of the Apache Software Foundation."
       encoding="UTF-8"
       docencoding="UTF-8"
       charset="UTF-8"
-      additionalparam="-breakiterator -notimestamp ${java9.javadoc.options}"
-      source="${compile.source}"
+      additionalparam="-breakiterator -notimestamp -html5"
+      source="${compile.release}"
       maxmemory="512m"
-      failonerror="true"
-      failonwarning="true">
+      failonerror="${javadoc.failonerror}"
+      failonwarning="${javadoc.failonwarning}">
       <classpath>
         <path refid="compile.classpath"/>
         <path location="${ant.core.lib}"/>
@@ -1890,18 +1914,21 @@ Apache Tomcat ${version} native binaries for Win64 AMD64/EMT64 platform.
       sourcepath="${tomcat.dist}/src/java"
       destdir="${tomcat.dist}/webapps/docs/servletapi"
       version="true"
-      windowtitle="Servlet 3.1 API Documentation - Apache Tomcat ${version}"
-      doctitle="Servlet 3.1 API - Apache Tomcat ${version}"
-      header="&lt;b&gt;Servlet 3.1 - Apache Tomcat ${version}&lt;/b&gt;"
-      bottom="Copyright &amp;#169; 2000-${year} Apache Software Foundation. All Rights Reserved."
+      windowtitle="Servlet ${servlet.spec.version} API Documentation - Apache Tomcat ${version}"
+      doctitle="Servlet ${servlet.spec.version} API - Apache Tomcat&lt;sup&gt;&#174;&lt;/sup&gt; ${version}"
+      header="&lt;b&gt;Servlet ${servlet.spec.version} - Apache Tomcat&lt;sup&gt;&#174;&lt;/sup&gt; ${version}&lt;/b&gt;"
+      bottom="Copyright &amp;#169; 2000-${year} Apache Software Foundation.
+              &lt;br/&gt;
+              Apache Tomcat, Tomcat, Apache, the Apache Tomcat logo and the Apache logo are either registered trademarks
+              or trademarks of the Apache Software Foundation."
       encoding="UTF-8"
       docencoding="UTF-8"
       charset="UTF-8"
-      additionalparam="-breakiterator -notimestamp ${java9.javadoc.options}"
-      source="${compile.source}"
+      additionalparam="-breakiterator -notimestamp -html5"
+      source="${compile.release}"
       maxmemory="512m"
-      failonerror="true"
-      failonwarning="true">
+      failonerror="${javadoc.failonerror}"
+      failonwarning="${javadoc.failonwarning}">
       <classpath>
         <path refid="compile.classpath"/>
         <path refid="tomcat.webservices.classpath"/>
@@ -1912,18 +1939,21 @@ Apache Tomcat ${version} native binaries for Win64 AMD64/EMT64 platform.
       sourcepath="${tomcat.dist}/src/java"
       destdir="${tomcat.dist}/webapps/docs/jspapi"
       version="true"
-      windowtitle="JSP 2.3 API Documentation - Apache Tomcat ${version}"
-      doctitle="JSP 2.3 API - Apache Tomcat ${version}"
-      header="&lt;b&gt;JSP 2.3 - Apache Tomcat ${version}&lt;/b&gt;"
-      bottom="Copyright &amp;#169; 2000-${year} Apache Software Foundation. All Rights Reserved."
+      windowtitle="JSP ${jsp.spec.version} API Documentation - Apache Tomcat ${version}"
+      doctitle="JSP ${jsp.spec.version} API - Apache Tomcat&lt;sup&gt;&#174;&lt;/sup&gt; ${version}"
+      header="&lt;b&gt;JSP ${jsp.spec.version} - Apache Tomcat&lt;sup&gt;&#174;&lt;/sup&gt; ${version}&lt;/b&gt;"
+      bottom="Copyright &amp;#169; 2000-${year} Apache Software Foundation.
+              &lt;br/&gt;
+              Apache Tomcat, Tomcat, Apache, the Apache Tomcat logo and the Apache logo are either registered trademarks
+              or trademarks of the Apache Software Foundation."
       encoding="UTF-8"
       docencoding="UTF-8"
       charset="UTF-8"
-      additionalparam="-breakiterator -notimestamp ${java9.javadoc.options}"
-      source="${compile.source}"
+      additionalparam="-breakiterator -notimestamp -html5"
+      source="${compile.release}"
       maxmemory="512m"
-      failonerror="true"
-      failonwarning="true">
+      failonerror="${javadoc.failonerror}"
+      failonwarning="${javadoc.failonwarning}">
       <classpath>
         <path refid="compile.classpath"/>
         <path refid="tomcat.webservices.classpath"/>
@@ -1934,18 +1964,21 @@ Apache Tomcat ${version} native binaries for Win64 AMD64/EMT64 platform.
       sourcepath="${tomcat.dist}/src/java"
       destdir="${tomcat.dist}/webapps/docs/elapi"
       version="true"
-      windowtitle="EL 3.0 API Documentation - Apache Tomcat ${version}"
-      doctitle="EL 3.0 API - Apache Tomcat ${version}"
-      header="&lt;b&gt;EL 3.0 - Apache Tomcat ${version}&lt;/b&gt;"
-      bottom="Copyright &amp;#169; 2000-${year} Apache Software Foundation. All Rights Reserved."
+      windowtitle="EL ${el.spec.version} API Documentation - Apache Tomcat ${version}"
+      doctitle="EL ${el.spec.version} API - Apache Tomcat&lt;sup&gt;&#174;&lt;/sup&gt; ${version}"
+      header="&lt;b&gt;EL ${el.spec.version} - Apache Tomcat&lt;sup&gt;&#174;&lt;/sup&gt; ${version}&lt;/b&gt;"
+      bottom="Copyright &amp;#169; 2000-${year} Apache Software Foundation.
+              &lt;br/&gt;
+              Apache Tomcat, Tomcat, Apache, the Apache Tomcat logo and the Apache logo are either registered trademarks
+              or trademarks of the Apache Software Foundation."
       encoding="UTF-8"
       docencoding="UTF-8"
       charset="UTF-8"
-      additionalparam="-breakiterator -notimestamp ${java9.javadoc.options}"
-      source="${compile.source}"
+      additionalparam="-breakiterator -notimestamp -html5"
+      source="${compile.release}"
       maxmemory="512m"
-      failonerror="true"
-      failonwarning="true">
+      failonerror="${javadoc.failonerror}"
+      failonwarning="${javadoc.failonwarning}">
       <classpath>
         <path refid="compile.classpath"/>
         <path refid="tomcat.webservices.classpath"/>
@@ -1956,18 +1989,21 @@ Apache Tomcat ${version} native binaries for Win64 AMD64/EMT64 platform.
       sourcepath="${tomcat.dist}/src/java"
       destdir="${tomcat.dist}/webapps/docs/websocketapi"
       version="true"
-      windowtitle="WebSocket 1.1 API Documentation - Apache Tomcat ${version}"
-      doctitle="WebSocket 1.1 API - Apache Tomcat ${version}"
-      header="&lt;b&gt;WebSocket 1.1 - Apache Tomcat ${version}&lt;/b&gt;"
-      bottom="Copyright &amp;#169; 2000-${year} Apache Software Foundation. All Rights Reserved."
+      windowtitle="WebSocket ${websocket.spec.version} API Documentation - Apache Tomcat ${version}"
+      doctitle="WebSocket ${websocket.spec.version} API - Apache Tomcat&lt;sup&gt;&#174;&lt;/sup&gt; ${version}"
+      header="&lt;b&gt;WebSocket ${websocket.spec.version} - Apache Tomcat&lt;sup&gt;&#174;&lt;/sup&gt; ${version}&lt;/b&gt;"
+      bottom="Copyright &amp;#169; 2000-${year} Apache Software Foundation.
+              &lt;br/&gt;
+              Apache Tomcat, Tomcat, Apache, the Apache Tomcat logo and the Apache logo are either registered trademarks
+              or trademarks of the Apache Software Foundation."
       encoding="UTF-8"
       docencoding="UTF-8"
       charset="UTF-8"
-      additionalparam="-breakiterator -notimestamp ${java9.javadoc.options}"
-      source="${compile.source}"
+      additionalparam="-breakiterator -notimestamp -html5"
+      source="${compile.release}"
       maxmemory="512m"
-      failonerror="true"
-      failonwarning="true">
+      failonerror="${javadoc.failonerror}"
+      failonwarning="${javadoc.failonwarning}">
       <classpath>
         <path refid="compile.classpath"/>
         <path refid="tomcat.webservices.classpath"/>
@@ -1978,17 +2014,20 @@ Apache Tomcat ${version} native binaries for Win64 AMD64/EMT64 platform.
       sourcepath="${tomcat.dist}/src/java"
       destdir="${tomcat.dist}/webapps/docs/jaspicapi"
       version="true"
-      windowtitle="JASPIC 1.1 API Documentation - Apache Tomcat ${version}"
-      doctitle="JASPIC 1.1 API - Apache Tomcat ${version}"
-      header="&lt;b&gt;JASPIC 1.1 - Apache Tomcat ${version}&lt;/b&gt;"
-      bottom="Copyright &amp;#169; 2000-${year} Apache Software Foundation. All Rights Reserved."
+      windowtitle="JASPIC ${jaspic.spec.version} API Documentation - Apache Tomcat ${version}"
+      doctitle="JASPIC ${jaspic.spec.version} API - Apache Tomcat&lt;sup&gt;&#174;&lt;/sup&gt; ${version}"
+      header="&lt;b&gt;JASPIC ${jaspic.spec.version} - Apache Tomcat&lt;sup&gt;&#174;&lt;/sup&gt; ${version}&lt;/b&gt;"
+      bottom="Copyright &amp;#169; 2000-${year} Apache Software Foundation.
+              &lt;br/&gt;
+              Apache Tomcat, Tomcat, Apache, the Apache Tomcat logo and the Apache logo are either registered trademarks
+              or trademarks of the Apache Software Foundation."
       encoding="UTF-8"
       docencoding="UTF-8"
       charset="UTF-8"
-      additionalparam="-breakiterator -notimestamp"
+      additionalparam="-breakiterator -notimestamp -html5"
       maxmemory="512m"
-      failonerror="true"
-      failonwarning="true">
+      failonerror="${javadoc.failonerror}"
+      failonwarning="${javadoc.failonwarning}">
       <classpath>
         <path refid="compile.classpath"/>
         <path location="${ant.core.lib}"/>
@@ -1998,17 +2037,20 @@ Apache Tomcat ${version} native binaries for Win64 AMD64/EMT64 platform.
       destdir="${tomcat.dist}/webapps/docs/api"
       version="true"
       windowtitle="Apache Tomcat ${version} API Documentation"
-      doctitle="Apache Tomcat ${version} API"
-      header="&lt;b&gt;Apache Tomcat ${version}&lt;/b&gt;"
-      bottom="Copyright &amp;#169; 2000-${year} Apache Software Foundation. All Rights Reserved."
+      doctitle="Apache Tomcat&lt;sup&gt;&#174;&lt;/sup&gt; ${version} API"
+      header="&lt;b&gt;Apache Tomcat&lt;sup&gt;&#174;&lt;/sup&gt; ${version}&lt;/b&gt;"
+      bottom="Copyright &amp;#169; 2000-${year} Apache Software Foundation.
+              &lt;br/&gt;
+              Apache Tomcat, Tomcat, Apache, the Apache Tomcat logo and the Apache logo are either registered trademarks
+              or trademarks of the Apache Software Foundation."
       encoding="UTF-8"
       docencoding="UTF-8"
       charset="UTF-8"
-      additionalparam="-breakiterator -notimestamp ${java9.javadoc.options} -J-Dhttps.protocols=TLSv1,TLSv1.1,TLSv1.2 -XDignore.symbol.file"
-      source="${compile.source}"
+      additionalparam="-breakiterator -notimestamp -html5"
+      source="${compile.release}"
       maxmemory="512m"
-      failonerror="true"
-      failonwarning="true">
+      failonerror="${javadoc.failonerror}"
+      failonwarning="${javadoc.failonwarning}">
       <classpath>
         <path refid="compile.classpath"/>
         <path refid="tomcat.webservices.classpath"/>
@@ -2056,31 +2098,37 @@ Apache Tomcat ${version} native binaries for Win64 AMD64/EMT64 platform.
     </copy>
 
     <!-- Digester and dependencies -->
-    <jar jarfile="${tomcat.deployer}/lib/catalina-deployer.jar">
-       <fileset dir="${tomcat.classes}">
-          <include name="org/apache/catalina/startup/DigesterFactory.class" />
-          <include name="org/apache/catalina/util/SchemaResolver.class" />
-          <include name="org/apache/catalina/util/StringManager.class" />
-          <include name="org/apache/tomcat/util/*" />
-          <include name="org/apache/tomcat/util/digester/**" />
-          <exclude name="org/apache/tomcat/util/bcel" />
-          <exclude name="org/apache/tomcat/util/buf" />
-          <exclude name="org/apache/tomcat/util/codec" />
-          <exclude name="org/apache/tomcat/util/collections" />
-          <exclude name="org/apache/tomcat/util/compat" />
-          <exclude name="org/apache/tomcat/util/descriptor" />
-          <exclude name="org/apache/tomcat/util/file" />
-          <exclude name="org/apache/tomcat/util/http" />
-          <exclude name="org/apache/tomcat/util/log" />
-          <exclude name="org/apache/tomcat/util/modeler" />
-          <exclude name="org/apache/tomcat/util/net" />
-          <exclude name="org/apache/tomcat/util/res" />
-          <exclude name="org/apache/tomcat/util/scan" />
-          <exclude name="org/apache/tomcat/util/security" />
-          <exclude name="org/apache/tomcat/util/threads" />
-          <exclude name="**/package.html" />
-          <exclude name="**/LocalStrings_*" />
-       </fileset>
+    <jar jarfile="${tomcat.deployer}/lib/catalina-deployer.jar"
+         manifest="${tomcat.manifests}/default.manifest"
+         modificationtime="${tstamp.iso.release}">
+      <fileset dir="${tomcat.classes}">
+        <include name="org/apache/catalina/startup/DigesterFactory.class" />
+        <include name="org/apache/catalina/util/SchemaResolver.class" />
+        <include name="org/apache/catalina/util/StringManager.class" />
+        <include name="org/apache/tomcat/util/*" />
+        <include name="org/apache/tomcat/util/digester/**" />
+        <exclude name="org/apache/tomcat/util/bcel" />
+        <exclude name="org/apache/tomcat/util/buf" />
+        <exclude name="org/apache/tomcat/util/codec" />
+        <exclude name="org/apache/tomcat/util/collections" />
+        <exclude name="org/apache/tomcat/util/compat" />
+        <exclude name="org/apache/tomcat/util/descriptor" />
+        <exclude name="org/apache/tomcat/util/file" />
+        <exclude name="org/apache/tomcat/util/http" />
+        <exclude name="org/apache/tomcat/util/log" />
+        <exclude name="org/apache/tomcat/util/modeler" />
+        <exclude name="org/apache/tomcat/util/net" />
+        <exclude name="org/apache/tomcat/util/res" />
+        <exclude name="org/apache/tomcat/util/scan" />
+        <exclude name="org/apache/tomcat/util/security" />
+        <exclude name="org/apache/tomcat/util/threads" />
+        <exclude name="**/package.html" />
+        <exclude name="**/LocalStrings_*" />
+      </fileset>
+      <zipfileset file="${tomcat.manifests}/default.notice"
+        fullpath="META-INF/NOTICE" />
+      <zipfileset file="${tomcat.manifests}/default.license"
+        fullpath="META-INF/LICENSE" />
     </jar>
 
     <!-- Main build script -->
@@ -2113,7 +2161,9 @@ Apache Tomcat ${version} native binaries for Win64 AMD64/EMT64 platform.
             <filename name="**/.settings/**" />
             <filename name="**/.classpath"/>
             <filename name="**/.checkstyle"/>
+            <filename name="**/.pmd"/>
             <filename name="**/.project"/>
+            <filename name="**/.sdkmanrc"/>
             <filename name="**/nbproject/**"/>
             <filename name="**/output/**"/>
             <!-- Commented out, because
@@ -2132,13 +2182,14 @@ Apache Tomcat ${version} native binaries for Win64 AMD64/EMT64 platform.
             </and>
             <filename name="**/*.asc" />
             <filename name="**/*.tmp" />
-            <filename name="**/*.jj" />
-            <filename name="**/maven-ant-tasks-*.jar" />
+            <filename name="**/.*.sw*" />
+            <filename name="**/maven-resolver-ant-tasks-*.jar" />
             <filename name="**/thumbs.db" />
             <filename name="**/Thumbs.db" />
             <filename name="*.launch"/>
             <filename name="bin/setenv.*" />
             <filename name="java/org/apache/catalina/startup/catalina.properties" />
+            <filename name="java/org/apache/el/parser/ELParser.jj" />
             <filename name="logs/**" />
             <filename name="webapps/docs/jdbc-pool.xml" />
             <filename name="work/**" />
@@ -2178,25 +2229,34 @@ skip.installer property in build.properties" />
   <target name="-installer-prep"
       unless="skip.installer" depends="dist-static,-installer-init">
     <copy todir="${tomcat.dist}">
-      <fileset dir="res">
+      <fileset dir="res/install-win">
         <include name="INSTALLLICENSE" />
         <include name="*.bmp" />
         <include name="*.ico" />
-        <include name="confinstall/**" />
+        <include name="*.xml" />
+        <include name="Uninstall.exe.sig" />
       </fileset>
     </copy>
+    <copy file="res/install-win/tomcat-installer.exe.sig"
+        tofile="${tomcat.release}/v${version}/bin/${final.name}.exe.sig"
+        failonerror="false"
+        quiet="true" />
     <copy file="${nsis.installoptions.dll}" todir="${tomcat.dist}" />
     <copy file="${nsis.nsexec.dll}" todir="${tomcat.dist}" />
     <copy file="${nsis.nsisdl.dll}" todir="${tomcat.dist}" />
     <copy file="${nsis.system.dll}" todir="${tomcat.dist}" />
     <copy file="${nsis.nsdialogs.dll}" todir="${tomcat.dist}" />
-    <copy file="res/tomcat.nsi" tofile="${tomcat.dist}/tomcat.nsi" overwrite="true" encoding="ISO-8859-1">
+    <copy file="res/install-win/tomcat.nsi" tofile="${tomcat.dist}/tomcat.nsi" overwrite="true" encoding="ISO-8859-1">
       <filterset refid="version.filters"/>
     </copy>
     <fixcrlf srcdir="${tomcat.dist}" eol="crlf"
         encoding="ISO-8859-1" fixlast="false" >
       <patternset refid="text.files" />
     </fixcrlf>
+    <!-- Reproducible builds: consistent timestamps for installer files -->
+    <touch datetime="${tstamp.file}" pattern="yyyy-MM-dd HH:mm:ss">
+      <fileset dir="${tomcat.dist}"/>
+    </touch>
   </target>
 
   <target name="-installer-create-tempinstaller"
@@ -2224,26 +2284,31 @@ skip.installer property in build.properties" />
     <exec dir="${tomcat.dist}" executable="wine" osfamily="unix">
       <arg value="${tomcat.dist}/tempinstaller.exe" />
     </exec>
-
+    <!-- Reproducible builds: consistent timestamps for installer files -->
+    <touch datetime="${tstamp.file}" pattern="yyyy-MM-dd HH:mm:ss">
+      <fileset dir="${tomcat.dist}"/>
+    </touch>
   </target>
 
   <target name="-installer-sign-uninstaller"
-      unless="skip.installer" depends="-installer-create-uninstaller"
+      unless="skip.installer" depends="-installer-create-uninstaller,setup-jsign"
       if="${do.codesigning}">
-    <taskdef name="signcode"
-        classname="org.apache.tomcat.buildutil.SignCode"
-        classpath="${tomcat.classes}" />
-    <signcode userName="${codesigning.user}" password="${codesigning.pwd}"
-        partnerCode="${codesigning.partnercode}"
-        keyStore="${codesigning.keyStore}"
-        keyStorePassword="${codesigning.keyStorePassword}"
-        applicationName="Apache Tomcat ${version.major.minor} Uninstaller"
-        applicationversion="${version}"
-        signingService="${codesigning.service}">
-      <fileset dir="${tomcat.dist}">
-        <filename name="Uninstall.exe"/>
-      </fileset>
-    </signcode>
+    <!-- If the detached signature doesn't exist, this will sign the file    -->
+    <!-- and create the detached signature. If the detached signature does   -->
+    <!-- exist it will be attached to the file.                              -->
+    <jsign file="${tomcat.dist}/Uninstall.exe"
+        storepass="${codesigning.storepass}"
+        storetype="${codesigning.storetype}"
+        alias="${codesigning.alias}"
+        alg="${codesigning.digest}"
+        tsaurl="http://timestamp.digicert.com"
+        detached="true"/>
+    <!-- Copy detached signature to source tree -->
+    <copy file="${tomcat.dist}/Uninstall.exe.sig" todir="res/install-win"/>
+    <!-- Reproducible builds: consistent timestamps for installer files -->
+    <touch datetime="${tstamp.file}" pattern="yyyy-MM-dd HH:mm:ss">
+      <fileset dir="${tomcat.dist}"/>
+    </touch>
   </target>
 
   <target name="-installer" unless="skip.installer"
@@ -2265,25 +2330,128 @@ skip.installer property in build.properties" />
 
   <target name="installer-sign"
       description="Builds and optionally signs the Windows installer"
-      depends="-installer" if="${do.codesigning}" >
-    <taskdef name="signcode"
-        classname="org.apache.tomcat.buildutil.SignCode"
-        classpath="${tomcat.classes}" />
-    <signcode userName="${codesigning.user}" password="${codesigning.pwd}"
-              partnerCode="${codesigning.partnercode}"
-              keyStore="${codesigning.keyStore}"
-              keyStorePassword="${codesigning.keyStorePassword}"
-              applicationName="Apache Tomcat ${version.major.minor}"
-              applicationversion="${version}"
-              signingService="${codesigning.service}">
-      <fileset dir="${tomcat.release}">
-        <filename name="v${version}/bin/${final.name}.exe"/>
-      </fileset>
-    </signcode>
+      depends="-installer,setup-jsign" if="${do.codesigning}" >
+    <jsign file="${tomcat.release}/v${version}/bin/${final.name}.exe"
+        storepass="${codesigning.storepass}"
+        storetype="${codesigning.storetype}"
+        alias="${codesigning.alias}"
+        alg="${codesigning.digest}"
+        tsaurl="http://timestamp.digicert.com"
+        detached="true" />
+    <!-- Copy detached signature to source tree -->
+    <copy file="${tomcat.release}/v${version}/bin/${final.name}.exe.sig"
+        tofile="res/install-win/tomcat-installer.exe.sig"/>
+    <delete file="${tomcat.release}/v${version}/bin/${final.name}.exe.sig" />
     <!-- .exe has changed so need to redo checksums and OpenPGP signature -->
     <delete file="${tomcat.release}/v${version}/bin/${final.name}.exe.asc" />
     <delete file="${tomcat.release}/v${version}/bin/${final.name}.exe.sha512" />
     <hashAndSign file="${tomcat.release}/v${version}/bin/${final.name}.exe" />
+  </target>
+
+  <target name="-pre-release-lone-target-check">
+    <fail message="The pre-release target must be called all on its own. Specifically, you must run 'ant release' /after/ 'ant pre-release' in order to properly configure the build.">
+      <condition>
+        <not>
+          <equals arg1="${ant.project.invoked-targets}" arg2="pre-release" />
+        </not>
+      </condition>
+    </fail>
+  </target>
+
+  <target name="-pre-release-read-asf-username" unless="release.asfusername">
+    <input message="Enter ASF username" addproperty="release.asfusername" defaultValue="${user.name}" />
+  </target>
+
+  <target name="pre-release" depends="-pre-release-lone-target-check, -pre-release-read-asf-username"
+      description="Prepares for a release build by writing build.properties.release which contains information about the release-build environment.">
+    <antversion property="antversion"/>
+    <echo file="build.properties.release"># -----------------------------------------------------------------------------
+# Licensed to the Apache Software Foundation (ASF) under one or more
+# contributor license agreements.  See the NOTICE file distributed with
+# this work for additional information regarding copyright ownership.
+# The ASF licenses this file to You under the Apache License, Version 2.0
+# (the "License"); you may not use this file except in compliance with
+# the License.  You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# -----------------------------------------------------------------------------
+
+# This file was auto-generated by the pre-release Ant target.
+
+# Any unwanted settings may be over-ridden in a build.properties file located
+# in the same directory as this file.
+
+# Set the version-dev to "" (empty string) as this is not a development release.
+version.dev=
+
+# Ensure consistent timestamps for reproducible builds.
+ant.tstamp.now.iso=${tstamp.iso.release}
+
+# Enable insertion of detached signatures into the Windows installer.
+do.codesigning=true
+
+# Re-use the same GPG executable.
+gpg.exec=${gpg.exec}
+
+# Reproducible builds require the use of the build tools defined below. The
+# vendors (where appropriate) and versions must match exactly for a reproducible
+# build since this data is embedded in various files, particularly JAR file
+# manifests, as part of the build process.
+#
+# Apache Ant:      ${ant.version}
+#
+# Java Name:       ${java.vm.name}
+# Java Vendor:     ${java.vm.vendor}
+# Java Version:    ${java.vm.version}
+
+# The following is provided for information only. Builds will be repeatable
+# whether or not the build environment is consistent with this information.
+#
+# OS:              ${os.arch} ${os.name} ${os.version}
+# File encoding:   ${file.encoding}
+#
+# Release Manager: ${release.asfusername}
+release-java-version=${java.vm.version}
+release-ant-version=${antversion}
+</echo>
+    <echo file="res/maven/mvn.properties.release"># -----------------------------------------------------------------------------
+# Licensed to the Apache Software Foundation (ASF) under one or more
+# contributor license agreements.  See the NOTICE file distributed with
+# this work for additional information regarding copyright ownership.
+# The ASF licenses this file to You under the Apache License, Version 2.0
+# (the "License"); you may not use this file except in compliance with
+# the License.  You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# -----------------------------------------------------------------------------
+
+# This file was auto-generated by the pre-release Ant target.
+
+# Remove "-dev" from the version since this is not a development release.
+maven.asf.release.deploy.version=${version.major}.${version.minor}.${version.build}${version.suffix}
+
+# Re-use the same GPG executable.
+gpg.exec=${gpg.exec}
+
+# Set the user name to use to upload the artefacts to Nexus.
+asf.ldap.username=${release.asfusername}
+</echo>
+    <replace file="webapps/docs/changelog.xml"
+        encoding="UTF-8"
+        token="rtext=&quot;in development&quot;"
+        value="rtext=&quot;&quot;" />
   </target>
 
   <target name="release"
@@ -2328,16 +2496,41 @@ skip.installer property in build.properties" />
   </target>
 
   <!-- Sets properties only required for releases -->
-  <target name="release-init" depends="gpg-init-1,gpg-init-2" />
+  <target name="release-init" depends="gpg-init-1,gpg-init-2,gpg-init-3,compile" >
+    <taskdef name="forceUtcTimeZone"
+             classname="org.apache.tomcat.buildutil.ForceUtcTimeZone"
+             classpath="${tomcat.classes}" />
+    <forceUtcTimeZone />
+  </target>
 
   <target name="gpg-init-1">
     <available file="${gpg.exec}" property="gpg.exec.available"/>
   </target>
 
   <target name="gpg-init-2" if="${gpg.exec.available}">
-    <input message="Enter GPG pass-phrase" addproperty="gpg.passphrase" >
-      <handler type="secure"/>
-    </input>
+<echo>gpg.exec.available=${gpg.exec.available}</echo>
+<echo>gpg.exec=${gpg.exec}</echo>
+    <input addproperty="gpg.passphrase"><handler type="secure"/>Enter GPG passphrase
+</input>
+  </target>
+
+  <!-- Test GPG by signing build.xml as a sample file. -->
+  <target name="gpg-init-3" if="gpg.passphrase">
+    <exec executable="${gpg.exec}"
+          inputstring="${gpg.passphrase}"
+          failonerror="true"
+          discardOutput="true"
+          logError="true">
+      <arg value="--batch"/>
+      <arg value="--pinentry-mode"/>
+      <arg value="loopback"/>
+      <arg value="--passphrase-fd"/>
+      <arg value="0"/>
+      <arg value="-o" /><!-- write to stdout -->
+      <arg value="-" />
+      <arg value="--detach-sign"/>
+      <arg value="build.xml"/>
+    </exec>
   </target>
 
   <!-- Packages the core zip distro -->
@@ -2347,7 +2540,10 @@ skip.installer property in build.properties" />
       <patternset refid="text.files" />
     </fixcrlf>
 
-    <zip zipfile="${tomcat.release}/v${version}/bin/${final.name}.zip">
+    <zip zipfile="${tomcat.release}/v${version}/bin/${final.name}.zip"
+         modificationtime="${tstamp.iso.release}"
+         encoding="UTF8">
+      <zipfileset file="${tomcat.dist}" fullpath="${final.name}"/>
       <zipfileset dir="${tomcat.dist}" prefix="${final.name}">
         <include name="bin/**"/>
         <include name="conf/**"/>
@@ -2381,7 +2577,10 @@ skip.installer property in build.properties" />
     </fixcrlf>
 
     <!-- Windows x86 package -->
-    <zip zipfile="${tomcat.release}/v${version}/bin/${final.name}-windows-x86.zip">
+    <zip zipfile="${tomcat.release}/v${version}/bin/${final.name}-windows-x86.zip"
+         modificationtime="${tstamp.iso.release}"
+         encoding="UTF8">
+      <zipfileset file="${tomcat.dist}" fullpath="${final.name}"/>
       <zipfileset dir="${tomcat.dist}" prefix="${final.name}">
         <include name="bin/**"/>
         <include name="conf/**"/>
@@ -2406,7 +2605,10 @@ skip.installer property in build.properties" />
     <hashAndSign file="${tomcat.release}/v${version}/bin/${final.name}-windows-x86.zip" />
 
     <!-- Windows x64 package -->
-    <zip zipfile="${tomcat.release}/v${version}/bin/${final.name}-windows-x64.zip">
+    <zip zipfile="${tomcat.release}/v${version}/bin/${final.name}-windows-x64.zip"
+         modificationtime="${tstamp.iso.release}"
+         encoding="UTF8">
+      <zipfileset file="${tomcat.dist}" fullpath="${final.name}"/>
       <zipfileset dir="${tomcat.dist}" prefix="${final.name}">
         <include name="bin/**"/>
         <include name="conf/**"/>
@@ -2447,7 +2649,10 @@ skip.installer property in build.properties" />
       <patternset refid="text.files" />
     </fixcrlf>
 
-    <zip zipfile="${tomcat.release}/v${version}/bin/${final.name}-deployer.zip">
+    <zip zipfile="${tomcat.release}/v${version}/bin/${final.name}-deployer.zip"
+         modificationtime="${tstamp.iso.release}"
+         encoding="UTF8">
+      <zipfileset file="${tomcat.deployer}" fullpath="${final.name}-deployer"/>
       <zipfileset dir="${tomcat.deployer}" prefix="${final.name}-deployer" includes="**" />
       <zipfileset dir="${tomcat.dist}" prefix="${final.name}-deployer" includes="LICENSE" />
       <zipfileset dir="${tomcat.dist}" prefix="${final.name}-deployer" includes="NOTICE" />
@@ -2464,6 +2669,11 @@ skip.installer property in build.properties" />
         encoding="ISO-8859-1" fixlast="false" >
       <patternset refid="text.files" />
     </fixcrlf>
+
+    <!-- Reproducible builds: consistent timestamps for distributed files -->
+    <touch datetime="${tstamp.file}" pattern="yyyy-MM-dd HH:mm:ss">
+      <fileset dir="${tomcat.dist}"/>
+    </touch>
 
     <tar longfile="gnu" compression="gzip"
          tarfile="${tomcat.release}/v${version}/bin/${final.name}.tar.gz">
@@ -2513,6 +2723,12 @@ skip.installer property in build.properties" />
       <patternset refid="text.files" />
     </fixcrlf>
 
+    <!-- Reproducible builds: consistent timestamps for distributed files -->
+    <touch datetime="${tstamp.file}" pattern="yyyy-MM-dd HH:mm:ss">
+      <fileset dir="${tomcat.dist}"/>
+      <fileset dir="${tomcat.deployer}"/>
+    </touch>
+
     <tar longfile="gnu" compression="gzip"
          tarfile="${tomcat.release}/v${version}/bin/${final.name}-deployer.tar.gz">
       <tarfileset dir="${tomcat.dist}" prefix="${final.name}-deployer">
@@ -2536,6 +2752,29 @@ skip.installer property in build.properties" />
       <patternset refid="text.files" />
     </fixcrlf>
 
+    <!-- Reproducible builds: consistent timestamps for distributed files.   -->
+    <!-- Javadocs need additional processing.                                -->
+    <!-- 1. line endings vary between platforms for some files               -->
+    <!-- 2. The contents of generated zip files don't have fixed timestamps  -->
+    <!-- Process the zip files first as the resulting zip files will need    -->
+    <!-- the last modified timestamp to be changed as well.                  -->
+    <fixcrlf srcdir="${tomcat.dist}/webapps/docs" eol="lf"
+        encoding="UTF-8" fixlast="false" >
+      <include name="**/*.js" />
+      <include name="**/element-list" />
+    </fixcrlf>
+    <taskdef name="repeatableArchive"
+             classname="org.apache.tomcat.buildutil.RepeatableArchive"
+             classpath="${tomcat.classes}" />
+    <repeatableArchive datetime="${tstamp.file}" pattern="yyyy-MM-dd HH:mm:ss">
+      <fileset dir="${tomcat.dist}/webapps/docs">
+        <include name="**/*.zip"/>
+      </fileset>
+    </repeatableArchive>
+    <touch datetime="${tstamp.file}" pattern="yyyy-MM-dd HH:mm:ss">
+      <fileset dir="${tomcat.dist}"/>
+    </touch>
+
     <tar longfile="gnu" compression="gzip"
          tarfile="${tomcat.release}/v${version}/bin/${final.name}-fulldocs.tar.gz">
       <tarfileset dir="${tomcat.dist}" prefix="tomcat-${version.major.minor}-doc">
@@ -2558,9 +2797,13 @@ skip.installer property in build.properties" />
       <patternset refid="text.files"/>
       <include name="bin/*.bat" />
       <include name="bin/*.sh" />
+      <include name=".travis/*.sh" />
     </fixcrlf>
 
-    <zip zipfile="${tomcat.release}/v${version}/src/${final-src.name}.zip">
+    <zip zipfile="${tomcat.release}/v${version}/src/${final-src.name}.zip"
+         modificationtime="${tstamp.iso.release}"
+         encoding="UTF8">
+      <zipfileset file="${tomcat.dist}/src" fullpath="${final-src.name}" />
       <zipfileset dir="${tomcat.dist}/src" prefix="${final-src.name}" />
     </zip>
 
@@ -2574,7 +2817,13 @@ skip.installer property in build.properties" />
       <patternset refid="text.files"/>
       <include name="bin/*.bat" />
       <include name="bin/*.sh" />
+      <include name=".travis/*.sh" />
     </fixcrlf>
+
+    <!-- Reproducible builds: consistent timestamps for distributed files -->
+    <touch datetime="${tstamp.file}" pattern="yyyy-MM-dd HH:mm:ss">
+      <fileset dir="${tomcat.dist}"/>
+    </touch>
 
     <tar longfile="gnu" compression="gzip"
          tarfile="${tomcat.release}/v${version}/src/${final-src.name}.tar.gz">
@@ -2589,13 +2838,13 @@ skip.installer property in build.properties" />
 
     <mkdir dir="${tomcat.src.jars}" />
 
-    <!-- Common Annotations 1.2 JAR File -->
+    <!-- Common Annotations JAR File -->
     <jarIt jarfile="${annotations-api-src.jar}"
       filesDir="java"
       filesId="files.annotations-api"
       manifest="${tomcat.manifests}/annotations-api.jar.manifest" />
 
-    <!-- Servlet 3.1 Implementation JAR File -->
+    <!-- Servlet Implementation JAR File -->
     <jarIt jarfile="${servlet-api-src.jar}"
       filesDir="java"
       filesId="files.servlet-api"
@@ -2603,7 +2852,13 @@ skip.installer property in build.properties" />
       notice="${tomcat.manifests}/servlet-api.jar.notice"
       license="${tomcat.manifests}/servlet-api.jar.license" />
 
-    <!-- JSP 2.3 Implementation JAR File -->
+    <!-- JSP EL Implementation JAR File -->
+    <jarIt jarfile="${el-api-src.jar}"
+      filesDir="java"
+      filesId="files.el-api"
+      manifest="${tomcat.manifests}/el-api.jar.manifest" />
+
+    <!-- JSP Implementation JAR File -->
     <jarIt jarfile="${jsp-api-src.jar}"
       filesDir="java"
       filesId="files.jsp-api"
@@ -2611,24 +2866,13 @@ skip.installer property in build.properties" />
       notice="${tomcat.manifests}/jsp-api.jar.notice"
       license="${tomcat.manifests}/jsp-api.jar.license" />
 
-    <!-- JSP EL 3.0 Implementation JAR File -->
-    <jarIt jarfile="${el-api-src.jar}"
-      filesDir="java"
-      filesId="files.el-api"
-      manifest="${tomcat.manifests}/el-api.jar.manifest" />
-
-    <!-- WebSocket 1.1 API JAR File -->
+    <!-- WebSocket API JAR File -->
     <jarIt jarfile="${websocket-api-src.jar}"
       filesDir="java"
       filesId="files.websocket-api"
       manifest="${tomcat.manifests}/websocket-api.jar.manifest" />
 
-    <!-- WebSocket 1.1 implementation JAR File -->
-    <jarIt jarfile="${tomcat-websocket-src.jar}"
-      filesDir="java"
-      filesId="files.tomcat-websocket" />
-
-    <!-- JASPIC 1.1 API JAR File -->
+    <!-- JASPIC API JAR File -->
     <jarIt jarfile="${jaspic-api-src.jar}"
       filesDir="java"
       filesId="files.jaspic-api"
@@ -2636,26 +2880,56 @@ skip.installer property in build.properties" />
       notice="${tomcat.manifests}/jaspic-api.jar.notice"
       license="${tomcat.manifests}/jaspic-api.jar.license" />
 
+    <!-- Tomcat-juli JAR File -->
+    <jarIt jarfile="${tomcat-juli-src.jar}"
+      filesDir="java"
+      filesId="files.tomcat-juli" />
+
     <!-- Bootstrap JAR File -->
     <jarIt jarfile="${bootstrap-src.jar}"
       filesDir="java"
       filesId="files.bootstrap"
       manifest="${tomcat.manifests}/bootstrap.jar.manifest" />
 
-    <!-- Tomcat-juli JAR File -->
-    <jarIt jarfile="${tomcat-juli-src.jar}"
+    <!-- Tomcat Util JAR File -->
+    <jarIt jarfile="${tomcat-util-src.jar}"
       filesDir="java"
-      filesId="files.tomcat-juli" />
+      filesId="files.tomcat-util" />
 
-    <!-- Catalina Main JAR File -->
-    <jarIt jarfile="${catalina-src.jar}"
+    <!-- Tomcat API JAR File -->
+    <jarIt jarfile="${tomcat-api-src.jar}"
       filesDir="java"
-      filesId="files.catalina" />
+      filesId="files.tomcat-api" />
+
+    <!-- Tomcat Util Scan JAR File -->
+    <jarIt jarfile="${tomcat-util-scan-src.jar}"
+      filesDir="java"
+      filesId="files.tomcat-util-scan" />
+
+    <!-- JNI -->
+    <jarIt jarfile="${tomcat-jni-src.jar}"
+      filesDir="java"
+      filesId="files.tomcat-jni" />
+
+    <!-- Protocol handlers - Coyote -->
+    <jarIt jarfile="${tomcat-coyote-src.jar}"
+      filesDir="java"
+      filesId="files.tomcat-coyote" />
+
+    <!-- WebSocket implementation JAR File -->
+    <jarIt jarfile="${tomcat-websocket-src.jar}"
+      filesDir="java"
+      filesId="files.tomcat-websocket" />
 
     <!-- Catalina GroupCom/Tribes JAR File -->
     <jarIt jarfile="${catalina-tribes-src.jar}"
       filesDir="java"
       filesId="files.catalina-tribes" />
+
+    <!-- Catalina Main JAR File -->
+    <jarIt jarfile="${catalina-src.jar}"
+      filesDir="java"
+      filesId="files.catalina" />
 
     <!-- Catalina Cluster/HA JAR File -->
     <jarIt jarfile="${catalina-ha-src.jar}"
@@ -2672,42 +2946,15 @@ skip.installer property in build.properties" />
       filesDir="java"
       filesId="files.catalina-storeconfig" />
 
-    <!-- Tomcat API JAR File -->
-    <jarIt jarfile="${tomcat-api-src.jar}"
+    <!-- Jasper EL Implementation JAR File -->
+    <jarIt jarfile="${jasper-el-src.jar}"
       filesDir="java"
-      filesId="files.tomcat-api" />
-
-    <!-- Tomcat Util JAR File -->
-    <jarIt jarfile="${tomcat-util-src.jar}"
-      filesDir="java"
-      filesId="files.tomcat-util" />
-
-    <!-- Tomcat Util Scan JAR File -->
-    <jarIt jarfile="${tomcat-util-scan-src.jar}"
-      filesDir="java"
-      filesId="files.tomcat-util-scan" />
-
-    <!-- Protocol handlers - Coyote -->
-    <jarIt jarfile="${tomcat-coyote-src.jar}"
-      filesDir="java"
-      filesId="files.tomcat-coyote"
-      notice="${tomcat.manifests}/tomcat-coyote.jar.notice"
-      license="${tomcat.manifests}/tomcat-coyote.license" />
-
-    <!-- JNI -->
-    <jarIt jarfile="${tomcat-jni-src.jar}"
-      filesDir="java"
-      filesId="files.tomcat-jni" />
+      filesId="files.jasper-el" />
 
     <!-- Jasper Implementation JAR File -->
     <jarIt jarfile="${jasper-src.jar}"
       filesDir="java"
       filesId="files.jasper" />
-
-    <!-- Jasper EL Implementation JAR File -->
-    <jarIt jarfile="${jasper-el-src.jar}"
-      filesDir="java"
-      filesId="files.jasper-el" />
 
     <!-- Repackaged DBCP 2 -->
     <jarIt jarfile="${tomcat-dbcp-src.jar}"
@@ -2774,16 +3021,6 @@ skip.installer property in build.properties" />
       <param name="checksum.value" value="${jdt.checksum.value}"/>
     </antcall>
 
-    <!-- Download SAAJ API -->
-    <antcall target="downloadfile">
-      <param name="sourcefile" value="${saaj-api.loc}"/>
-      <param name="destfile" value="${saaj-api.jar}"/>
-      <param name="destdir" value="${saaj-api.home}"/>
-      <param name="checksum.enabled" value="${saaj-api.checksum.enabled}"/>
-      <param name="checksum.algorithm" value="${saaj-api.checksum.algorithm}"/>
-      <param name="checksum.value" value="${saaj-api.checksum.value}"/>
-    </antcall>
-
   </target>
 
   <target name="download-test-compile"
@@ -2834,32 +3071,55 @@ skip.installer property in build.properties" />
       <param name="checksum.value" value="${objenesis.checksum.value}"/>
     </antcall>
 
-  </target>
-
-  <target name="download-cobertura"
-          if="${test.cobertura}"
-          description="Download the Cobertura code coverage tool" >
-
-    <antcall target="downloadgz">
-      <param name="sourcefile" value="${cobertura.loc}"/>
-      <param name="destfile" value="${cobertura.jar}"/>
-      <param name="checksum.enabled" value="${cobertura.checksum.enabled}"/>
-      <param name="checksum.algorithm" value="${cobertura.checksum.algorithm}"/>
-      <param name="checksum.value" value="${cobertura.checksum.value}"/>
+    <antcall target="downloadfile">
+      <param name="sourcefile" value="${unboundid.loc}"/>
+      <param name="destfile" value="${unboundid.jar}"/>
+      <param name="destdir" value="${unboundid.home}"/>
+      <param name="checksum.enabled" value="${unboundid.checksum.enabled}"/>
+      <param name="checksum.algorithm" value="${unboundid.checksum.algorithm}"/>
+      <param name="checksum.value" value="${unboundid.checksum.value}"/>
     </antcall>
 
   </target>
 
-  <target name="download-findbugs"
-          if="${execute.findbugs}"
-          description="Download FindBugs" >
+  <target name="download-jacoco"
+          description="Download the Jacoco code coverage tool" >
+
+    <antcall target="downloadzip">
+      <param name="sourcefile" value="${jacoco.loc}"/>
+      <param name="destfile" value="${jacoco.jar}"/>
+      <param name="destdir" value="${jacoco.home}"/>
+      <param name="checksum.enabled" value="${jacoco.checksum.enabled}"/>
+      <param name="checksum.algorithm" value="${jacoco.checksum.algorithm}"/>
+      <param name="checksum.value" value="${jacoco.checksum.value}"/>
+    </antcall>
+
+  </target>
+
+  <target name="setup-jacoco" depends="download-jacoco">
+    <!-- Add JaCoCo tasks to project -->
+    <path id="jacoco.classpath">
+      <fileset file="${jacoco.jar}" />
+    </path>
+
+    <taskdef uri="antlib:org.jacoco.ant"
+             resource="org/jacoco/ant/antlib.xml"
+             classpathref="jacoco.classpath"
+             />
+
+  </target>
+
+
+  <target name="download-spotbugs"
+          if="${execute.spotbugs}"
+          description="Download SpotBugs" >
 
     <antcall target="downloadgz">
-      <param name="sourcefile" value="${findbugs.loc}"/>
-      <param name="destfile" value="${findbugs.jar}"/>
-      <param name="checksum.enabled" value="${findbugs.checksum.enabled}"/>
-      <param name="checksum.algorithm" value="${findbugs.checksum.algorithm}"/>
-      <param name="checksum.value" value="${findbugs.checksum.value}"/>
+      <param name="sourcefile" value="${spotbugs.loc}"/>
+      <param name="destfile" value="${spotbugs.jar}"/>
+      <param name="checksum.enabled" value="${spotbugs.checksum.enabled}"/>
+      <param name="checksum.algorithm" value="${spotbugs.checksum.algorithm}"/>
+      <param name="checksum.value" value="${spotbugs.checksum.value}"/>
     </antcall>
 
   </target>
@@ -3048,7 +3308,7 @@ skip.installer property in build.properties" />
     </sequential>
   </macrodef>
 
-  <target name="downloadgz" unless="exist" depends="testexist,setproxy">
+  <target name="downloadgz" unless="exist" if="${execute.download}" depends="testexist,setproxy">
     <!-- Download and extract the package -->
     <local name="temp.file"/>
     <mkdir dir="${base.path}"/>
@@ -3065,7 +3325,7 @@ skip.installer property in build.properties" />
     <delete file="${temp.file}.tar.gz"/>
   </target>
 
-  <target name="downloadgz-2" unless="exist" depends="testexist">
+  <target name="downloadgz-2" unless="exist" if="${execute.download}" depends="testexist">
     <!-- Download and extract the package from the two alternative locations -->
     <local name="temp.file"/>
     <mkdir dir="${base.path}"/>
@@ -3090,7 +3350,7 @@ skip.installer property in build.properties" />
     <delete file="${temp.file}.tar.gz"/>
   </target>
 
-  <target name="downloadzip" unless="exist" depends="testexist,setproxy">
+  <target name="downloadzip" unless="exist" if="${execute.download}" depends="testexist,setproxy">
     <!-- Download and extract the package -->
     <local name="temp.file"/>
     <mkdir dir="${base.path}"/>
@@ -3106,7 +3366,7 @@ skip.installer property in build.properties" />
     <delete file="${temp.file}"/>
   </target>
 
-  <target name="downloadzip-2" unless="exist" depends="testexist">
+  <target name="downloadzip-2" unless="exist" if="${execute.download}" depends="testexist">
     <!-- Download and extract the package from the two alternative locations -->
     <local name="temp.file"/>
     <mkdir dir="${base.path}"/>
@@ -3130,7 +3390,7 @@ skip.installer property in build.properties" />
     <delete file="${temp.file}"/>
   </target>
 
-  <target name="downloadfile" unless="exist" depends="testexist,setproxy">
+  <target name="downloadfile" unless="exist" if="${execute.download}" depends="testexist,setproxy">
     <!-- Download the file -->
     <local name="temp.file"/>
     <mkdir dir="${base.path}"/>
@@ -3145,7 +3405,7 @@ skip.installer property in build.properties" />
     <move file="${temp.file}" tofile="${destfile}"/>
   </target>
 
-  <target name="downloadfile-2" unless="exist" depends="testexist">
+  <target name="downloadfile-2" unless="exist" if="${execute.download}" depends="testexist">
     <!-- Download the file from the two alternative locations -->
     <local name="temp.file"/>
     <mkdir dir="${base.path}"/>
@@ -3199,12 +3459,16 @@ skip.installer property in build.properties" />
 
     <!-- Copy the sample project files into the root directory -->
     <copy file="${tomcat.home}/res/ide-support/eclipse/eclipse.project" tofile="${tomcat.home}/.project"/>
-    <copy file="${tomcat.home}/res/ide-support/eclipse/eclipse.classpath" tofile="${tomcat.home}/.classpath"/>
+    <copy file="${tomcat.home}/res/ide-support/eclipse/eclipse.classpath" tofile="${tomcat.home}/.classpath">
+      <filterset refid="classpath.filters"/>
+      <filterset refid="version.filters"/>
+    </copy>
 
     <!-- Copy compiler settings file -->
     <mkdir dir="${tomcat.home}/.settings" />
-    <copy file="${tomcat.home}/res/ide-support/eclipse/org.eclipse.jdt.core.prefs.properties" tofile="${tomcat.home}/.settings/org.eclipse.jdt.core.prefs"/>
-
+    <copy file="${tomcat.home}/res/ide-support/eclipse/org.eclipse.jdt.core.prefs.properties" tofile="${tomcat.home}/.settings/org.eclipse.jdt.core.prefs">
+      <filterset refid="version.filters"/>
+    </copy>
     <echo>Eclipse project files created.
 Read the Building page on the Apache Tomcat documentation site for details on how to configure your Eclipse workspace.</echo>
   </target>
@@ -3212,18 +3476,20 @@ Read the Building page on the Apache Tomcat documentation site for details on ho
   <!-- ============================ IntelliJ IDEA=========================== -->
 
   <target name="ide-intellij"
-          depends="download-compile, extras-webservices-prepare, download-test-compile"
+          depends="download-compile, extras-webservices-prepare, download-test-compile, deploy"
           description="Creates project directory .idea for IntelliJ IDEA">
 
     <copy todir="${tomcat.home}/.idea">
       <fileset dir="${tomcat.home}/res/ide-support/idea"/>
+      <filterset refid="classpath.filters"/>
+      <filterset refid="version.filters"/>
     </copy>
 
-    <echo>IntelliJ IDEA project directory created. Please create PATH VARIABLES for
+    <mkdir dir="${tomcat.home}/lib"/>
 
-      ANT_HOME          = ${ant.home}
-      TOMCAT_BUILD_LIBS = ${base.path}
-    </echo>
+    <echo>IntelliJ IDEA project directory created.
+The SDK was set to &quot;${build.java.version}&quot; so make sure that your IDE has an SDK with that name,
+or update the Project Settings accordingly.</echo>
   </target>
 
   <!-- ============================ NetBeans =============================== -->
@@ -3259,6 +3525,8 @@ Use the "ide-netbeans-replace" target if you wish to overwrite them.</echo>
     <mkdir dir="${tomcat-nb.home}/"/>
     <copy todir="${tomcat-nb.home}" overwrite="true">
       <fileset dir="${tomcat-nb.dist}"/>
+      <filterset refid="version.filters" />
+      <filterset refid="classpath.filters"/>
     </copy>
     <echo>NetBeans project files created.
 Read the Building page on the Apache Tomcat documentation site for details on how to customise your NetBeans project.</echo>
@@ -3266,6 +3534,27 @@ Read the Building page on the Apache Tomcat documentation site for details on ho
 
 
   <!-- ======================= Macros, Taskdefs etc ======================== -->
+
+  <target name="download-jsign" >
+    <!-- Download jsign -->
+    <antcall target="downloadfile">
+      <param name="sourcefile" value="${jsign.loc}"/>
+      <param name="destfile" value="${jsign.jar}"/>
+      <param name="destdir" value="${jsign.home}"/>
+      <param name="checksum.enabled" value="${jsign.checksum.enabled}"/>
+      <param name="checksum.algorithm" value="${jsign.checksum.algorithm}"/>
+      <param name="checksum.value" value="${jsign.checksum.value}"/>
+    </antcall>
+  </target>
+
+  <target name="setup-jsign" depends="download-jsign">
+    <!-- Add jsign tasks to project -->
+    <path id="jsign.classpath">
+      <fileset file="${jsign.jar}" />
+    </path>
+
+    <taskdef name="jsign" classname="net.jsign.JsignTask" classpathref="jsign.classpath" />
+  </target>
 
   <macrodef name="jarIt" description="utility macro for standard JAR packaging">
     <attribute name="jarfile"
@@ -3283,18 +3572,32 @@ Read the Building page on the Apache Tomcat documentation site for details on ho
     <attribute name="meta-inf" description="additional contents for META-INF"
                default="${tomcat.manifests}/default" />
     <sequential>
-      <jar jarfile="@{jarfile}" manifest="@{manifest}">
-        <fileset dir="@{filesDir}">
+      <local name="jar.uptodate"/>
+      <uptodate property="jar.uptodate" targetfile="@{jarfile}" >
+        <srcfiles dir="@{filesDir}">
           <patternset refid="@{filesId}"/>
-          <!-- Javadoc and i18n exclusions -->
+          <!-- Javadoc exclusions -->
           <exclude name="**/package.html" />
-          <exclude name="**/LocalStrings_*" />
-        </fileset>
-        <zipfileset dir="@{meta-inf}" prefix="META-INF/"
-                    excludes=".gitignore" />
-        <zipfileset file="@{notice}" fullpath="META-INF/NOTICE" />
-        <zipfileset file="@{license}" fullpath="META-INF/LICENSE" />
-      </jar>
+        </srcfiles>
+        <srcfiles dir="@{meta-inf}" excludes=".gitignore" />
+        <srcfiles file="@{notice}" />
+        <srcfiles file="@{license}" />
+      </uptodate>
+      <sequential unless:true="${jar.uptodate}">
+        <jar jarfile="@{jarfile}"
+             manifest="@{manifest}"
+             modificationtime="${tstamp.iso.release}">
+          <fileset dir="@{filesDir}">
+            <patternset refid="@{filesId}"/>
+            <!-- Javadoc exclusions -->
+            <exclude name="**/package.html" />
+          </fileset>
+          <zipfileset dir="@{meta-inf}" prefix="META-INF/"
+                      excludes=".gitignore" />
+          <zipfileset file="@{notice}" fullpath="META-INF/NOTICE" />
+          <zipfileset file="@{license}" fullpath="META-INF/LICENSE" />
+        </jar>
+      </sequential>
     </sequential>
   </macrodef>
 
@@ -3336,4 +3639,235 @@ Read the Building page on the Apache Tomcat documentation site for details on ho
     </exec>
   </target>
 
+  <macrodef name="printfile">
+    <attribute name="file" />
+
+    <sequential>
+      <local name="contents" />
+      <loadfile property="contents" srcfile="@{file}" quiet="true" failonerror="false" />
+      <property name="contents" value="(missing file)" /><!-- Establish default value -->
+      <echo>${contents}</echo>
+    </sequential>
+  </macrodef>
+
+  <macrodef name="get-release-hash">
+    <attribute name="basefile" />
+    <attribute name="src-or-bin" />
+
+    <sequential>
+      <local name="success" />
+
+      <!-- Release hashes can be either 'released' or staged-for-release -->
+      <!-- First, try to find a released version hash. -->
+      <antcall target="trydownload">
+        <param name="sourcefile" value="https://dist.apache.org/repos/dist/release/tomcat/tomcat-${version.major}/v${version}/@{src-or-bin}/@{basefile}.sha512" />
+        <param name="destfile" value="${tomcat.release.verify}/@{basefile}.sha512" />
+      </antcall>
+      <!-- If necessary, try to find a dev version hash. -->
+      <antcall target="trydownload">
+        <param name="sourcefile" value="https://dist.apache.org/repos/dist/dev/tomcat/tomcat-${version.major}/v${version}/@{src-or-bin}/@{basefile}.sha512" />
+        <param name="destfile" value="${tomcat.release.verify}/@{basefile}.sha512" />
+      </antcall>
+
+      <condition property="success">
+        <or>
+          <available file="${tomcat.release.verify}/@{basefile}.sha512" />
+          <and>
+            <contains string="${version}" substring="11.0." /><!-- Super hack -->
+            <contains string="@{basefile}" substring="x86" />
+          </and>
+        </or>
+      </condition>
+
+      <fail unless="success">
+Unable to locate release hash for @{basefile}
+</fail>
+    </sequential>
+  </macrodef>
+
+  <macrodef name="compare-hashes">
+    <attribute name="basefile" />
+    <attribute name="num" />
+    <attribute name="src-or-bin" />
+
+    <sequential>
+<!--
+      <echo>Comparing hash files output/release/v${version}/@{src-or-bin}/@{basefile}.sha512 ${tomcat.release.verify}/@{basefile}.sha512</echo>
+-->
+      <condition property="reproducible-@{num}">
+        <filesmatch file1="output/release/v${version}/@{src-or-bin}/@{basefile}.sha512"
+                    file2="${tomcat.release.verify}/@{basefile}.sha512"/>
+      </condition>
+      <echo if:set="reproducible-@{num}">Signature MATCH for @{src-or-bin}/@{basefile}</echo>
+      <echo unless:set="reproducible-@{num}">
+Signature mismatch for @{src-or-bin}/@{basefile}:
+  </echo>
+      <printfile unless:set="reproducible-@{num}" file="output/release/v${version}/@{src-or-bin}/@{basefile}.sha512" />
+      <printfile unless:set="reproducible-@{num}" file="${tomcat.release.verify}/@{basefile}.sha512" />
+    </sequential>
+  </macrodef>
+
+  <target name="verify-release" depends="-check-release-toolchain-versions, -require-release-toolchain-versions" description="Verifies a release build against published hashes.">
+
+    <available property="released" file="build.properties.release" />
+    <fail unless="released">
+
+This does not appear to be a copy of a released tag; no build.properties.release file exists.
+</fail>
+    <available property="built" file="output/release/v${version}/bin/${final.name}.tar.gz" />
+    <fail unless="built">
+
+It appears there are no build artifacts to verify. Please run 'ant release' first.
+</fail>
+    <delete dir="${tomcat.release.verify}" />
+    <mkdir dir="${tomcat.release.verify}" />
+    <get-release-hash src-or-bin="bin" basefile="${final.name}-deployer.tar.gz" />
+    <get-release-hash src-or-bin="bin" basefile="${final.name}-deployer.zip" />
+    <get-release-hash src-or-bin="bin" basefile="${final.name}-fulldocs.tar.gz" />
+    <get-release-hash src-or-bin="bin" basefile="${final.name}-windows-x64.zip" />
+    <get-release-hash src-or-bin="bin" basefile="${final.name}-windows-x86.zip" />
+    <get-release-hash src-or-bin="bin" basefile="${final.name}.exe" />
+    <get-release-hash src-or-bin="bin" basefile="${final.name}.tar.gz" />
+    <get-release-hash src-or-bin="bin" basefile="${final.name}.zip" />
+    <get-release-hash src-or-bin="src" basefile="${final-src.name}.tar.gz" />
+    <get-release-hash src-or-bin="src" basefile="${final-src.name}.zip" />
+
+    <compare-hashes num="1"  src-or-bin="bin" basefile="${final.name}-deployer.tar.gz" />
+    <compare-hashes num="2"  src-or-bin="bin" basefile="${final.name}-deployer.zip" />
+    <compare-hashes num="3"  src-or-bin="bin" basefile="${final.name}-fulldocs.tar.gz" />
+    <compare-hashes num="4"  src-or-bin="bin" basefile="${final.name}-windows-x64.zip" />
+    <compare-hashes num="5"  src-or-bin="bin" basefile="${final.name}-windows-x86.zip" />
+    <compare-hashes num="6"  src-or-bin="bin" basefile="${final.name}.exe" />
+    <compare-hashes num="7"  src-or-bin="bin" basefile="${final.name}.tar.gz" />
+    <compare-hashes num="8"  src-or-bin="bin" basefile="${final.name}.zip" />
+    <compare-hashes num="9"  src-or-bin="src" basefile="${final-src.name}.tar.gz" />
+    <compare-hashes num="10" src-or-bin="src" basefile="${final-src.name}.zip" />
+
+<!--
+<echo>
+reproducible-1=${reproducible-1}
+reproducible-2=${reproducible-2}
+reproducible-3=${reproducible-3}
+reproducible-4=${reproducible-4}
+reproducible-5=${reproducible-5}
+reproducible-6=${reproducible-6}
+reproducible-7=${reproducible-7}
+reproducible-8=${reproducible-8}
+reproducible-9=${reproducible-9}
+reproducible-10=${reproducible-10}
+</echo>
+-->
+
+    <condition property="reproducible">
+      <and>
+        <isset property="reproducible-1" />
+        <isset property="reproducible-2" />
+<!--
+        <isset property="reproducible-3" />
+-->
+        <isset property="reproducible-4" />
+        <or>
+          <isset property="reproducible-5" />
+          <contains string="${version}" substring="11.0." /><!-- Super hack, Tomcat 11 does not produce x86 binaries. -->
+        </or>
+        <isset property="reproducible-6" />
+        <isset property="reproducible-7" />
+        <isset property="reproducible-8" />
+        <isset property="reproducible-9" />
+        <isset property="reproducible-10" />
+      </and>
+    </condition>
+
+    <fail unless="reproducible">
+One or more signatures failed.
+
+Considering using a tool such as "diffoscope"[1] to inspect the differences
+between the official release and your local-build. There may be trivial
+differences that should not be considered troublesome.
+
+For example:
+$ wget https://dist.apache.org/repos/dist/release/tomcat/tomcat-${version.major}/v${version}/src/apache-tomcat-${version}-src.tar.gz
+  or, for a release candidate:
+$ wget https://dist.apache.org/repos/dist/dev/tomcat/tomcat-${version.major}/v${version}/src/apache-tomcat-${version}-src.tar.gz
+  then:
+$ diffoscope apache-tomcat-${version}-src.tar.gz output/release/v${version}/src/apache-tomcat-${version}-src.tar.gz
+
+
+[1] https://diffoscope.org/
+</fail>
+    <echo>
+
+                SSSS                   SSSS
+                S  SS                 SS  S
+               SS   S                 S   SS
+               SS   S                 S   SS
+              SS   SS                 S   SS
+             SS    S                  S    SS
+           SSS    SS                  SS    SSS
+          SS     SS                    SS     SS
+         SS      SS                    SS      SS
+        SS       S                       S       SS
+       SS        SSSSSSS           SSSSSSS        SS
+   SSSSS               SSS       SSS               SSSS
+  SSS            SSSS    SS     SS    SSSS            SS
+ SS            SSS  SSS   S     S   SSS  SSS           S
+ S            SSS        SS     SS        SSS           S
+ S            SSSSSS    SS       SS    SSSSSS           S
+ S           SS    SSSSSSS       SSSSSSS    SS          S
+ S           SSSS       SS       SS       SSSS          S
+ SS         SS  SSSSSSSSS         SSSSSSSSS  SS        S
+  SSSS     SSSS        S           S        SSSS      SS
+   SSSSS    SSSSSS    SS           SS    SSSSSS    SSSS
+       SS  SS    SSSSSS             SSSSSS    SS  SS
+        SSS SSS     S                S     SSS SSS
+          SSSSSSSSSS                  SSSSSSSSS
+
+</echo>
+    <echo if:set="reproducible-3">
+All signatures are verified; the build appears to be 100% reproducible.
+</echo>
+    <echo unless:set="reproducible-3">
+All (important) signatures are verified; the build appears to be reproducible.
+
+The fulldocs bundle appears to be different than that of the release.
+It is likely due to this JDK bug:
+
+  https://bugs.openjdk.org/browse/JDK-8306980
+</echo>
+  </target>
+
+  <target name="-check-release-toolchain-versions" if="release-java-version">
+    <!-- Establish default value -->
+    <property name="check-release-toolchain" value="true" />
+    <condition property="check-release-toolchain-versions">
+      <not>
+        <isfalse value="${check-release-toolchain}" />
+      </not>
+    </condition>
+  </target>
+
+  <target name="-require-release-toolchain-versions" if="check-release-toolchain-versions">
+    <antversion property="antversion"/>
+    <condition property="release-toolchain-versions-match">
+      <and>
+        <antversion exactly="${release-ant-version}" />
+        <equals arg1="${java.vm.version}" arg2="${release-java-version}" />
+      </and>
+    </condition>
+
+    <fail unless="release-toolchain-versions-match">
+Release toolchain versions do not match local toolchain:
+
+Release Java: ${release-java-version}
+Local Java:   ${java.vm.version}
+Release Ant:  ${release-ant-version}
+Local Ant:    ${antversion}
+
+You may not be able to verify that this build is reproducible.
+
+Re-run with -Dcheck-release-toolchain=false to disable this check.
+</fail>
+    <echo>Local toolchain versions match release toolchain (Java ${release-java-version}, Ant ${release-ant-version}).
+</echo>
+  </target>
 </project>

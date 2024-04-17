@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.catalina.util;
 
 import java.text.SimpleDateFormat;
@@ -45,7 +44,7 @@ public class Strftime {
     protected static final Properties translate;
     protected final SimpleDateFormat simpleDateFormat;
 
-    /**
+    /*
      * Initialize our pattern translation
      */
     static {
@@ -184,7 +183,7 @@ public class Strftime {
                 } else {
                     if ( !inside && c != ' ' ) {
                         //We start a literal, which we need to quote
-                        buf.append("'");
+                        buf.append('\'');
                         inside = true;
                     }
 

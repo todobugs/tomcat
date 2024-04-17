@@ -14,8 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
-
 package org.apache.tomcat.util.digester;
 
 
@@ -39,7 +37,7 @@ public interface Rules {
      * @return the Digester instance with which this Rules instance is
      * associated.
      */
-    public Digester getDigester();
+    Digester getDigester();
 
 
     /**
@@ -47,7 +45,7 @@ public interface Rules {
      *
      * @param digester The newly associated Digester instance
      */
-    public void setDigester(Digester digester);
+    void setDigester(Digester digester);
 
 
     /**
@@ -56,8 +54,7 @@ public interface Rules {
      *
      * @deprecated Unused. Will be removed in Tomcat 9
      */
-    @Deprecated
-    public String getNamespaceURI();
+    @Deprecated String getNamespaceURI();
 
 
     /**
@@ -70,8 +67,7 @@ public interface Rules {
      *
      * @deprecated Unused. Will be removed in Tomcat 9
      */
-    @Deprecated
-    public void setNamespaceURI(String namespaceURI);
+    @Deprecated void setNamespaceURI(String namespaceURI);
 
 
     // --------------------------------------------------------- Public Methods
@@ -83,13 +79,13 @@ public interface Rules {
      * @param pattern Nesting pattern to be matched for this Rule
      * @param rule Rule instance to be registered
      */
-    public void add(String pattern, Rule rule);
+    void add(String pattern, Rule rule);
 
 
     /**
      * Clear all existing Rule instance registrations.
      */
-    public void clear();
+    void clear();
 
 
     /**
@@ -104,7 +100,7 @@ public interface Rules {
      * @param pattern Nesting pattern to be matched
      * @return a rules list
      */
-    public List<Rule> match(String namespaceURI, String pattern);
+    List<Rule> match(String namespaceURI, String pattern);
 
 
     /**
@@ -115,7 +111,7 @@ public interface Rules {
      * method.
      * @return a rules list
      */
-    public List<Rule> rules();
+    List<Rule> rules();
 
 
 }

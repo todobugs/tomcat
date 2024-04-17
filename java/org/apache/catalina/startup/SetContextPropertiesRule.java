@@ -14,8 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
-
 package org.apache.catalina.startup;
 
 import org.apache.tomcat.util.IntrospectionUtils;
@@ -23,8 +21,7 @@ import org.apache.tomcat.util.digester.Rule;
 import org.xml.sax.Attributes;
 
 /**
- * Rule that uses the introspection utils to set properties of a context
- * (everything except "path").
+ * Rule that uses the introspection utils to set properties of a context (everything except "path").
  *
  * @author Remy Maucherat
  */
@@ -48,8 +45,7 @@ public class SetContextPropertiesRule extends Rule {
      * @exception Exception if a processing error occurs
      */
     @Override
-    public void begin(String namespace, String nameX, Attributes attributes)
-        throws Exception {
+    public void begin(String namespace, String nameX, Attributes attributes) throws Exception {
 
         for (int i = 0; i < attributes.getLength(); i++) {
             String name = attributes.getLocalName(i);
@@ -60,12 +56,10 @@ public class SetContextPropertiesRule extends Rule {
                 continue;
             }
             String value = attributes.getValue(i);
-            if (!digester.isFakeAttribute(digester.peek(), name)
-                    && !IntrospectionUtils.setProperty(digester.peek(), name, value)
-                    && digester.getRulesValidation()) {
-                digester.getLogger().warn("[SetContextPropertiesRule]{" + digester.getMatch() +
-                        "} Setting property '" + name + "' to '" +
-                        value + "' did not find a matching property.");
+            if (!digester.isFakeAttribute(digester.peek(), name) &&
+                    !IntrospectionUtils.setProperty(digester.peek(), name, value) && digester.getRulesValidation()) {
+                digester.getLogger().warn("[SetContextPropertiesRule]{" + digester.getMatch() + "} Setting property '" +
+                        name + "' to '" + value + "' did not find a matching property.");
             }
         }
 

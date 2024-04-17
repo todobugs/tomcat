@@ -48,7 +48,7 @@ public class MessageDispatchInterceptor extends ChannelInterceptorBase
     protected static final StringManager sm =
             StringManager.getManager(MessageDispatchInterceptor.class);
 
-    protected long maxQueueSize = 1024*1024*64; //64MB
+    protected long maxQueueSize = 1024*1024*64; //64 MiB
     protected volatile boolean run = false;
     protected boolean useDeepClone = true;
     protected boolean alwaysSend = true;
@@ -113,7 +113,9 @@ public class MessageDispatchInterceptor extends ChannelInterceptorBase
             return;
         }
         String channelName = "";
-        if (getChannel().getName() != null) channelName = "[" + getChannel().getName() + "]";
+        if (getChannel().getName() != null) {
+            channelName = "[" + getChannel().getName() + "]";
+        }
         executor = ExecutorFactory.newThreadPool(maxSpareThreads, maxThreads, keepAliveTime,
                 TimeUnit.MILLISECONDS,
                 new TcclThreadFactory("MessageDispatchInterceptor.MessageDispatchThread" + channelName));

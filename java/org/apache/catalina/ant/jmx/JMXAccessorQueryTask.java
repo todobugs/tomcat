@@ -14,12 +14,9 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
-
 package org.apache.catalina.ant.jmx;
 
 
-import java.util.Iterator;
 import java.util.Set;
 
 import javax.management.MBeanAttributeInfo;
@@ -102,8 +99,7 @@ public class JMXAccessorQueryTask extends JMXAccessorTask {
      * @param qry The query
      * @return null (no error message to report other than exception)
      */
-    protected String jmxQuery(MBeanServerConnection jmxServerConnection,
-            String qry) {
+    protected String jmxQuery(MBeanServerConnection jmxServerConnection, String qry) {
         String isError = null;
         Set<ObjectName> names = null;
         String resultproperty = getResultproperty();
@@ -113,17 +109,16 @@ public class JMXAccessorQueryTask extends JMXAccessorTask {
                 setProperty(resultproperty + ".Length",Integer.toString(names.size()));
             }
         } catch (Exception e) {
-            if (isEcho())
+            if (isEcho()) {
                 handleErrorOutput(e.getMessage());
+            }
             return "Can't query mbeans " + qry;
         }
 
         if (resultproperty != null) {
-            Iterator<ObjectName> it = names.iterator();
             int oindex = 0;
             String pname = null;
-            while (it.hasNext()) {
-                ObjectName oname = it.next();
+            for (ObjectName oname : names) {
                 pname = resultproperty + "." + Integer.toString(oindex) + ".";
                 oindex++;
                 setProperty(pname + "Name", oname.toString());
@@ -141,29 +136,27 @@ public class JMXAccessorQueryTask extends JMXAccessorTask {
             MBeanAttributeInfo attrs[] = minfo.getAttributes();
             Object value = null;
 
-            for (int i = 0; i < attrs.length; i++) {
-                if (!attrs[i].isReadable())
+            for (MBeanAttributeInfo attr : attrs) {
+                if (!attr.isReadable()) {
                     continue;
-                String attName = attrs[i].getName();
-                if (attName.indexOf('=') >= 0 || attName.indexOf(':') >= 0
-                        || attName.indexOf(' ') >= 0) {
+                }
+                String attName = attr.getName();
+                if (attName.indexOf('=') >= 0 || attName.indexOf(':') >= 0 || attName.indexOf(' ') >= 0) {
                     continue;
                 }
 
                 try {
-                    value = jmxServerConnection
-                            .getAttribute(oname, attName);
+                    value = jmxServerConnection.getAttribute(oname, attName);
                 } catch (Exception e) {
-                    if (isEcho())
-                        handleErrorOutput("Error getting attribute "
-                                + oname + " " + pname + attName + " "
-                                + e.toString());
+                    if (isEcho()) {
+                        handleErrorOutput(
+                                "Error getting attribute " + oname + " " + pname + attName + " " + e.toString());
+                    }
                     continue;
                 }
-                if (value == null)
+                if ((value == null) || "modelerType".equals(attName)) {
                     continue;
-                if ("modelerType".equals(attName))
-                    continue;
+                }
                 createProperty(pname + attName, value);
             }
         } catch (Exception e) {

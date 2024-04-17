@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.tomcat.util.modeler.modules;
 
 import java.lang.reflect.Method;
@@ -22,10 +21,11 @@ import java.lang.reflect.Modifier;
 import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.util.ArrayList;
-import java.util.Enumeration;
-import java.util.Hashtable;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
-import java.util.Map.Entry;
+import java.util.Map;
+import java.util.Set;
 
 import javax.management.ObjectName;
 
@@ -36,10 +36,12 @@ import org.apache.tomcat.util.modeler.ManagedBean;
 import org.apache.tomcat.util.modeler.OperationInfo;
 import org.apache.tomcat.util.modeler.ParameterInfo;
 import org.apache.tomcat.util.modeler.Registry;
+import org.apache.tomcat.util.res.StringManager;
 
 public class MbeansDescriptorsIntrospectionSource extends ModelerSource
 {
     private static final Log log = LogFactory.getLog(MbeansDescriptorsIntrospectionSource.class);
+    private static final StringManager sm = StringManager.getManager(MbeansDescriptorsIntrospectionSource.class);
 
     private Registry registry;
     private String type;
@@ -73,11 +75,15 @@ public class MbeansDescriptorsIntrospectionSource extends ModelerSource
     }
 
     public void execute() throws Exception {
-        if( registry==null ) registry=Registry.getRegistry(null, null);
+        if( registry==null ) {
+            registry=Registry.getRegistry(null, null);
+        }
         try {
             ManagedBean managed = createManagedBean(registry, null,
                     (Class<?>)source, type);
-            if( managed==null ) return;
+            if( managed==null ) {
+                return;
+            }
             managed.setName( type );
 
             registry.addManagedBean(managed);
@@ -91,7 +97,7 @@ public class MbeansDescriptorsIntrospectionSource extends ModelerSource
 
     // ------------ Implementation for non-declared introspection classes
 
-    private static final Hashtable<String,String> specialMethods = new Hashtable<>();
+    private static final Map<String,String> specialMethods = new HashMap<>();
     static {
         specialMethods.put( "preDeregister", "");
         specialMethods.put( "postDeregister", "");
@@ -131,8 +137,8 @@ public class MbeansDescriptorsIntrospectionSource extends ModelerSource
      * @return boolean True if class is supported
      */
     private boolean supportedType(Class<?> ret) {
-        for (int i = 0; i < supportedTypes.length; i++) {
-            if (ret == supportedTypes[i]) {
+        for (Class<?> supportedType : supportedTypes) {
+            if (ret == supportedType) {
                 return true;
             }
         }
@@ -164,16 +170,16 @@ public class MbeansDescriptorsIntrospectionSource extends ModelerSource
 
         try {
             javaType.getConstructor(new Class[]{});
-        } catch (java.lang.NoSuchMethodException e) {
+        } catch (NoSuchMethodException e) {
             return false;
         }
 
         // Make sure superclass is compatible
         Class<?> superClass = javaType.getSuperclass();
         if (superClass != null &&
-            superClass != java.lang.Object.class &&
-            superClass != java.lang.Exception.class &&
-            superClass != java.lang.Throwable.class) {
+            superClass != Object.class &&
+            superClass != Exception.class &&
+            superClass != Throwable.class) {
             if (!isBeanCompatible(superClass)) {
                 return false;
             }
@@ -185,86 +191,84 @@ public class MbeansDescriptorsIntrospectionSource extends ModelerSource
      * Process the methods and extract 'attributes', methods, etc.
      *
      * @param realClass The class to process
-     * @param methods The methods to process
-     * @param attMap The attribute map (complete)
+     * @param attNames The attribute name (complete)
      * @param getAttMap The readable attributes map
      * @param setAttMap The settable attributes map
-     * @param invokeAttMap The invokable attributes map
+     * @param invokeAttList The invokable attributes list
      */
-    private void initMethods(Class<?> realClass, Method methods[], Hashtable<String,Method> attMap,
-            Hashtable<String,Method> getAttMap, Hashtable<String,Method> setAttMap,
-            Hashtable<String,Method> invokeAttMap) {
+    private void initMethods(Class<?> realClass, Set<String> attNames,
+            Map<String,Method> getAttMap, Map<String,Method> setAttMap,
+            List<Method> invokeAttList) {
 
-        for (int j = 0; j < methods.length; ++j) {
-            String name = methods[j].getName();
+        Method[] methods = realClass.getMethods();
+        for (Method method : methods) {
+            String name = method.getName();
 
-            if (Modifier.isStatic(methods[j].getModifiers())) {
+            if (Modifier.isStatic(method.getModifiers())) {
                 continue;
             }
-            if (!Modifier.isPublic(methods[j].getModifiers())) {
-                if (log.isDebugEnabled()) {
-                    log.debug("Not public " + methods[j] );
+            if (!Modifier.isPublic(method.getModifiers())) {
+                if (log.isTraceEnabled()) {
+                    log.trace("Not public " + method);
                 }
                 continue;
             }
-            if (methods[j].getDeclaringClass() == Object.class) {
+            if (method.getDeclaringClass() == Object.class) {
                 continue;
             }
-            Class<?> params[] = methods[j].getParameterTypes();
+            Class<?>[] params = method.getParameterTypes();
 
-            if (name.startsWith("get") && params.length==0) {
-                Class<?> ret = methods[j].getReturnType();
+            if (name.startsWith("get") && params.length == 0) {
+                Class<?> ret = method.getReturnType();
                 if (!supportedType(ret)) {
-                    if (log.isDebugEnabled()) {
-                        log.debug("Unsupported type " + methods[j]);
+                    if (log.isTraceEnabled()) {
+                        log.trace("Unsupported type " + method);
                     }
                     continue;
                 }
-                name=unCapitalize(name.substring(3));
+                name = unCapitalize(name.substring(3));
 
-                getAttMap.put(name, methods[j]);
-                // just a marker, we don't use the value
-                attMap.put(name, methods[j]);
-            } else if(name.startsWith("is") && params.length == 0) {
-                Class<?> ret = methods[j].getReturnType();
+                getAttMap.put(name, method);
+                attNames.add(name);
+            } else if (name.startsWith("is") && params.length == 0) {
+                Class<?> ret = method.getReturnType();
                 if (Boolean.TYPE != ret) {
-                    if (log.isDebugEnabled()) {
-                        log.debug("Unsupported type " + methods[j] + " " + ret );
+                    if (log.isTraceEnabled()) {
+                        log.trace("Unsupported type " + method + " " + ret);
                     }
                     continue;
                 }
                 name = unCapitalize(name.substring(2));
 
-                getAttMap.put(name, methods[j]);
-                // just a marker, we don't use the value
-                attMap.put(name, methods[j]);
+                getAttMap.put(name, method);
+                attNames.add(name);
 
             } else if (name.startsWith("set") && params.length == 1) {
                 if (!supportedType(params[0])) {
-                    if (log.isDebugEnabled()) {
-                        log.debug("Unsupported type " + methods[j] + " " + params[0]);
+                    if (log.isTraceEnabled()) {
+                        log.trace("Unsupported type " + method + " " + params[0]);
                     }
                     continue;
                 }
                 name = unCapitalize(name.substring(3));
-                setAttMap.put(name, methods[j]);
-                attMap.put(name, methods[j]);
+                setAttMap.put(name, method);
+                attNames.add(name);
             } else {
                 if (params.length == 0) {
-                    if (specialMethods.get(methods[j].getName()) != null) {
+                    if (specialMethods.get(name) != null) {
                         continue;
                     }
-                    invokeAttMap.put(name, methods[j]);
+                    invokeAttList.add(method);
                 } else {
                     boolean supported = true;
-                    for (int i = 0; i < params.length; i++ ) {
-                        if (!supportedType(params[i])) {
+                    for (Class<?> param : params) {
+                        if (!supportedType(param)) {
                             supported = false;
                             break;
                         }
                     }
                     if (supported) {
-                        invokeAttMap.put( name, methods[j]);
+                        invokeAttList.add(method);
                     }
                 }
             }
@@ -287,71 +291,64 @@ public class MbeansDescriptorsIntrospectionSource extends ModelerSource
     public ManagedBean createManagedBean(Registry registry, String domain,
                                          Class<?> realClass, String type)
     {
-        ManagedBean mbean= new ManagedBean();
+        ManagedBean mbean = new ManagedBean();
 
-        Method methods[]=null;
 
-        Hashtable<String,Method> attMap = new Hashtable<>();
+        Set<String> attrNames = new HashSet<>();
         // key: attribute val: getter method
-        Hashtable<String,Method> getAttMap = new Hashtable<>();
+        Map<String, Method> getAttMap = new HashMap<>();
         // key: attribute val: setter method
-        Hashtable<String,Method> setAttMap = new Hashtable<>();
+        Map<String, Method> setAttMap = new HashMap<>();
         // key: operation val: invoke method
-        Hashtable<String,Method> invokeAttMap = new Hashtable<>();
+        List<Method> invokeAttList = new ArrayList<>();
 
-        methods = realClass.getMethods();
-
-        initMethods(realClass, methods, attMap, getAttMap, setAttMap, invokeAttMap );
+        initMethods(realClass, attrNames, getAttMap, setAttMap, invokeAttList);
 
         try {
-
-            Enumeration<String> en = attMap.keys();
-            while( en.hasMoreElements() ) {
-                String name = en.nextElement();
-                AttributeInfo ai=new AttributeInfo();
-                ai.setName( name );
+            for (String name : attrNames) {
+                AttributeInfo ai = new AttributeInfo();
+                ai.setName(name);
                 Method gm = getAttMap.get(name);
-                if( gm!=null ) {
-                    //ai.setGetMethodObj( gm );
-                    ai.setGetMethod( gm.getName());
-                    Class<?> t=gm.getReturnType();
-                    if( t!=null )
-                        ai.setType( t.getName() );
+                if (gm != null) {
+                    ai.setGetMethod(gm.getName());
+                    Class<?> t = gm.getReturnType();
+                    if (t != null) {
+                        ai.setType(t.getName());
+                    }
                 }
                 Method sm = setAttMap.get(name);
-                if( sm!=null ) {
-                    //ai.setSetMethodObj(sm);
+                if (sm != null) {
                     Class<?> t = sm.getParameterTypes()[0];
-                    if( t!=null )
-                        ai.setType( t.getName());
-                    ai.setSetMethod( sm.getName());
+                    if (t != null) {
+                        ai.setType(t.getName());
+                    }
+                    ai.setSetMethod(sm.getName());
                 }
                 ai.setDescription("Introspected attribute " + name);
-                if( log.isDebugEnabled()) log.debug("Introspected attribute " +
-                        name + " " + gm + " " + sm);
-                if( gm==null )
+                if (log.isTraceEnabled()) {
+                    log.trace("Introspected attribute " + name + " " + gm + " " + sm);
+                }
+                if (gm == null) {
                     ai.setReadable(false);
-                if( sm==null )
+                }
+                if (sm == null) {
                     ai.setWriteable(false);
-                if( sm!=null || gm!=null )
+                }
+                if (sm != null || gm != null) {
                     mbean.addAttribute(ai);
+                }
             }
 
-            // This map is populated by iterating the methods (which end up as
-            // values in the Map) and obtaining the key from the value. It is
-            // impossible for a key to be associated with a null value.
-            for (Entry<String,Method> entry : invokeAttMap.entrySet()) {
-                String name = entry.getKey();
-                Method m = entry.getValue();
-
-                OperationInfo op=new OperationInfo();
+            for (Method method : invokeAttList) {
+                String name = method.getName();
+                OperationInfo op = new OperationInfo();
                 op.setName(name);
-                op.setReturnType(m.getReturnType().getName());
+                op.setReturnType(method.getReturnType().getName());
                 op.setDescription("Introspected operation " + name);
-                Class<?> parms[] = m.getParameterTypes();
-                for(int i=0; i<parms.length; i++ ) {
-                    ParameterInfo pi=new ParameterInfo();
-                    pi.setType(parms[i].getName());
+                Class<?>[] params = method.getParameterTypes();
+                for (int i = 0; i < params.length; i++) {
+                    ParameterInfo pi = new ParameterInfo();
+                    pi.setType(params[i].getName());
                     pi.setName(("param" + i).intern());
                     pi.setDescription(("Introspected parameter param" + i).intern());
                     op.addParameter(pi);
@@ -359,13 +356,14 @@ public class MbeansDescriptorsIntrospectionSource extends ModelerSource
                 mbean.addOperation(op);
             }
 
-            if( log.isDebugEnabled())
-                log.debug("Setting name: " + type );
-            mbean.setName( type );
+            if (log.isTraceEnabled()) {
+                log.trace("Setting name: " + type);
+            }
+            mbean.setName(type);
 
             return mbean;
-        } catch( Exception ex ) {
-            ex.printStackTrace();
+        } catch (Exception ex) {
+            log.error(sm.getString("source.introspectionError", realClass.getName()), ex);
             return null;
         }
     }

@@ -28,9 +28,8 @@ import org.apache.juli.logging.LogFactory;
 
 
 /**
- * Concrete implementation of <code>RequestFilterValve</code> that filters
- * based on the string representation of the remote client's IP address
- * optionally combined with the server connector port number.
+ * Concrete implementation of <code>RequestFilterValve</code> that filters based on the string representation of the
+ * remote client's IP address optionally combined with the server connector port number.
  *
  * @author Craig R. McClanahan
  */
@@ -44,14 +43,16 @@ public final class RemoteAddrValve extends RequestFilterValve {
     @Override
     public void invoke(Request request, Response response) throws IOException, ServletException {
         String property;
-        if (getAddConnectorPort()) {
-            property = request.getRequest().getRemoteAddr() + ";" + request.getConnector().getPort();
+        if (getUsePeerAddress()) {
+            property = request.getPeerAddr();
         } else {
             property = request.getRequest().getRemoteAddr();
         }
+        if (getAddConnectorPort()) {
+            property = property + ";" + request.getConnector().getPortWithOffset();
+        }
         process(property, request, response);
     }
-
 
 
     @Override

@@ -15,11 +15,12 @@
  * limitations under the License.
  *
  */
-
 package org.apache.tomcat.dbcp.dbcp2;
 
+import java.sql.ResultSet;
 import java.text.MessageFormat;
 import java.util.HashSet;
+import java.util.Properties;
 import java.util.ResourceBundle;
 import java.util.Set;
 
@@ -31,7 +32,7 @@ import java.util.Set;
 public final class Utils {
 
     private static final ResourceBundle messages = ResourceBundle
-            .getBundle(Utils.class.getPackage().getName() + ".LocalStrings");
+        .getBundle(Utils.class.getPackage().getName() + ".LocalStrings");
 
     /**
      * Whether the security manager is enabled.
@@ -54,6 +55,9 @@ public final class Utils {
      */
     public static final Set<String> DISCONNECTION_SQL_CODES;
 
+    static final ResultSet[] EMPTY_RESULT_SET_ARRAY = {};
+    static final String[] EMPTY_STRING_ARRAY = {};
+
     static {
         DISCONNECTION_SQL_CODES = new HashSet<>();
         DISCONNECTION_SQL_CODES.add("57P01"); // Admin shutdown
@@ -67,8 +71,7 @@ public final class Utils {
     /**
      * Clones the given char[] if not null.
      *
-     * @param value
-     *            may be null.
+     * @param value may be null.
      * @return a cloned char[] or null.
      */
     public static char[] clone(final char[] value) {
@@ -76,10 +79,26 @@ public final class Utils {
     }
 
     /**
+     * Clones the given {@link Properties} without the standard "user" or "password" entries.
+     *
+     * @param properties may be null
+     * @return a clone of the input without the standard "user" or "password" entries.
+     * @since 2.8.0
+     */
+    public static Properties cloneWithoutCredentials(final Properties properties) {
+        if (properties != null) {
+            final Properties temp = (Properties) properties.clone();
+            temp.remove(Constants.KEY_USER);
+            temp.remove(Constants.KEY_PASSWORD);
+            return temp;
+        }
+        return properties;
+    }
+
+    /**
      * Closes the AutoCloseable (which may be null).
      *
-     * @param autoCloseable
-     *            an AutoCloseable, may be {@code null}
+     * @param autoCloseable an AutoCloseable, may be {@code null}
      * @since 2.6.0
      */
     public static void closeQuietly(final AutoCloseable autoCloseable) {
@@ -95,8 +114,7 @@ public final class Utils {
     /**
      * Gets the correct i18n message for the given key.
      *
-     * @param key
-     *            The key to look up an i18n message.
+     * @param key The key to look up an i18n message.
      * @return The i18n message.
      */
     public static String getMessage(final String key) {
@@ -106,10 +124,8 @@ public final class Utils {
     /**
      * Gets the correct i18n message for the given key with placeholders replaced by the supplied arguments.
      *
-     * @param key
-     *            A message key.
-     * @param args
-     *            The message arguments.
+     * @param key A message key.
+     * @param args The message arguments.
      * @return An i18n message.
      */
     public static String getMessage(final String key, final Object... args) {
@@ -124,8 +140,7 @@ public final class Utils {
     /**
      * Converts the given String to a char[].
      *
-     * @param value
-     *            may be null.
+     * @param value may be null.
      * @return a char[] or null.
      */
     public static char[] toCharArray(final String value) {
@@ -135,8 +150,7 @@ public final class Utils {
     /**
      * Converts the given char[] to a String.
      *
-     * @param value
-     *            may be null.
+     * @param value may be null.
      * @return a String or null.
      */
     public static String toString(final char[] value) {

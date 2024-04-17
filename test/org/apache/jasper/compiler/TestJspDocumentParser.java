@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.jasper.compiler;
 
 import java.io.IOException;
@@ -39,8 +38,7 @@ public class TestJspDocumentParser extends TomcatBaseTest {
     public void testBug47977() throws Exception {
         getTomcatInstanceTestWebapp(false, true);
 
-        int rc = getUrl("http://localhost:" + getPort() +
-                "/test/bug47977.jspx", new ByteChunk(), null);
+        int rc = getUrl("http://localhost:" + getPort() + "/test/bug47977.jspx", new ByteChunk(), null);
 
         Assert.assertEquals(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, rc);
     }
@@ -65,13 +63,11 @@ public class TestJspDocumentParser extends TomcatBaseTest {
         getTomcatInstanceTestWebapp(false, true);
 
         ByteChunk bc = new ByteChunk();
-        int rc = getUrl("http://localhost:" + getPort() +
-                "/test/bug5nnnn/bug54801a.jspx", bc, null);
+        int rc = getUrl("http://localhost:" + getPort() + "/test/bug5nnnn/bug54801a.jspx", bc, null);
         Assert.assertEquals(HttpServletResponse.SC_OK, rc);
 
         bc.recycle();
-        rc = getUrl("http://localhost:" + getPort() +
-                "/test/bug5nnnn/bug54801b.jspx", bc, null);
+        rc = getUrl("http://localhost:" + getPort() + "/test/bug5nnnn/bug54801b.jspx", bc, null);
         Assert.assertEquals(HttpServletResponse.SC_OK, rc);
     }
 
@@ -80,15 +76,13 @@ public class TestJspDocumentParser extends TomcatBaseTest {
         getTomcatInstanceTestWebapp(false, true);
 
         ByteChunk bc = new ByteChunk();
-        int rc = getUrl("http://localhost:" + getPort() +
-                "/test/bug5nnnn/bug54821a.jspx", bc, null);
+        int rc = getUrl("http://localhost:" + getPort() + "/test/bug5nnnn/bug54821a.jspx", bc, null);
         Assert.assertEquals(HttpServletResponse.SC_OK, rc);
 
         bc.recycle();
-        rc = getUrl("http://localhost:" + getPort() +
-                "/test/bug5nnnn/bug54821b.jspx", bc, null);
+        rc = getUrl("http://localhost:" + getPort() + "/test/bug5nnnn/bug54821b.jspx", bc, null);
         Assert.assertEquals(HttpServletResponse.SC_OK, rc);
-   }
+    }
 
     @Test
     public void testSchemaValidation() throws Exception {
@@ -119,5 +113,5 @@ public class TestJspDocumentParser extends TomcatBaseTest {
         Document document = db.parse(path);
         Assert.assertEquals("urn:valid", document.getDocumentElement().getNamespaceURI());
         Assert.assertEquals("root", document.getDocumentElement().getLocalName());
-   }
+    }
 }

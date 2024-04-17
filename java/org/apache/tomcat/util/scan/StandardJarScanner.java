@@ -22,11 +22,11 @@ import java.net.MalformedURLException;
 import java.net.URI;
 import java.net.URL;
 import java.net.URLClassLoader;
+import java.util.ArrayDeque;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.Deque;
 import java.util.HashSet;
-import java.util.LinkedList;
 import java.util.Set;
 import java.util.jar.Attributes;
 import java.util.jar.Manifest;
@@ -172,8 +172,9 @@ public class StandardJarScanner implements JarScanner {
         }
 
         if (jarScanFilter instanceof StandardJarScanFilter) {
-            if (((StandardJarScanFilter) jarScanFilter).isSkipAll())
+            if (((StandardJarScanFilter) jarScanFilter).isSkipAll()) {
                 return;
+            }
         }
 
         Set<URL> processedURLs = new HashSet<>();
@@ -192,8 +193,12 @@ public class StandardJarScanner implements JarScanner {
                     URL url = null;
                     try {
                         url = context.getResource(path);
-                        processedURLs.add(url);
-                        process(scanType, callback, url, path, true, null);
+                        if (url != null) {
+                            processedURLs.add(url);
+                            process(scanType, callback, url, path, true, null);
+                        } else {
+                            log.warn(sm.getString("jarScan.webinflibFail", path));
+                        }
                     } catch (IOException e) {
                         log.warn(sm.getString("jarScan.webinflibFail", url), e);
                     }
@@ -257,7 +262,7 @@ public class StandardJarScanner implements JarScanner {
         // Use a Deque so URLs can be removed as they are processed
         // and new URLs can be added as they are discovered during
         // processing.
-        Deque<URL> classPathUrlsToProcess = new LinkedList<>();
+        Deque<URL> classPathUrlsToProcess = new ArrayDeque<>();
 
         while (classLoader != null && classLoader != stopLoader) {
             if (classLoader instanceof URLClassLoader) {
@@ -289,8 +294,9 @@ public class StandardJarScanner implements JarScanner {
             Set<URL> processedURLs, boolean isWebapp, Deque<URL> classPathUrlsToProcess) {
 
         if (jarScanFilter instanceof StandardJarScanFilter) {
-            if (((StandardJarScanFilter) jarScanFilter).isSkipAll())
+            if (((StandardJarScanFilter) jarScanFilter).isSkipAll()) {
                 return;
+            }
         }
 
         while (!classPathUrlsToProcess.isEmpty()) {
@@ -414,9 +420,7 @@ public class StandardJarScanner implements JarScanner {
             } catch (Throwable t) {
                 ExceptionUtils.handleThrowable(t);
                 // Wrap the exception and re-throw
-                IOException ioe = new IOException();
-                ioe.initCause(t);
-                throw ioe;
+                throw new IOException(t);
             }
         }
     }
@@ -477,7 +481,7 @@ public class StandardJarScanner implements JarScanner {
         private final boolean jar;
         private final String name;
 
-        public ClassPathEntry(URL url) {
+        ClassPathEntry(URL url) {
             String path = url.getPath();
             int end = path.lastIndexOf(Constants.JAR_EXT);
             if (end != -1) {

@@ -31,8 +31,8 @@ import org.apache.juli.logging.Log;
 import org.apache.juli.logging.LogFactory;
 
 /**
- * Provides a single configuration point for security measures that required the
- * addition of one or more HTTP headers to the response.
+ * Provides a single configuration point for security measures that required the addition of one or more HTTP headers to
+ * the response.
  */
 public class HttpHeaderSecurityFilter extends FilterBase {
 
@@ -61,9 +61,12 @@ public class HttpHeaderSecurityFilter extends FilterBase {
     private boolean blockContentTypeSniffingEnabled = true;
 
     // Cross-site scripting filter protection
+    @Deprecated
     private static final String XSS_PROTECTION_HEADER_NAME = "X-XSS-Protection";
+    @Deprecated
     private static final String XSS_PROTECTION_HEADER_VALUE = "1; mode=block";
-    private boolean xssProtectionEnabled = true;
+    @Deprecated
+    private boolean xssProtectionEnabled = false;
 
     @Override
     public void init(FilterConfig filterConfig) throws ServletException {
@@ -91,8 +94,8 @@ public class HttpHeaderSecurityFilter extends FilterBase {
 
 
     @Override
-    public void doFilter(ServletRequest request, ServletResponse response,
-            FilterChain chain) throws IOException, ServletException {
+    public void doFilter(ServletRequest request, ServletResponse response, FilterChain chain)
+            throws IOException, ServletException {
 
         if (response instanceof HttpServletResponse) {
             HttpServletResponse httpResponse = (HttpServletResponse) response;
@@ -222,8 +225,7 @@ public class HttpHeaderSecurityFilter extends FilterBase {
     }
 
 
-    public void setBlockContentTypeSniffingEnabled(
-            boolean blockContentTypeSniffingEnabled) {
+    public void setBlockContentTypeSniffingEnabled(boolean blockContentTypeSniffingEnabled) {
         this.blockContentTypeSniffingEnabled = blockContentTypeSniffingEnabled;
     }
 
@@ -239,11 +241,13 @@ public class HttpHeaderSecurityFilter extends FilterBase {
     }
 
 
+    @Deprecated
     public boolean isXssProtectionEnabled() {
         return xssProtectionEnabled;
     }
 
 
+    @Deprecated
     public void setXssProtectionEnabled(boolean xssProtectionEnabled) {
         this.xssProtectionEnabled = xssProtectionEnabled;
     }
@@ -257,7 +261,7 @@ public class HttpHeaderSecurityFilter extends FilterBase {
 
         private final String headerValue;
 
-        private XFrameOption(String headerValue) {
+        XFrameOption(String headerValue) {
             this.headerValue = headerValue;
         }
 

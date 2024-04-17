@@ -14,8 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
-
 package org.apache.catalina.ant.jmx;
 
 
@@ -140,7 +138,7 @@ public class JMXAccessorSetTask extends JMXAccessorTask {
                     "Must specify a 'attribute' and 'value' for set");
         }
         return  jmxSet(jmxServerConnection, getName());
-     }
+    }
 
     /**
      * Set property value.
@@ -160,8 +158,9 @@ public class JMXAccessorSetTask extends JMXAccessorTask {
                 String mType = getMBeanAttributeType(jmxServerConnection, name,
                         attribute);
                 realValue = convertStringToType(value, mType);
-            } else
+            } else {
                 realValue = value;
+            }
         }
         jmxServerConnection.setAttribute(new ObjectName(name), new Attribute(
                 attribute, realValue));
@@ -187,9 +186,10 @@ public class JMXAccessorSetTask extends JMXAccessorTask {
         MBeanInfo minfo = jmxServerConnection.getMBeanInfo(oname);
         MBeanAttributeInfo attrs[] = minfo.getAttributes();
         for (int i = 0; mattrType == null && i < attrs.length; i++) {
-            if (attribute.equals(attrs[i].getName()))
+            if (attribute.equals(attrs[i].getName())) {
                 mattrType = attrs[i].getType();
+            }
         }
         return mattrType;
     }
- }
+}

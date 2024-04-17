@@ -126,7 +126,7 @@ public class JMXAccessorCreateTask extends JMXAccessorTask {
         }
         jmxCreate(jmxServerConnection, getName());
         return null;
-     }
+    }
 
     /**
      * Create new MBean from ClassLoader identified by an ObjectName.
@@ -140,39 +140,39 @@ public class JMXAccessorCreateTask extends JMXAccessorTask {
         Object argsA[] = null;
         String sigA[] = null;
         if (args != null) {
-           argsA = new Object[ args.size()];
-           sigA = new String[args.size()];
-           for( int i=0; i<args.size(); i++ ) {
-               Arg arg=args.get(i);
-               if (arg.getType() == null) {
-                   arg.setType("java.lang.String");
-                   sigA[i]=arg.getType();
-                   argsA[i]=arg.getValue();
-               } else {
-                   sigA[i]=arg.getType();
-                   argsA[i]=convertStringToType(arg.getValue(),arg.getType());
-               }
-           }
-        }
-        if (classLoader != null && !"".equals(classLoader)) {
-            if (isEcho()) {
-                handleOutput("create MBean " + name + " from class "
-                        + className + " with classLoader " + classLoader);
+            argsA = new Object[ args.size()];
+            sigA = new String[args.size()];
+            for( int i=0; i<args.size(); i++ ) {
+                Arg arg=args.get(i);
+                if (arg.getType() == null) {
+                    arg.setType("java.lang.String");
+                    sigA[i]=arg.getType();
+                    argsA[i]=arg.getValue();
+                } else {
+                    sigA[i]=arg.getType();
+                    argsA[i]=convertStringToType(arg.getValue(),arg.getType());
+                }
             }
-            if(args == null)
+        }
+        if (classLoader != null && !classLoader.isEmpty()) {
+            if (isEcho()) {
+                handleOutput("create MBean " + name + " from class " + className + " with classLoader " + classLoader);
+            }
+            if(args == null) {
                 jmxServerConnection.createMBean(className, new ObjectName(name), new ObjectName(classLoader));
-            else
+            } else {
                 jmxServerConnection.createMBean(className, new ObjectName(name), new ObjectName(classLoader),argsA,sigA);
+            }
 
         } else {
             if (isEcho()) {
-                handleOutput("create MBean " + name + " from class "
-                        + className);
+                handleOutput("create MBean " + name + " from class " + className);
             }
-            if(args == null)
+            if(args == null) {
                 jmxServerConnection.createMBean(className, new ObjectName(name));
-            else
+            } else {
                 jmxServerConnection.createMBean(className, new ObjectName(name),argsA,sigA);
+            }
         }
     }
 

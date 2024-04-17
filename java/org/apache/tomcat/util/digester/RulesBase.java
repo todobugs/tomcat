@@ -14,8 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
-
 package org.apache.tomcat.util.digester;
 
 
@@ -252,7 +250,7 @@ public class RulesBase implements Rules {
         if (list == null) {
             return null;
         }
-        if ((namespaceURI == null) || (namespaceURI.length() == 0)) {
+        if (namespaceURI == null || namespaceURI.length() == 0) {
             return list;
         }
 

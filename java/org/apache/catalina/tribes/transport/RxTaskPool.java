@@ -14,22 +14,20 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.catalina.tribes.transport;
+import java.util.ArrayList;
 import java.util.Iterator;
-import java.util.LinkedList;
 import java.util.List;
 
 /**
  * A very simple thread pool class.  The pool size is set at
  * construction time and remains fixed.  Threads are cycled
  * through a FIFO idle queue.
- * @version 1.0
  */
 public class RxTaskPool {
 
-    final List<AbstractRxTask> idle = new LinkedList<>();
-    final List<AbstractRxTask> used = new LinkedList<>();
+    final List<AbstractRxTask> idle = new ArrayList<>();
+    final List<AbstractRxTask> used = new ArrayList<>();
 
     final Object mutex = new Object();
     boolean running = true;
@@ -79,18 +77,22 @@ public class RxTaskPool {
                 } else {
                     try {
                         mutex.wait();
-                    } catch (java.lang.InterruptedException x) {
+                    } catch (InterruptedException x) {
                         Thread.currentThread().interrupt();
                     }
                 }
             }//while
-            if ( worker != null ) used.add(worker);
+            if ( worker != null ) {
+                used.add(worker);
+            }
         }
         return worker;
     }
 
     public int available() {
-        return idle.size();
+        synchronized (mutex) {
+            return idle.size();
+        }
     }
 
     /**
@@ -103,8 +105,9 @@ public class RxTaskPool {
             synchronized (mutex) {
                 used.remove(worker);
                 //if ( idle.size() < minThreads && !idle.contains(worker)) idle.add(worker);
-                if ( idle.size() < maxTasks && !idle.contains(worker)) idle.add(worker); //let max be the upper limit
-                else {
+                if ( idle.size() < maxTasks && !idle.contains(worker)) {
+                    idle.add(worker); //let max be the upper limit
+                } else {
                     worker.setDoRun(false);
                     synchronized (worker){worker.notifyAll();}
                 }
@@ -148,7 +151,7 @@ public class RxTaskPool {
         return this.creator;
     }
 
-    public static interface TaskCreator  {
-        public AbstractRxTask createRxTask();
+    public interface TaskCreator  {
+        AbstractRxTask createRxTask();
     }
 }

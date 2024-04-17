@@ -20,7 +20,8 @@ import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
-import java.util.Stack;
+import java.util.ArrayDeque;
+import java.util.Deque;
 
 import org.apache.jasper.JasperException;
 import org.apache.jasper.JspCompilationContext;
@@ -55,7 +56,7 @@ class ParserController implements TagConstants {
      * A stack to keep track of the 'current base directory'
      * for include directives that refer to relative paths.
      */
-    private final Stack<String> baseDirStack = new Stack<>();
+    private final Deque<String> baseDirStack = new ArrayDeque<>();
 
     private boolean isEncodingSpecifiedInProlog;
     private boolean isBomPresent;
@@ -70,7 +71,7 @@ class ParserController implements TagConstants {
     /*
      * Constructor
      */
-    public ParserController(JspCompilationContext ctxt, Compiler compiler) {
+    ParserController(JspCompilationContext ctxt, Compiler compiler) {
         this.ctxt = ctxt;
         this.compiler = compiler;
         this.err = compiler.getErrorDispatcher();
@@ -238,7 +239,7 @@ class ParserController implements TagConstants {
         } else {
             // Standard syntax
             try (InputStreamReader inStreamReader = JspUtil.getReader(
-                    absFileName, sourceEnc, jar, ctxt, err, skip);) {
+                    absFileName, sourceEnc, jar, ctxt, err, skip)) {
                 JspReader jspReader = new JspReader(ctxt, absFileName,
                         inStreamReader, err);
                 parsedPage = Parser.parse(this, jspReader, parent, isTagFile,
@@ -247,7 +248,7 @@ class ParserController implements TagConstants {
             }
         }
 
-        baseDirStack.pop();
+        baseDirStack.remove();
 
         return parsedPage;
     }
@@ -445,16 +446,15 @@ class ParserController implements TagConstants {
             boolean isDirective = jspReader.matches("%@");
             if (isDirective) {
                 jspReader.skipSpaces();
-            }
-            else {
+            } else {
                 isDirective = jspReader.matches("jsp:directive.");
             }
             if (!isDirective) {
                 continue;
             }
 
-            // compare for "tag ", so we don't match "taglib"
-            if (jspReader.matches("tag ") || jspReader.matches("page")) {
+            // Want to match tag and page but not taglib
+            if (jspReader.matches("tag") && !jspReader.matches("lib") || jspReader.matches("page")) {
 
                 jspReader.skipSpaces();
                 Attributes attrs = Parser.parseAttributes(this, jspReader);
@@ -519,11 +519,9 @@ class ParserController implements TagConstants {
     private String resolveFileName(String inFileName) {
         String fileName = inFileName.replace('\\', '/');
         boolean isAbsolute = fileName.startsWith("/");
-        fileName = isAbsolute ? fileName
-                : baseDirStack.peek() + fileName;
-        String baseDir =
-            fileName.substring(0, fileName.lastIndexOf('/') + 1);
-        baseDirStack.push(baseDir);
+        fileName = isAbsolute ? fileName : baseDirStack.peekFirst() + fileName;
+        String baseDir = fileName.substring(0, fileName.lastIndexOf('/') + 1);
+        baseDirStack.addFirst(baseDir);
         return fileName;
     }
 
@@ -546,7 +544,9 @@ class ParserController implements TagConstants {
         Mark start = null;
         while ((start = reader.skipUntil("<")) != null) {
             int c = reader.nextChar();
-            if (c != '!' && c != '?') break;
+            if (c != '!' && c != '?') {
+                break;
+            }
         }
         if (start == null) {
             return false;

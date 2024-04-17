@@ -14,21 +14,20 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
-
 package org.apache.catalina.users;
 
 
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
 
 import org.apache.catalina.Role;
 import org.apache.catalina.User;
 import org.apache.catalina.UserDatabase;
 import org.apache.tomcat.util.buf.StringUtils;
 import org.apache.tomcat.util.buf.StringUtils.Function;
-
+import org.apache.tomcat.util.security.Escape;
 
 /**
  * <p>Concrete implementation of {@link org.apache.catalina.Group} for the
@@ -36,7 +35,9 @@ import org.apache.tomcat.util.buf.StringUtils.Function;
  *
  * @author Craig R. McClanahan
  * @since 4.1
+ * @deprecated Use {@link AbstractGroup} instead.
  */
+@Deprecated
 public class MemoryGroup extends AbstractGroup {
 
 
@@ -74,7 +75,7 @@ public class MemoryGroup extends AbstractGroup {
     /**
      * The set of {@link Role}s associated with this group.
      */
-    protected final ArrayList<Role> roles = new ArrayList<>();
+    protected final CopyOnWriteArrayList<Role> roles = new CopyOnWriteArrayList<>();
 
 
     // ------------------------------------------------------------- Properties
@@ -85,9 +86,7 @@ public class MemoryGroup extends AbstractGroup {
      */
     @Override
     public Iterator<Role> getRoles() {
-        synchronized (roles) {
-            return roles.iterator();
-        }
+        return roles.iterator();
     }
 
 
@@ -127,11 +126,7 @@ public class MemoryGroup extends AbstractGroup {
      */
     @Override
     public void addRole(Role role) {
-        synchronized (roles) {
-            if (!roles.contains(role)) {
-                roles.add(role);
-            }
-        }
+        roles.addIfAbsent(role);
     }
 
 
@@ -142,9 +137,7 @@ public class MemoryGroup extends AbstractGroup {
      */
     @Override
     public boolean isInRole(Role role) {
-        synchronized (roles) {
-            return roles.contains(role);
-        }
+        return roles.contains(role);
     }
 
 
@@ -155,9 +148,7 @@ public class MemoryGroup extends AbstractGroup {
      */
     @Override
     public void removeRole(Role role) {
-        synchronized (roles) {
-            roles.remove(role);
-        }
+        roles.remove(role);
     }
 
 
@@ -166,9 +157,7 @@ public class MemoryGroup extends AbstractGroup {
      */
     @Override
     public void removeRoles() {
-        synchronized (roles) {
-            roles.clear();
-        }
+        roles.clear();
     }
 
 
@@ -178,21 +167,19 @@ public class MemoryGroup extends AbstractGroup {
     @Override
     public String toString() {
         StringBuilder sb = new StringBuilder("<group groupname=\"");
-        sb.append(groupname);
+        sb.append(Escape.xml(groupname));
         sb.append("\"");
         if (description != null) {
             sb.append(" description=\"");
-            sb.append(description);
+            sb.append(Escape.xml(description));
             sb.append("\"");
         }
-        synchronized (roles) {
-            if (roles.size() > 0) {
-                sb.append(" roles=\"");
-                StringUtils.join(roles, ',', new Function<Role>(){
-                    @Override public String apply(Role t) { return t.getRolename(); }}, sb);
-                sb.append("\"");
-            }
-        }
+        sb.append(" roles=\"");
+        StringBuilder rsb = new StringBuilder();
+        StringUtils.join(roles, ',', new Function<Role>(){
+            @Override public String apply(Role t) { return Escape.xml(t.getRolename()); }}, rsb);
+        sb.append(rsb);
+        sb.append("\"");
         sb.append("/>");
         return sb.toString();
     }

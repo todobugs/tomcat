@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.tomcat.util.digester;
 
 
@@ -37,16 +36,16 @@ public interface ObjectCreationFactory {
      * object based on the element's attributes.
      *
      * @param attributes the element's attributes
-     * @return the creted object
+     * @return the created object
      * @throws Exception any exception thrown will be propagated upwards
      */
-    public Object createObject(Attributes attributes) throws Exception;
+    Object createObject(Attributes attributes) throws Exception;
 
     /**
      * @return the {@link Digester} that was set by the
      * {@link FactoryCreateRule} upon initialization.
      */
-    public Digester getDigester();
+    Digester getDigester();
 
     /**
      * Set the {@link Digester} to allow the implementation to do logging,
@@ -54,6 +53,6 @@ public interface ObjectCreationFactory {
      *
      * @param digester parent Digester object
      */
-    public void setDigester(Digester digester);
+    void setDigester(Digester digester);
 
 }

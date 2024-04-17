@@ -27,6 +27,9 @@ import java.util.List;
 import javax.servlet.ServletContainerInitializer;
 import javax.servlet.ServletContext;
 
+import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.core.IsInstanceOf.instanceOf;
+
 import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
@@ -65,6 +68,8 @@ public class TestWebappServiceLoader {
     @Test
     public void testNoInitializersFound() throws IOException {
         loader = new WebappServiceLoader<>(context);
+        EasyMock.expect(cl.getResources(CONFIG_FILE))
+                .andReturn(Collections.<URL>emptyEnumeration());
         EasyMock.expect(servletContext.getAttribute(ServletContext.ORDERED_LIBS))
                 .andReturn(null);
         EasyMock.expect(cl.getResources(CONFIG_FILE))
@@ -81,11 +86,13 @@ public class TestWebappServiceLoader {
         loader = EasyMock.createMockBuilder(WebappServiceLoader.class)
                 .addMockedMethod("parseConfigFile", LinkedHashSet.class, URL.class)
                 .withConstructor(context).createMock(control);
+        EasyMock.expect(cl.getResources(CONFIG_FILE))
+                .andReturn(Collections.enumeration(Collections.singleton(url)));
+        loader.parseConfigFile(EasyMock.isA(LinkedHashSet.class), EasyMock.same(url));
         EasyMock.expect(servletContext.getAttribute(ServletContext.ORDERED_LIBS))
                 .andReturn(null);
         EasyMock.expect(cl.getResources(CONFIG_FILE))
                 .andReturn(Collections.enumeration(Collections.singleton(url)));
-        loader.parseConfigFile(EasyMock.isA(LinkedHashSet.class), EasyMock.same(url));
         control.replay();
         Assert.assertTrue(loader.load(ServletContainerInitializer.class).isEmpty());
         control.verify();
@@ -102,6 +109,8 @@ public class TestWebappServiceLoader {
                 .addMockedMethod("parseConfigFile", LinkedHashSet.class, URL.class)
                 .withConstructor(context).createMock(control);
         List<String> jars = Arrays.asList("jar1.jar", "dir/");
+        EasyMock.expect(parent.getResources(CONFIG_FILE))
+                .andReturn(Collections.<URL>emptyEnumeration());
         EasyMock.expect(servletContext.getAttribute(ServletContext.ORDERED_LIBS))
                 .andReturn(jars);
         EasyMock.expect(servletContext.getResource("/WEB-INF/classes/" + CONFIG_FILE))
@@ -112,8 +121,6 @@ public class TestWebappServiceLoader {
         EasyMock.expect(servletContext.getResource("/WEB-INF/lib/dir/"))
                 .andReturn(url2);
         loader.parseConfigFile(EasyMock.isA(LinkedHashSet.class), EasyMock.eq(sci2));
-        EasyMock.expect(parent.getResources(CONFIG_FILE))
-                .andReturn(Collections.<URL>emptyEnumeration());
 
         control.replay();
         Assert.assertTrue(loader.load(ServletContainerInitializer.class).isEmpty());
@@ -158,7 +165,7 @@ public class TestWebappServiceLoader {
         try {
             loader.loadServices(ServletContainerInitializer.class, names);
         } catch (IOException e) {
-            Assert.assertTrue(e.getCause() instanceof ClassCastException);
+            assertThat(e.getCause(), instanceOf(ClassCastException.class));
         } finally {
             control.verify();
         }
@@ -177,7 +184,7 @@ public class TestWebappServiceLoader {
         try {
             loader.loadServices(ServletContainerInitializer.class, names);
         } catch (IOException e) {
-            Assert.assertTrue(e.getCause() instanceof ReflectiveOperationException);
+            assertThat(e.getCause(), instanceOf(ReflectiveOperationException.class));
         } finally {
             control.verify();
         }
@@ -188,7 +195,7 @@ public class TestWebappServiceLoader {
         private final ClassLoader parent;
         private final WebResourceRoot resources;
 
-        public ExtendedTesterContext(ServletContext servletContext, ClassLoader parent) {
+        ExtendedTesterContext(ServletContext servletContext, ClassLoader parent) {
             this.servletContext = servletContext;
             this.parent = parent;
             // Empty resources - any non-null returns will be mocked on the

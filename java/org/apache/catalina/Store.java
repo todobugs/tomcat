@@ -14,8 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
-
 package org.apache.catalina;
 
 
@@ -39,7 +37,7 @@ public interface Store {
     /**
      * @return the Manager instance associated with this Store.
      */
-    public Manager getManager();
+    Manager getManager();
 
 
     /**
@@ -47,7 +45,7 @@ public interface Store {
      *
      * @param manager The Manager which will use this Store.
      */
-    public void setManager(Manager manager);
+    void setManager(Manager manager);
 
 
     /**
@@ -55,7 +53,7 @@ public interface Store {
      *
      * @exception IOException if an input/output error occurs
      */
-    public int getSize() throws IOException;
+    int getSize() throws IOException;
 
 
     // --------------------------------------------------------- Public Methods
@@ -66,7 +64,7 @@ public interface Store {
      *
      * @param listener The listener to add
      */
-    public void addPropertyChangeListener(PropertyChangeListener listener);
+    void addPropertyChangeListener(PropertyChangeListener listener);
 
 
     /**
@@ -76,7 +74,7 @@ public interface Store {
      *
      * @exception IOException if an input/output error occurred
      */
-    public String[] keys() throws IOException;
+    String[] keys() throws IOException;
 
 
     /**
@@ -90,7 +88,7 @@ public interface Store {
      * @exception IOException if an input/output error occurs
      * @return the loaded Session instance
      */
-    public Session load(String id)
+    Session load(String id)
         throws ClassNotFoundException, IOException;
 
 
@@ -103,7 +101,7 @@ public interface Store {
      *
      * @exception IOException if an input/output error occurs
      */
-    public void remove(String id) throws IOException;
+    void remove(String id) throws IOException;
 
 
     /**
@@ -111,7 +109,7 @@ public interface Store {
      *
      * @exception IOException if an input/output error occurs
      */
-    public void clear() throws IOException;
+    void clear() throws IOException;
 
 
     /**
@@ -119,7 +117,7 @@ public interface Store {
      *
      * @param listener The listener to remove
      */
-    public void removePropertyChangeListener(PropertyChangeListener listener);
+    void removePropertyChangeListener(PropertyChangeListener listener);
 
 
     /**
@@ -130,7 +128,7 @@ public interface Store {
      *
      * @exception IOException if an input/output error occurs
      */
-    public void save(Session session) throws IOException;
+    void save(Session session) throws IOException;
 
 
 }

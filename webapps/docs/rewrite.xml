@@ -43,7 +43,7 @@
 
   <p>The rewrite valve can be configured as a valve added in a Host.
      See <a href="config/host.html">virtual-server</a> documentation for
-     informations how to configure it. It will use a <code>rewrite.config</code> file
+     information on how to configure it. It will use a <code>rewrite.config</code> file
      containing the rewrite directives, it must be placed in the Host configuration
      folder.
   </p>
@@ -244,7 +244,16 @@
         <li>
         <code>%{SSL:variable}</code>, where <em>variable</em> is the
         name of an SSL environment
-        variable, are not implemented yet.  Example:
+        variable, are implemented, except
+        <code>SSL_SESSION_RESUMED</code>, <code>SSL_SECURE_RENEG</code>,
+        <code>SSL_COMPRESS_METHOD</code>, <code>SSL_TLS_SNI</code>,
+        <code>SSL_SRP_USER</code>, <code>SSL_SRP_USERINFO</code>,
+        <code>SSL_CLIENT_VERIFY</code>,
+        <code>SSL_CLIENT_SAN_OTHER_msUPN_n</code>,
+        <code>SSL_CLIENT_CERT_RFC4523_CEA</code>.
+        Also, the variables related to the server
+        certificate, prefixed by <code>SSL_SERVER_</code> are not available.
+        Example:
         <code>%{SSL:SSL_CIPHER_USEKEYSIZE}</code> may expand to
         <code>128</code>.</li>
 
@@ -393,6 +402,15 @@ RewriteRule  ^/$                 /homepage.std.html  [L]</source>
   <subsection name="RewriteMap">
 
     <p>Syntax: <code>RewriteMap name rewriteMapClassName optionalParameters</code></p>
+
+    <p>The <code>rewriteMapClassName</code> value also allows special values:
+    <ul>
+    <li><code>int:toupper</code>: Special map converting passed values to upper case</li>
+    <li><code>int:tolower</code>: Special map converting passed values to lower case</li>
+    <li><code>int:escape</code>: URL escape the passed value</li>
+    <li><code>int:unescape</code>: URL unescape the passed value</li>
+    </ul>
+    </p>
 
     <p>The maps are implemented using an interface that users must implement. Its class
     name is <code>org.apache.catalina.valves.rewrite.RewriteMap</code>, and its code is:</p>
@@ -732,6 +750,17 @@ cannot use <code>$N</code> in the substitution string!
         the <code>.phps</code> extension:
         <source>RewriteRule ^(.+\.php)s$ $1 [T=application/x-httpd-php-source]</source>
         </li>
+
+        <li>'<strong><code>valveSkip|VS</code></strong>'
+        (skip valve)<br />
+        This flag can be used to setup conditional execution of valves.
+        When the flag is set and the rule matches, the rewrite valve will skip
+        the next valve in the Catalina pipeline. If the rewrite valve is the
+        last of the pipeline, then the flag will be ignored and the container
+        basic valve will be invoked. If rewrite occurred, then the flag will
+        not have any effect.
+        </li>
+
       </ul>
 
   </subsection>

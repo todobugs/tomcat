@@ -22,6 +22,8 @@ import java.text.FieldPosition;
 import java.util.BitSet;
 import java.util.Date;
 
+import javax.servlet.http.HttpServletRequest;
+
 import org.apache.juli.logging.Log;
 import org.apache.juli.logging.LogFactory;
 import org.apache.tomcat.util.buf.ByteChunk;
@@ -60,8 +62,7 @@ public class Rfc6265CookieProcessor extends CookieProcessorBase {
 
 
     @Override
-    public void parseCookieHeader(MimeHeaders headers,
-            ServerCookies serverCookies) {
+    public void parseCookieHeader(MimeHeaders headers, ServerCookies serverCookies) {
 
         if (headers == null) {
             // nothing to process
@@ -73,22 +74,21 @@ public class Rfc6265CookieProcessor extends CookieProcessorBase {
         while (pos >= 0) {
             MessageBytes cookieValue = headers.getValue(pos);
 
-            if (cookieValue != null && !cookieValue.isNull() ) {
-                if (cookieValue.getType() != MessageBytes.T_BYTES ) {
+            if (cookieValue != null && !cookieValue.isNull()) {
+                if (cookieValue.getType() != MessageBytes.T_BYTES) {
                     if (log.isDebugEnabled()) {
                         Exception e = new Exception();
                         // TODO: Review this in light of HTTP/2
-                        log.debug("Cookies: Parsing cookie as String. Expected bytes.", e);
+                        log.debug(sm.getString("rfc6265CookieProcessor.expectedBytes"), e);
                     }
                     cookieValue.toBytes();
                 }
-                if (log.isDebugEnabled()) {
-                    log.debug("Cookies: Parsing b[]: " + cookieValue.toString());
+                if (log.isTraceEnabled()) {
+                    log.trace("Cookies: Parsing b[]: " + cookieValue.toString());
                 }
                 ByteChunk bc = cookieValue.getByteChunk();
 
-                Cookie.parseCookie(bc.getBytes(), bc.getOffset(), bc.getLength(),
-                        serverCookies);
+                Cookie.parseCookie(bc.getBytes(), bc.getOffset(), bc.getLength(), serverCookies);
             }
 
             // search from the next position
@@ -99,15 +99,21 @@ public class Rfc6265CookieProcessor extends CookieProcessorBase {
 
     @Override
     public String generateHeader(javax.servlet.http.Cookie cookie) {
+        return generateHeader(cookie, null);
+    }
+
+
+    @Override
+    public String generateHeader(javax.servlet.http.Cookie cookie, HttpServletRequest request) {
 
         // Can't use StringBuilder due to DateFormat
         StringBuffer header = new StringBuffer();
 
-        // TODO: Name validation takes place in Cookie and cannot be configured
-        //       per Context. Moving it to here would allow per Context config
-        //       but delay validation until the header is generated. However,
-        //       the spec requires an IllegalArgumentException on Cookie
-        //       generation.
+        /*
+         * TODO: Name validation takes place in Cookie and cannot be configured per Context. Moving it to here would
+         * allow per Context config but delay validation until the header is generated. However, the spec requires an
+         * IllegalArgumentException on Cookie generation.
+         */
         header.append(cookie.getName());
         header.append('=');
         String value = cookie.getValue();
@@ -128,14 +134,12 @@ public class Rfc6265CookieProcessor extends CookieProcessorBase {
             // browsers. See http://tomcat.markmail.org/thread/g6sipbofsjossacn
 
             // Wdy, DD-Mon-YY HH:MM:SS GMT ( Expires Netscape format )
-            header.append ("; Expires=");
+            header.append("; Expires=");
             // To expire immediately we need to set the time in past
             if (maxAge == 0) {
                 header.append(ANCIENT_DATE);
             } else {
-                COOKIE_DATE_FORMAT.get().format(
-                        new Date(System.currentTimeMillis() + maxAge * 1000L),
-                        header,
+                COOKIE_DATE_FORMAT.get().format(new Date(System.currentTimeMillis() + maxAge * 1000L), header,
                         new FieldPosition(0));
             }
         }
@@ -169,6 +173,10 @@ public class Rfc6265CookieProcessor extends CookieProcessorBase {
             header.append(sameSiteCookiesValue.getValue());
         }
 
+        if (getPartitioned()) {
+            header.append("; Partitioned");
+        }
+
         return header.toString();
     }
 
@@ -186,8 +194,8 @@ public class Rfc6265CookieProcessor extends CookieProcessorBase {
         for (int i = start; i < end; i++) {
             char c = chars[i];
             if (c < 0x21 || c == 0x22 || c == 0x2c || c == 0x3b || c == 0x5c || c == 0x7f) {
-                throw new IllegalArgumentException(sm.getString(
-                        "rfc6265CookieProcessor.invalidCharInValue", Integer.toString(c)));
+                throw new IllegalArgumentException(
+                        sm.getString("rfc6265CookieProcessor.invalidCharInValue", Integer.toString(c)));
             }
         }
     }
@@ -202,25 +210,21 @@ public class Rfc6265CookieProcessor extends CookieProcessorBase {
             prev = cur;
             cur = chars[i];
             if (!domainValid.get(cur)) {
-                throw new IllegalArgumentException(sm.getString(
-                        "rfc6265CookieProcessor.invalidDomain", domain));
+                throw new IllegalArgumentException(sm.getString("rfc6265CookieProcessor.invalidDomain", domain));
             }
             // labels must start with a letter or number
             if ((prev == '.' || prev == -1) && (cur == '.' || cur == '-')) {
-                throw new IllegalArgumentException(sm.getString(
-                        "rfc6265CookieProcessor.invalidDomain", domain));
+                throw new IllegalArgumentException(sm.getString("rfc6265CookieProcessor.invalidDomain", domain));
             }
             // labels must end with a letter or number
             if (prev == '-' && cur == '.') {
-                throw new IllegalArgumentException(sm.getString(
-                        "rfc6265CookieProcessor.invalidDomain", domain));
+                throw new IllegalArgumentException(sm.getString("rfc6265CookieProcessor.invalidDomain", domain));
             }
             i++;
         }
         // domain must end with a label
         if (cur == '.' || cur == '-') {
-            throw new IllegalArgumentException(sm.getString(
-                    "rfc6265CookieProcessor.invalidDomain", domain));
+            throw new IllegalArgumentException(sm.getString("rfc6265CookieProcessor.invalidDomain", domain));
         }
     }
 
@@ -228,11 +232,9 @@ public class Rfc6265CookieProcessor extends CookieProcessorBase {
     private void validatePath(String path) {
         char[] chars = path.toCharArray();
 
-        for (int i = 0; i < chars.length; i++) {
-            char ch = chars[i];
+        for (char ch : chars) {
             if (ch < 0x20 || ch > 0x7E || ch == ';') {
-                throw new IllegalArgumentException(sm.getString(
-                        "rfc6265CookieProcessor.invalidPath", path));
+                throw new IllegalArgumentException(sm.getString("rfc6265CookieProcessor.invalidPath", path));
             }
         }
     }

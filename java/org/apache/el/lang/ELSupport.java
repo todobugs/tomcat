@@ -272,7 +272,7 @@ public class ELSupport {
                 obj, obj.getClass(), Boolean.class));
     }
 
-    private static final Character coerceToCharacter(final ELContext ctx, final Object obj)
+    private static Character coerceToCharacter(final ELContext ctx, final Object obj)
             throws ELException {
 
         if (ctx != null) {
@@ -537,22 +537,24 @@ public class ELSupport {
         }
 
         // new to spec
-        if (obj == null)
+        if (obj == null) {
             return null;
+        }
         if (obj instanceof String) {
+            String str = (String) obj;
             PropertyEditor editor = PropertyEditorManager.findEditor(type);
             if (editor == null) {
-                if ("".equals(obj)) {
+                if (str.isEmpty()) {
                     return null;
                 }
                 throw new ELException(MessageFactory.get("error.convert", obj,
                         obj.getClass(), type));
             } else {
                 try {
-                    editor.setAsText((String) obj);
+                    editor.setAsText(str);
                     return editor.getValue();
                 } catch (RuntimeException e) {
-                    if ("".equals(obj)) {
+                    if (str.isEmpty()) {
                         return null;
                     }
                     throw new ELException(MessageFactory.get("error.convert",

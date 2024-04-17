@@ -14,8 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
-
 package org.apache.catalina.startup;
 
 import java.util.HashMap;
@@ -33,10 +31,15 @@ public class SetAllPropertiesRule extends Rule {
 
 
     // ----------------------------------------------------------- Constructors
-    public SetAllPropertiesRule() {}
+    public SetAllPropertiesRule() {
+    }
 
     public SetAllPropertiesRule(String[] exclude) {
-        for (int i=0; i<exclude.length; i++ ) if (exclude[i]!=null) this.excludes.put(exclude[i],exclude[i]);
+        for (String s : exclude) {
+            if (s != null) {
+                this.excludes.put(s, s);
+            }
+        }
     }
 
     // ----------------------------------------------------- Instance Variables
@@ -53,8 +56,7 @@ public class SetAllPropertiesRule extends Rule {
      * @exception Exception if a processing error occurs
      */
     @Override
-    public void begin(String namespace, String nameX, Attributes attributes)
-        throws Exception {
+    public void begin(String namespace, String nameX, Attributes attributes) throws Exception {
 
         for (int i = 0; i < attributes.getLength(); i++) {
             String name = attributes.getLocalName(i);
@@ -62,13 +64,12 @@ public class SetAllPropertiesRule extends Rule {
                 name = attributes.getQName(i);
             }
             String value = attributes.getValue(i);
-            if ( !excludes.containsKey(name)) {
-                if (!digester.isFakeAttribute(digester.peek(), name)
-                        && !IntrospectionUtils.setProperty(digester.peek(), name, value)
-                        && digester.getRulesValidation()) {
-                    digester.getLogger().warn("[SetAllPropertiesRule]{" + digester.getMatch() +
-                            "} Setting property '" + name + "' to '" +
-                            value + "' did not find a matching property.");
+            if (!excludes.containsKey(name)) {
+                if (!digester.isFakeAttribute(digester.peek(), name) &&
+                        !IntrospectionUtils.setProperty(digester.peek(), name, value) &&
+                        digester.getRulesValidation()) {
+                    digester.getLogger().warn("[SetAllPropertiesRule]{" + digester.getMatch() + "} Setting property '" +
+                            name + "' to '" + value + "' did not find a matching property.");
                 }
             }
         }

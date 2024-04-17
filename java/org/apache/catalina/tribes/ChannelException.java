@@ -19,9 +19,9 @@ package org.apache.catalina.tribes;
 import java.util.ArrayList;
 
 /**
- * Channel Exception<br>
  * A channel exception is thrown when an internal error happens
- * somewhere in the channel. <br>
+ * somewhere in the channel.
+ * <p>
  * When a global error happens, the cause can be retrieved using <code>getCause()</code><br><br>
  * If an application is sending a message and some of the recipients fail to receive it,
  * the application can retrieve what recipients failed by using the <code>getFaultyMembers()</code>
@@ -86,8 +86,7 @@ public class ChannelException extends Exception {
             buf.append("; No faulty members identified.");
         } else {
             buf.append("; Faulty members:");
-            for ( int i=0; i<faultyMembers.size(); i++ ) {
-                FaultyMember mbr = faultyMembers.get(i);
+            for (FaultyMember mbr : faultyMembers) {
                 buf.append(mbr.getMember().getName());
                 buf.append("; ");
             }
@@ -113,7 +112,9 @@ public class ChannelException extends Exception {
     public int addFaultyMember(FaultyMember[] mbrs) {
         int result = 0;
         for (int i=0; mbrs!=null && i<mbrs.length; i++ ) {
-            if ( addFaultyMember(mbrs[i]) ) result++;
+            if ( addFaultyMember(mbrs[i]) ) {
+                result++;
+            }
         }
         return result;
     }
@@ -124,9 +125,14 @@ public class ChannelException extends Exception {
      * @return <code>true</code> if the member was added
      */
     public boolean addFaultyMember(FaultyMember mbr) {
-        if ( this.faultyMembers==null ) this.faultyMembers = new ArrayList<>();
-        if ( !faultyMembers.contains(mbr) ) return faultyMembers.add(mbr);
-        else return false;
+        if ( this.faultyMembers==null ) {
+            this.faultyMembers = new ArrayList<>();
+        }
+        if ( !faultyMembers.contains(mbr) ) {
+            return faultyMembers.add(mbr);
+        } else {
+            return false;
+        }
     }
 
     /**
@@ -134,18 +140,15 @@ public class ChannelException extends Exception {
      * @return FaultyMember[]
      */
     public FaultyMember[] getFaultyMembers() {
-        if ( this.faultyMembers==null ) return EMPTY_LIST;
-        return faultyMembers.toArray(new FaultyMember[faultyMembers.size()]);
+        if ( this.faultyMembers==null ) {
+            return EMPTY_LIST;
+        }
+        return faultyMembers.toArray(new FaultyMember[0]);
     }
 
     /**
-     *
-     * <p>Title: FaultyMember class</p>
-     *
-     * <p>Description: Represent a failure to a specific member when a message was sent
-     * to more than one member</p>
-     *
-     * @version 1.0
+     * Represent a failure to a specific member when a message was sent to more
+     * than one member
      */
     public static class FaultyMember {
         protected final Exception cause;
@@ -175,7 +178,9 @@ public class ChannelException extends Exception {
 
         @Override
         public boolean equals(Object o) {
-            if (member==null || (!(o instanceof FaultyMember)) || (((FaultyMember)o).member==null)) return false;
+            if (member==null || (!(o instanceof FaultyMember)) || (((FaultyMember)o).member==null)) {
+                return false;
+            }
             return member.equals(((FaultyMember)o).member);
         }
     }

@@ -40,12 +40,10 @@ public class TestImportHandlerStandardPackages {
         f.setAccessible(true);
         Object obj = f.get(null);
 
-        Assert.assertTrue("Not Map", obj instanceof Map);
-
         @SuppressWarnings("unchecked")
-        Map<String,Set<String>> standardPackageName = (Map<String, Set<String>>) obj;
+        Map<String, Set<String>> standardPackageName = (Map<String, Set<String>>) obj;
 
-        for (Map.Entry<String,Set<String>> entry : standardPackageName.entrySet()) {
+        for (Map.Entry<String, Set<String>> entry : standardPackageName.entrySet()) {
             checkPackageClassList(entry.getKey(), entry.getValue());
         }
     }
@@ -60,19 +58,20 @@ public class TestImportHandlerStandardPackages {
             // every test run. The intention is that it will catch new classes
             // when the tests are run on a newer JRE.
             // The latest version of the JRE where this test is known to pass is
-            // - OpenJDK 14 EA 27
+            // - OpenJDK 19 EA 22
             if (!JreCompat.isJre9Available()) {
                 return;
             }
             for (String fileName : getJavaBaseClasses()) {
-                if (!fileName.startsWith("java/lang/") ||          // Class not in java.lang
-                        fileName.lastIndexOf('/') != 9 ||          // Class no in sub-package
-                        !fileName.endsWith(".class")) {             // Exclude non-class resources
+                if (!fileName.startsWith("java/lang/") || // Class not in java.lang
+                        fileName.lastIndexOf('/') != 9 || // Class no in sub-package
+                        !fileName.endsWith(".class")) { // Exclude non-class resources
                     continue;
                 }
                 // Extract class name
                 String className = fileName.substring(10, fileName.length() - 6);
-                Class<?> clazz = Class.forName("java.lang." + className);
+                Class<?> clazz = Class.forName("java.lang." + className, false,
+                        TestImportHandlerStandardPackages.class.getClassLoader());
                 if (!Modifier.isPublic(clazz.getModifiers())) {
                     // Exclude non-public classes
                     continue;
@@ -83,8 +82,7 @@ public class TestImportHandlerStandardPackages {
                     continue;
                 }
                 // Skip public inner classes of non-public classes
-                if (className.startsWith("FdLibm.") ||
-                        className.startsWith("LiveStackFrame.") ||
+                if (className.startsWith("FdLibm.") || className.startsWith("LiveStackFrame.") ||
                         className.startsWith("WeakPairMap.")) {
                     continue;
                 }
@@ -112,10 +110,10 @@ public class TestImportHandlerStandardPackages {
                 Assert.assertNotNull(files);
                 for (String file : files) {
                     if (!file.endsWith(".class")) {
-                        // Skip non-class resoucres
+                        // Skip non-class resources
                         continue;
                     }
-                    if (file.startsWith("Test")) {
+                    if (file.startsWith("Test") || file.endsWith("BaseTest.class")) {
                         // Skip test resources
                         continue;
                     }
@@ -129,12 +127,12 @@ public class TestImportHandlerStandardPackages {
                         // Skip classes already known
                         continue;
                     }
-                    File f = new File (dir, file);
+                    File f = new File(dir, file);
                     if (!f.isFile()) {
                         // Skip directories
                         continue;
                     }
-                    Class<?> clazz = Class.forName(packageName + "." + name);
+                    Class<?> clazz = Class.forName(packageName + "." + name.replace(".", "$"));
                     if (!Modifier.isPublic(clazz.getModifiers())) {
                         // Skip non-public classes
                         continue;
@@ -162,7 +160,7 @@ public class TestImportHandlerStandardPackages {
         // Returns Optional containing a ModuleReference
         Object optMRef = clazzModuleFinder.getMethod("find", String.class).invoke(mf, "java.base");
         // Extract the ModuleReference
-        Object mRef =  clazzOptional.getMethod("get").invoke(optMRef);
+        Object mRef = clazzOptional.getMethod("get").invoke(optMRef);
         // Returns ModuleReader
         Object mr = clazzModuleReference.getMethod("open").invoke(mRef);
         // Returns a Stream of class names
@@ -170,7 +168,7 @@ public class TestImportHandlerStandardPackages {
         // Convert to an array
         Object[] names = (Object[]) clazzStream.getMethod("toArray").invoke(stream);
         // Cast
-        String [] result = new String[names.length];
+        String[] result = new String[names.length];
         for (int i = 0; i < names.length; i++) {
             result[i] = (String) names[i];
         }

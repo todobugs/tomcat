@@ -52,22 +52,19 @@ public abstract class CsrfPreventionFilterBase extends FilterBase {
     }
 
     /**
-     * Set response status code that is used to reject denied request. If none
-     * set, the default value of 403 will be used.
+     * Set response status code that is used to reject denied request. If none set, the default value of 403 will be
+     * used.
      *
-     * @param denyStatus
-     *            HTTP status code
+     * @param denyStatus HTTP status code
      */
     public void setDenyStatus(int denyStatus) {
         this.denyStatus = denyStatus;
     }
 
     /**
-     * Specify the class to use to generate the nonces. Must be in instance of
-     * {@link Random}.
+     * Specify the class to use to generate the nonces. Must be in instance of {@link Random}.
      *
-     * @param randomClass
-     *            The name of the class to use
+     * @param randomClass The name of the class to use
      */
     public void setRandomClass(String randomClass) {
         this.randomClass = randomClass;
@@ -82,8 +79,8 @@ public abstract class CsrfPreventionFilterBase extends FilterBase {
             Class<?> clazz = Class.forName(randomClass);
             randomSource = (Random) clazz.getConstructor().newInstance();
         } catch (ReflectiveOperationException e) {
-            ServletException se = new ServletException(sm.getString(
-                    "csrfPrevention.invalidRandomClass", randomClass), e);
+            ServletException se =
+                    new ServletException(sm.getString("csrfPrevention.invalidRandomClass", randomClass), e);
             throw se;
         }
     }
@@ -93,13 +90,29 @@ public abstract class CsrfPreventionFilterBase extends FilterBase {
         return true;
     }
 
+
     /**
-     * Generate a once time token (nonce) for authenticating subsequent
-     * requests. The nonce generation is a simplified version of
-     * ManagerBase.generateSessionId().
+     * Generate a once time token (nonce) for authenticating subsequent requests. The nonce generation is a simplified
+     * version of ManagerBase.generateSessionId().
+     *
+     * @param request The request. Unused in this method but present for the the benefit of sub-classes.
      *
      * @return the generated nonce
      */
+    protected String generateNonce(HttpServletRequest request) {
+        return generateNonce();
+    }
+
+    /**
+     * Generate a once time token (nonce) for authenticating subsequent requests. The nonce generation is a simplified
+     * version of ManagerBase.generateSessionId().
+     *
+     * @return the generated nonce
+     *
+     * @deprecated Use {@link #generateNonce(HttpServletRequest)} instead. This method will be removed in Apache Tomcat
+     *                 10.1.x onwards.
+     */
+    @Deprecated
     protected String generateNonce() {
         byte random[] = new byte[16];
 
@@ -108,9 +121,9 @@ public abstract class CsrfPreventionFilterBase extends FilterBase {
 
         randomSource.nextBytes(random);
 
-        for (int j = 0; j < random.length; j++) {
-            byte b1 = (byte) ((random[j] & 0xf0) >> 4);
-            byte b2 = (byte) (random[j] & 0x0f);
+        for (byte b : random) {
+            byte b1 = (byte) ((b & 0xf0) >> 4);
+            byte b2 = (byte) (b & 0x0f);
             if (b1 < 10) {
                 buffer.append((char) ('0' + b1));
             } else {

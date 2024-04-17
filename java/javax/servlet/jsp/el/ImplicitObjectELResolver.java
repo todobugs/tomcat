@@ -1,34 +1,33 @@
 /*
-* Licensed to the Apache Software Foundation (ASF) under one or more
-* contributor license agreements.  See the NOTICE file distributed with
-* this work for additional information regarding copyright ownership.
-* The ASF licenses this file to You under the Apache License, Version 2.0
-* (the "License"); you may not use this file except in compliance with
-* the License.  You may obtain a copy of the License at
-*
-*     http://www.apache.org/licenses/LICENSE-2.0
-*
-* Unless required by applicable law or agreed to in writing, software
-* distributed under the License is distributed on an "AS IS" BASIS,
-* WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-* See the License for the specific language governing permissions and
-* limitations under the License.
-*/
-
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 package javax.servlet.jsp.el;
 
 import java.beans.FeatureDescriptor;
 import java.util.AbstractMap;
 import java.util.ArrayList;
-import java.util.Arrays;
+import java.util.Collections;
 import java.util.Enumeration;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
-import java.util.Vector;
 
 import javax.el.ELContext;
 import javax.el.ELResolver;
@@ -40,38 +39,15 @@ import javax.servlet.jsp.JspContext;
 import javax.servlet.jsp.PageContext;
 
 /**
+ * Provides resolution in EL for the implicit variables of a JSP page.
  *
- * @since 2.1
+ * @since JSP 2.1
  */
 public class ImplicitObjectELResolver extends ELResolver {
 
-    private static final String[] SCOPE_NAMES = new String[] {
-            "applicationScope", "cookie", "header", "headerValues",
-            "initParam", "pageContext", "pageScope", "param", "paramValues",
-            "requestScope", "sessionScope" };
-
-    private static final int APPLICATIONSCOPE = 0;
-
-    private static final int COOKIE = 1;
-
-    private static final int HEADER = 2;
-
-    private static final int HEADERVALUES = 3;
-
-    private static final int INITPARAM = 4;
-
-    private static final int PAGECONTEXT = 5;
-
-    private static final int PAGESCOPE = 6;
-
-    private static final int PARAM = 7;
-
-    private static final int PARAM_VALUES = 8;
-
-    private static final int REQUEST_SCOPE = 9;
-
-    private static final int SESSION_SCOPE = 10;
-
+    /**
+     * Creates an instance of the implicit object resolver for EL.
+     */
     public ImplicitObjectELResolver() {
         super();
     }
@@ -81,36 +57,9 @@ public class ImplicitObjectELResolver extends ELResolver {
         Objects.requireNonNull(context);
 
         if (base == null && property != null) {
-            int idx = Arrays.binarySearch(SCOPE_NAMES, property.toString());
-
-            if (idx >= 0) {
-                PageContext page = (PageContext) context
-                        .getContext(JspContext.class);
-                context.setPropertyResolved(base, property);
-                switch (idx) {
-                case APPLICATIONSCOPE:
-                    return ScopeManager.get(page).getApplicationScope();
-                case COOKIE:
-                    return ScopeManager.get(page).getCookie();
-                case HEADER:
-                    return ScopeManager.get(page).getHeader();
-                case HEADERVALUES:
-                    return ScopeManager.get(page).getHeaderValues();
-                case INITPARAM:
-                    return ScopeManager.get(page).getInitParam();
-                case PAGECONTEXT:
-                    return ScopeManager.get(page).getPageContext();
-                case PAGESCOPE:
-                    return ScopeManager.get(page).getPageScope();
-                case PARAM:
-                    return ScopeManager.get(page).getParam();
-                case PARAM_VALUES:
-                    return ScopeManager.get(page).getParamValues();
-                case REQUEST_SCOPE:
-                    return ScopeManager.get(page).getRequestScope();
-                case SESSION_SCOPE:
-                    return ScopeManager.get(page).getSessionScope();
-                }
+            Scope scope = Scope.lookupMap.get(property.toString());
+            if (scope != null) {
+                return scope.getScopeValue(context, base, property);
             }
         }
         return null;
@@ -122,8 +71,7 @@ public class ImplicitObjectELResolver extends ELResolver {
         Objects.requireNonNull(context);
 
         if (base == null && property != null) {
-            int idx = Arrays.binarySearch(SCOPE_NAMES, property.toString());
-            if (idx >= 0) {
+            if (Scope.lookupMap.containsKey(property.toString())) {
                 context.setPropertyResolved(base, property);
             }
         }
@@ -131,13 +79,11 @@ public class ImplicitObjectELResolver extends ELResolver {
     }
 
     @Override
-    public void setValue(ELContext context, Object base, Object property,
-            Object value) {
+    public void setValue(ELContext context, Object base, Object property, Object value) {
         Objects.requireNonNull(context);
 
         if (base == null && property != null) {
-            int idx = Arrays.binarySearch(SCOPE_NAMES, property.toString());
-            if (idx >= 0) {
+            if (Scope.lookupMap.containsKey(property.toString())) {
                 context.setPropertyResolved(base, property);
                 throw new PropertyNotWritableException();
             }
@@ -149,8 +95,7 @@ public class ImplicitObjectELResolver extends ELResolver {
         Objects.requireNonNull(context);
 
         if (base == null && property != null) {
-            int idx = Arrays.binarySearch(SCOPE_NAMES, property.toString());
-            if (idx >= 0) {
+            if (Scope.lookupMap.containsKey(property.toString())) {
                 context.setPropertyResolved(base, property);
                 return true;
             }
@@ -160,14 +105,14 @@ public class ImplicitObjectELResolver extends ELResolver {
 
     @Override
     public Iterator<FeatureDescriptor> getFeatureDescriptors(ELContext context, Object base) {
-        List<FeatureDescriptor> feats = new ArrayList<>(SCOPE_NAMES.length);
+        List<FeatureDescriptor> feats = new ArrayList<>(Scope.values().length);
         FeatureDescriptor feat;
-        for (int i = 0; i < SCOPE_NAMES.length; i++) {
+        for (Scope scope : Scope.values()) {
             feat = new FeatureDescriptor();
-            feat.setDisplayName(SCOPE_NAMES[i]);
+            feat.setDisplayName(scope.implicitName);
             feat.setExpert(false);
             feat.setHidden(false);
-            feat.setName(SCOPE_NAMES[i]);
+            feat.setName(scope.implicitName);
             feat.setPreferred(true);
             feat.setValue(RESOLVABLE_AT_DESIGN_TIME, Boolean.TRUE);
             feat.setValue(TYPE, String.class);
@@ -183,6 +128,7 @@ public class ImplicitObjectELResolver extends ELResolver {
         }
         return null;
     }
+
 
     private static class ScopeManager {
         private static final String MNGR_KEY = ScopeManager.class.getName();
@@ -209,7 +155,7 @@ public class ImplicitObjectELResolver extends ELResolver {
 
         private Map<String,Object> sessionScope;
 
-        public ScopeManager(PageContext page) {
+        ScopeManager(PageContext page) {
             this.page = page;
         }
 
@@ -254,26 +200,24 @@ public class ImplicitObjectELResolver extends ELResolver {
                 this.cookie = new ScopeMap<Cookie>() {
                     @Override
                     protected Enumeration<String> getAttributeNames() {
-                        Cookie[] c = ((HttpServletRequest) page.getRequest())
-                                .getCookies();
-                        if (c != null) {
-                            Vector<String> v = new Vector<>();
-                            for (int i = 0; i < c.length; i++) {
-                                v.add(c[i].getName());
+                        Cookie[] cookies = ((HttpServletRequest) page.getRequest()).getCookies();
+                        if (cookies != null) {
+                            List<String> list = new ArrayList<>(cookies.length);
+                            for (Cookie cookie : cookies) {
+                                list.add(cookie.getName());
                             }
-                            return v.elements();
+                            return Collections.enumeration(list);
                         }
                         return null;
                     }
 
                     @Override
                     protected Cookie getAttribute(String name) {
-                        Cookie[] c = ((HttpServletRequest) page.getRequest())
-                                .getCookies();
-                        if (c != null) {
-                            for (int i = 0; i < c.length; i++) {
-                                if (name.equals(c[i].getName())) {
-                                    return c[i];
+                        Cookie[] cookies = ((HttpServletRequest) page.getRequest()).getCookies();
+                        if (cookies != null) {
+                            for (Cookie cookie : cookies) {
+                                if (name.equals(cookie.getName())) {
+                                    return cookie;
                                 }
                             }
                         }
@@ -290,14 +234,12 @@ public class ImplicitObjectELResolver extends ELResolver {
                 this.header = new ScopeMap<String>() {
                     @Override
                     protected Enumeration<String> getAttributeNames() {
-                        return ((HttpServletRequest) page.getRequest())
-                                .getHeaderNames();
+                        return ((HttpServletRequest) page.getRequest()).getHeaderNames();
                     }
 
                     @Override
                     protected String getAttribute(String name) {
-                        return ((HttpServletRequest) page.getRequest())
-                                .getHeader(name);
+                        return ((HttpServletRequest) page.getRequest()).getHeader(name);
                     }
                 };
             }
@@ -309,21 +251,18 @@ public class ImplicitObjectELResolver extends ELResolver {
                 this.headerValues = new ScopeMap<String[]>() {
                     @Override
                     protected Enumeration<String> getAttributeNames() {
-                        return ((HttpServletRequest) page.getRequest())
-                                .getHeaderNames();
+                        return ((HttpServletRequest) page.getRequest()).getHeaderNames();
                     }
 
                     @Override
                     protected String[] getAttribute(String name) {
-                        Enumeration<String> e =
-                            ((HttpServletRequest) page.getRequest())
-                                    .getHeaders(name);
+                        Enumeration<String> e = ((HttpServletRequest) page.getRequest()).getHeaders(name);
                         if (e != null) {
                             List<String> list = new ArrayList<>();
                             while (e.hasMoreElements()) {
                                 list.add(e.nextElement());
                             }
-                            return list.toArray(new String[list.size()]);
+                            return list.toArray(new String[0]);
                         }
                         return null;
                     }
@@ -369,8 +308,7 @@ public class ImplicitObjectELResolver extends ELResolver {
 
                     @Override
                     protected Enumeration<String> getAttributeNames() {
-                        return page.getAttributeNamesInScope(
-                                PageContext.PAGE_SCOPE);
+                        return page.getAttributeNamesInScope(PageContext.PAGE_SCOPE);
                     }
 
                     @Override
@@ -448,8 +386,7 @@ public class ImplicitObjectELResolver extends ELResolver {
                 this.sessionScope = new ScopeMap<Object>() {
                     @Override
                     protected void setAttribute(String name, Object value) {
-                        ((HttpServletRequest) page.getRequest()).getSession()
-                                .setAttribute(name, value);
+                        ((HttpServletRequest) page.getRequest()).getSession().setAttribute(name, value);
                     }
 
                     @Override
@@ -483,6 +420,7 @@ public class ImplicitObjectELResolver extends ELResolver {
         }
     }
 
+
     private abstract static class ScopeMap<V> extends AbstractMap<String,V> {
 
         protected abstract Enumeration<String> getAttributeNames();
@@ -502,7 +440,7 @@ public class ImplicitObjectELResolver extends ELResolver {
         @Override
         public final Set<Map.Entry<String,V>> entrySet() {
             Enumeration<String> e = getAttributeNames();
-            Set<Map.Entry<String, V>> set = new HashSet<>();
+            Set<Map.Entry<String,V>> set = new HashSet<>();
             if (e != null) {
                 while (e.hasMoreElements()) {
                     set.add(new ScopeEntry(e.nextElement()));
@@ -544,7 +482,7 @@ public class ImplicitObjectELResolver extends ELResolver {
 
             private final String key;
 
-            public ScopeEntry(String key) {
+            ScopeEntry(String key) {
                 this.key = key;
             }
 
@@ -570,7 +508,7 @@ public class ImplicitObjectELResolver extends ELResolver {
 
             @Override
             public boolean equals(Object obj) {
-                return (obj != null && this.hashCode() == obj.hashCode());
+                return obj != null && this.hashCode() == obj.hashCode();
             }
 
             @Override
@@ -605,5 +543,97 @@ public class ImplicitObjectELResolver extends ELResolver {
             this.removeAttribute((String) key);
             return null;
         }
+    }
+
+
+    private enum Scope {
+        APPLICATION_SCOPE("applicationScope") {
+            @Override
+            Object getScopeValue(ELContext context, Object base, Object property) {
+                return getScopeManager(context, base, property).getApplicationScope();
+            }
+        },
+        COOKIE("cookie") {
+            @Override
+            Object getScopeValue(ELContext context, Object base, Object property) {
+                return getScopeManager(context, base, property).getCookie();
+            }
+        },
+        HEADER("header") {
+            @Override
+            Object getScopeValue(ELContext context, Object base, Object property) {
+                return getScopeManager(context, base, property).getHeader();
+            }
+        },
+        HEADER_VALUES("headerValues") {
+            @Override
+            Object getScopeValue(ELContext context, Object base, Object property) {
+                return getScopeManager(context, base, property).getHeaderValues();
+            }
+        },
+        INIT_PARAM("initParam") {
+            @Override
+            Object getScopeValue(ELContext context, Object base, Object property) {
+                return getScopeManager(context, base, property).getInitParam();
+            }
+        },
+        PAGE_CONTEXT("pageContext") {
+            @Override
+            Object getScopeValue(ELContext context, Object base, Object property) {
+                return getScopeManager(context, base, property).getPageContext();
+            }
+        },
+        PAGE_SCOPE("pageScope") {
+            @Override
+            Object getScopeValue(ELContext context, Object base, Object property) {
+                return getScopeManager(context, base, property).getPageScope();
+            }
+        },
+        PARAM("param") {
+            @Override
+            Object getScopeValue(ELContext context, Object base, Object property) {
+                return getScopeManager(context, base, property).getParam();
+            }
+        },
+        PARAM_VALUES("paramValues") {
+            @Override
+            Object getScopeValue(ELContext context, Object base, Object property) {
+                return getScopeManager(context, base, property).getParamValues();
+            }
+        },
+        REQUEST_SCOPE("requestScope") {
+            @Override
+            Object getScopeValue(ELContext context, Object base, Object property) {
+                return getScopeManager(context, base, property).getRequestScope();
+            }
+        },
+        SESSION_SCOPE("sessionScope") {
+            @Override
+            Object getScopeValue(ELContext context, Object base, Object property) {
+                return getScopeManager(context, base, property).getSessionScope();
+            }
+        };
+
+        private static final Map<String,Scope> lookupMap = new HashMap<>();
+
+        static {
+            for (Scope scope : values()) {
+                lookupMap.put(scope.implicitName, scope);
+            }
+        }
+
+        private static ScopeManager getScopeManager(ELContext context, Object base, Object property) {
+            PageContext page = (PageContext) context.getContext(JspContext.class);
+            context.setPropertyResolved(base, property);
+            return ScopeManager.get(page);
+        }
+
+        private final String implicitName;
+
+        Scope(String implicitName) {
+            this.implicitName = implicitName;
+        }
+
+        abstract Object getScopeValue(ELContext context, Object base, Object property);
     }
 }

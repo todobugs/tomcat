@@ -27,7 +27,6 @@ import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 
 import org.junit.Assert;
-import org.junit.Ignore;
 import org.junit.Test;
 
 import org.apache.catalina.Context;
@@ -45,7 +44,7 @@ public class TestResponse extends TomcatBaseTest {
         Tomcat tomcat = getTomcatInstance();
 
         // No file system docBase required
-        Context ctx = tomcat.addContext("", null);
+        Context ctx = getProgrammaticRootContext();
 
         // Add  servlet
         Tomcat.addServlet(ctx, "CharsetServlet", new CharsetServlet());
@@ -86,7 +85,6 @@ public class TestResponse extends TomcatBaseTest {
     }
 
 
-    @Ignore // Disabled until Bug 62912 is addressed
     @Test
     public void testContentTypeWithoutSpace() throws Exception {
         doTestContentTypeSpacing(false);
@@ -97,7 +95,7 @@ public class TestResponse extends TomcatBaseTest {
         Tomcat tomcat = getTomcatInstance();
 
         // No file system docBase required
-        Context ctx = tomcat.addContext("", null);
+        Context ctx = getProgrammaticRootContext();
 
         // Add  servlet
         Tomcat.addServlet(ctx, "ContentTypeServlet", new ContentTypeServlet());
@@ -120,7 +118,7 @@ public class TestResponse extends TomcatBaseTest {
         String contentType = getSingleHeader("Content-Type", responseHeaders);
         StringBuilder expected = new StringBuilder("text/plain;");
         if (withSpace) {
-            expected.append(" ");
+            expected.append(' ');
         }
         expected.append("v=1;charset=UTF-8");
         Assert.assertEquals(expected.toString() , contentType);

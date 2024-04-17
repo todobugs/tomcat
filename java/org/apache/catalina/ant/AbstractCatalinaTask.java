@@ -23,7 +23,8 @@ import java.io.OutputStream;
 import java.net.Authenticator;
 import java.net.HttpURLConnection;
 import java.net.PasswordAuthentication;
-import java.net.URL;
+import java.net.URI;
+import java.net.URISyntaxException;
 import java.net.URLConnection;
 
 import org.apache.catalina.util.IOTools;
@@ -179,7 +180,9 @@ public abstract class AbstractCatalinaTask extends BaseRedirectorHelperTask {
             Authenticator.setDefault(new TaskAuthenticator(username, password));
 
             // Create a connection for this command
-            conn = (new URL(url + command)).openConnection();
+            URI uri = new URI(url + command);
+            uri.parseServerAuthority();
+            conn = uri.toURL().openConnection();
             HttpURLConnection hconn = (HttpURLConnection) conn;
 
             // Set up standard connection characteristics
@@ -230,7 +233,7 @@ public abstract class AbstractCatalinaTask extends BaseRedirectorHelperTask {
                 int ch = reader.read();
                 if (ch < 0) {
                     break;
-                } else if ((ch == '\r') || (ch == '\n')) {
+                } else if (ch == '\r' || ch == '\n') {
                     // in Win \r\n would cause handleOutput() to be called
                     // twice, the second time with an empty string,
                     // producing blank lines
@@ -300,11 +303,13 @@ public abstract class AbstractCatalinaTask extends BaseRedirectorHelperTask {
      * host is cached and used to provide an appropriate Authorization when the
      * next request is made (that includes a request body).
      */
-    private void preAuthenticate() throws IOException {
+    private void preAuthenticate() throws IOException, URISyntaxException {
         URLConnection conn = null;
 
         // Create a connection for this command
-        conn = (new URL(url)).openConnection();
+        URI uri = new URI(url);
+        uri.parseServerAuthority();
+        conn = uri.toURL().openConnection();
         HttpURLConnection hconn = (HttpURLConnection) conn;
 
         // Set up standard connection characteristics
@@ -319,7 +324,9 @@ public abstract class AbstractCatalinaTask extends BaseRedirectorHelperTask {
         hconn.connect();
 
         // Swallow response message
-        IOTools.flow(hconn.getInputStream(), null);
+        try (InputStream is = hconn.getInputStream()) {
+            IOTools.flow(is, null);
+        }
     }
 
 

@@ -18,6 +18,7 @@ package org.apache.catalina.tribes;
 
 import java.net.DatagramPacket;
 import java.net.InetAddress;
+import java.net.InetSocketAddress;
 import java.net.MulticastSocket;
 import java.net.UnknownHostException;
 
@@ -81,7 +82,7 @@ public class TesterMulticast {
         public void run() {
             try (MulticastSocket s = new MulticastSocket(PORT)) {
                 s.setLoopbackMode(false);
-                s.joinGroup(INET_ADDRESS);
+                s.joinGroup(new InetSocketAddress(INET_ADDRESS, 0), null);
                 DatagramPacket p = new DatagramPacket(new byte[4], 4);
                 p.setAddress(INET_ADDRESS);
                 p.setPort(PORT);
@@ -108,7 +109,7 @@ public class TesterMulticast {
         public void run() {
             try (MulticastSocket s = new MulticastSocket(PORT)) {
                 s.setLoopbackMode(false);
-                s.joinGroup(INET_ADDRESS);
+                s.joinGroup(new InetSocketAddress(INET_ADDRESS, 0), null);
                 DatagramPacket p = new DatagramPacket(new byte[4], 4);
                 p.setAddress(INET_ADDRESS);
                 p.setPort(PORT);

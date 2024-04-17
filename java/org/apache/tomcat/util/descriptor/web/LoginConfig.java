@@ -27,14 +27,13 @@ import org.apache.tomcat.util.buf.UDecoder;
  *
  * @author Craig R. McClanahan
  */
-public class LoginConfig implements Serializable {
+public class LoginConfig extends XmlEncodingBase implements Serializable {
 
 
-    private static final long serialVersionUID = 1L;
+    private static final long serialVersionUID = 2L;
 
 
     // ----------------------------------------------------------- Constructors
-
 
     /**
      * Construct a new LoginConfig with default properties.
@@ -97,7 +96,7 @@ public class LoginConfig implements Serializable {
         //        if ((errorPage == null) || !errorPage.startsWith("/"))
         //            throw new IllegalArgumentException
         //                ("Error Page resource path must start with a '/'");
-        this.errorPage = UDecoder.URLDecode(errorPage);
+        this.errorPage = UDecoder.URLDecode(errorPage, getCharset());
     }
 
 
@@ -114,7 +113,7 @@ public class LoginConfig implements Serializable {
         //        if ((loginPage == null) || !loginPage.startsWith("/"))
         //            throw new IllegalArgumentException
         //                ("Login Page resource path must start with a '/'");
-        this.loginPage = UDecoder.URLDecode(loginPage);
+        this.loginPage = UDecoder.URLDecode(loginPage, getCharset());
     }
 
 
@@ -156,7 +155,7 @@ public class LoginConfig implements Serializable {
             sb.append(", errorPage=");
             sb.append(errorPage);
         }
-        sb.append("]");
+        sb.append(']');
         return sb.toString();
     }
 
@@ -185,31 +184,41 @@ public class LoginConfig implements Serializable {
      */
     @Override
     public boolean equals(Object obj) {
-        if (this == obj)
+        if (this == obj) {
             return true;
-        if (!(obj instanceof LoginConfig))
+        }
+        if (!(obj instanceof LoginConfig)) {
             return false;
+        }
         LoginConfig other = (LoginConfig) obj;
         if (authMethod == null) {
-            if (other.authMethod != null)
+            if (other.authMethod != null) {
                 return false;
-        } else if (!authMethod.equals(other.authMethod))
+            }
+        } else if (!authMethod.equals(other.authMethod)) {
             return false;
+        }
         if (errorPage == null) {
-            if (other.errorPage != null)
+            if (other.errorPage != null) {
                 return false;
-        } else if (!errorPage.equals(other.errorPage))
+            }
+        } else if (!errorPage.equals(other.errorPage)) {
             return false;
+        }
         if (loginPage == null) {
-            if (other.loginPage != null)
+            if (other.loginPage != null) {
                 return false;
-        } else if (!loginPage.equals(other.loginPage))
+            }
+        } else if (!loginPage.equals(other.loginPage)) {
             return false;
+        }
         if (realmName == null) {
-            if (other.realmName != null)
+            if (other.realmName != null) {
                 return false;
-        } else if (!realmName.equals(other.realmName))
+            }
+        } else if (!realmName.equals(other.realmName)) {
             return false;
+        }
         return true;
     }
 

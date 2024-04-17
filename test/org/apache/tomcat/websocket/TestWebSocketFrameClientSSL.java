@@ -50,8 +50,8 @@ public class TestWebSocketFrameClientSSL extends WebSocketBaseTest {
     public void testConnectToServerEndpoint() throws Exception {
         Tomcat tomcat = getTomcatInstance();
         // No file system docBase required
-        Context ctx = tomcat.addContext("", null);
-        ctx.addApplicationListener(TesterFirehoseServer.Config.class.getName());
+        Context ctx = getProgrammaticRootContext();
+        ctx.addApplicationListener(TesterFirehoseServer.ConfigInline.class.getName());
         Tomcat.addServlet(ctx, "default", new DefaultServlet());
         ctx.addServletMappingDecoded("/", "default");
 
@@ -59,21 +59,14 @@ public class TestWebSocketFrameClientSSL extends WebSocketBaseTest {
 
         tomcat.start();
 
-        WebSocketContainer wsContainer =
-                ContainerProvider.getWebSocketContainer();
-        ClientEndpointConfig clientEndpointConfig =
-                ClientEndpointConfig.Builder.create().build();
+        WebSocketContainer wsContainer = ContainerProvider.getWebSocketContainer();
+        ClientEndpointConfig clientEndpointConfig = ClientEndpointConfig.Builder.create().build();
 
-        clientEndpointConfig.getUserProperties().put(
-                Constants.SSL_CONTEXT_PROPERTY, createSSLContext());
+        clientEndpointConfig.getUserProperties().put(Constants.SSL_CONTEXT_PROPERTY, createSSLContext());
 
-        Session wsSession = wsContainer.connectToServer(
-                TesterProgrammaticEndpoint.class,
-                clientEndpointConfig,
-                new URI("wss://localhost:" + getPort() +
-                        TesterFirehoseServer.Config.PATH));
-        CountDownLatch latch =
-                new CountDownLatch(TesterFirehoseServer.MESSAGE_COUNT);
+        Session wsSession = wsContainer.connectToServer(TesterProgrammaticEndpoint.class, clientEndpointConfig,
+                new URI("wss://localhost:" + getPort() + TesterFirehoseServer.PATH));
+        CountDownLatch latch = new CountDownLatch(TesterFirehoseServer.MESSAGE_COUNT);
         BasicText handler = new BasicText(latch);
         wsSession.addMessageHandler(handler);
         wsSession.getBasicRemote().sendText("Hello");
@@ -82,12 +75,10 @@ public class TestWebSocketFrameClientSSL extends WebSocketBaseTest {
 
         // Ignore the latch result as the message count test below will tell us
         // if the right number of messages arrived
-        handler.getLatch().await(TesterFirehoseServer.WAIT_TIME_MILLIS,
-                TimeUnit.MILLISECONDS);
+        handler.getLatch().await(TesterFirehoseServer.WAIT_TIME_MILLIS, TimeUnit.MILLISECONDS);
 
         Queue<String> messages = handler.getMessages();
-        Assert.assertEquals(
-                TesterFirehoseServer.MESSAGE_COUNT, messages.size());
+        Assert.assertEquals(TesterFirehoseServer.MESSAGE_COUNT, messages.size());
         for (String message : messages) {
             Assert.assertEquals(TesterFirehoseServer.MESSAGE, message);
         }
@@ -98,8 +89,8 @@ public class TestWebSocketFrameClientSSL extends WebSocketBaseTest {
     public void testBug56032() throws Exception {
         Tomcat tomcat = getTomcatInstance();
         // No file system docBase required
-        Context ctx = tomcat.addContext("", null);
-        ctx.addApplicationListener(TesterFirehoseServer.Config.class.getName());
+        Context ctx = getProgrammaticRootContext();
+        ctx.addApplicationListener(TesterFirehoseServer.ConfigInline.class.getName());
         Tomcat.addServlet(ctx, "default", new DefaultServlet());
         ctx.addServletMappingDecoded("/", "default");
 
@@ -107,19 +98,13 @@ public class TestWebSocketFrameClientSSL extends WebSocketBaseTest {
 
         tomcat.start();
 
-        WebSocketContainer wsContainer =
-                ContainerProvider.getWebSocketContainer();
-        ClientEndpointConfig clientEndpointConfig =
-                ClientEndpointConfig.Builder.create().build();
+        WebSocketContainer wsContainer = ContainerProvider.getWebSocketContainer();
+        ClientEndpointConfig clientEndpointConfig = ClientEndpointConfig.Builder.create().build();
 
-        clientEndpointConfig.getUserProperties().put(
-                Constants.SSL_CONTEXT_PROPERTY, createSSLContext());
+        clientEndpointConfig.getUserProperties().put(Constants.SSL_CONTEXT_PROPERTY, createSSLContext());
 
-        Session wsSession = wsContainer.connectToServer(
-                TesterProgrammaticEndpoint.class,
-                clientEndpointConfig,
-                new URI("wss://localhost:" + getPort() +
-                        TesterFirehoseServer.Config.PATH));
+        Session wsSession = wsContainer.connectToServer(TesterProgrammaticEndpoint.class, clientEndpointConfig,
+                new URI("wss://localhost:" + getPort() + TesterFirehoseServer.PATH));
 
         // Process incoming messages very slowly
         MessageHandler handler = new SleepingText(5000);
@@ -133,21 +118,21 @@ public class TestWebSocketFrameClientSSL extends WebSocketBaseTest {
         System.out.println("Waiting for server to report an error");
         while (TesterFirehoseServer.Endpoint.getErrorCount() == 0 && count < limit) {
             Thread.sleep(100);
-            count ++;
+            count++;
         }
 
         if (TesterFirehoseServer.Endpoint.getErrorCount() == 0) {
             Assert.fail("No error reported by Endpoint when timeout was expected");
         }
 
-        // Wait up to another 10 seconds for the connection to be closed -
+        // Wait again for the connection to be closed -
         // should be a lot faster.
         System.out.println("Waiting for connection to be closed");
         count = 0;
-        limit = (TesterFirehoseServer.SEND_TIME_OUT_MILLIS * 2) / 100;
+        limit = TesterFirehoseServer.WAIT_TIME_MILLIS / 100;
         while (TesterFirehoseServer.Endpoint.getOpenConnectionCount() != 0 && count < limit) {
             Thread.sleep(100);
-            count ++;
+            count++;
         }
 
         int openConnectionCount = TesterFirehoseServer.Endpoint.getOpenConnectionCount();
@@ -172,8 +157,7 @@ public class TestWebSocketFrameClientSSL extends WebSocketBaseTest {
             ks.load(is, Constants.SSL_TRUSTSTORE_PWD_DEFAULT.toCharArray());
         }
 
-        TrustManagerFactory tmf = TrustManagerFactory.getInstance(
-                TrustManagerFactory.getDefaultAlgorithm());
+        TrustManagerFactory tmf = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm());
         tmf.init(ks);
 
         sslContext.init(null, tmf.getTrustManagers(), null);

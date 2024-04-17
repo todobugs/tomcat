@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.catalina.tribes.io;
 
 import org.apache.catalina.tribes.ChannelMessage;
@@ -35,6 +34,6 @@ public interface ListenCallback
      * been received from one of the cluster nodes.
      * @param data - the message bytes received from the cluster/replication system
      */
-     public void messageDataReceived(ChannelMessage data);
+     void messageDataReceived(ChannelMessage data);
 
 }

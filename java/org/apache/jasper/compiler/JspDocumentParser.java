@@ -113,7 +113,7 @@ class JspDocumentParser
     /*
      * Constructor
      */
-    public JspDocumentParser(
+    JspDocumentParser(
         ParserController pc,
         String path,
         boolean isTagFile,
@@ -593,10 +593,11 @@ class JspDocumentParser
                             startMark = new Mark(ctxt, path, line, column);
                             break;
                         }
-                        if (ch == '"')
+                        if (ch == '"') {
                             doubleQ = !doubleQ;
-                        else if (ch == '\'')
+                        } else if (ch == '\'') {
                             singleQ = !singleQ;
+                        }
 
                         ttext.write(ch);
                         lastCh = ch;
@@ -648,7 +649,7 @@ class JspDocumentParser
 
         if (current instanceof Node.NamedAttribute) {
             boolean isTrim = ((Node.NamedAttribute)current).isTrim();
-            Node.Nodes subElems = ((Node.NamedAttribute)current).getBody();
+            Node.Nodes subElems = current.getBody();
             for (int i = 0; subElems != null && i < subElems.size(); i++) {
                 Node subElem = subElems.getNode(i);
                 if (!(subElem instanceof Node.TemplateText)) {
@@ -735,8 +736,7 @@ class JspDocumentParser
             startMark = new Mark(ctxt, path, locator.getLineNumber(),
                     locator.getColumnNumber());
             @SuppressWarnings("unused")
-            Node unused = new Node.Comment(
-                    new String(buf, offset, len), startMark, current);
+            Node unused = new Node.Comment(new String(buf, offset, len), startMark, current);
         }
     }
 
@@ -1352,10 +1352,12 @@ class JspDocumentParser
                 Node n = body.getNode(i);
                 if (!(n instanceof Node.TemplateText)) {
                     String elemType = SCRIPTLET_ACTION;
-                    if (scriptingElem instanceof Node.Declaration)
+                    if (scriptingElem instanceof Node.Declaration) {
                         elemType = DECLARATION_ACTION;
-                    if (scriptingElem instanceof Node.Expression)
+                    }
+                    if (scriptingElem instanceof Node.Expression) {
                         elemType = EXPRESSION_ACTION;
+                    }
                     String msg =
                         Localizer.getMessage(
                             "jsp.error.parse.xml.scripting.invalid.body",
@@ -1453,20 +1455,19 @@ class JspDocumentParser
         throws Exception {
 
         ClassLoader original;
+        Thread currentThread = Thread.currentThread();
         if (Constants.IS_SECURITY_ENABLED) {
-            PrivilegedGetTccl pa = new PrivilegedGetTccl();
+            PrivilegedGetTccl pa = new PrivilegedGetTccl(currentThread);
             original = AccessController.doPrivileged(pa);
         } else {
-            original = Thread.currentThread().getContextClassLoader();
+            original = currentThread.getContextClassLoader();
         }
         try {
             if (Constants.IS_SECURITY_ENABLED) {
-                PrivilegedSetTccl pa =
-                        new PrivilegedSetTccl(JspDocumentParser.class.getClassLoader());
+                PrivilegedSetTccl pa = new PrivilegedSetTccl(currentThread, JspDocumentParser.class.getClassLoader());
                 AccessController.doPrivileged(pa);
             } else {
-                Thread.currentThread().setContextClassLoader(
-                        JspDocumentParser.class.getClassLoader());
+                currentThread.setContextClassLoader(JspDocumentParser.class.getClassLoader());
             }
 
             SAXParserFactory factory = SAXParserFactory.newInstance();
@@ -1498,10 +1499,10 @@ class JspDocumentParser
             return saxParser;
         } finally {
             if (Constants.IS_SECURITY_ENABLED) {
-                PrivilegedSetTccl pa = new PrivilegedSetTccl(original);
+                PrivilegedSetTccl pa = new PrivilegedSetTccl(currentThread, original);
                 AccessController.doPrivileged(pa);
             } else {
-                Thread.currentThread().setContextClassLoader(original);
+                currentThread.setContextClassLoader(original);
             }
         }
     }

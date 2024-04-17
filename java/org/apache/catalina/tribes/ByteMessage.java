@@ -51,7 +51,7 @@ public class ByteMessage implements Externalizable {
     }
 
     /**
-     * Creates a byte message wit h
+     * Creates a byte message with
      * @param data byte[] - the message contents
      */
     public ByteMessage(byte[] data) {
@@ -94,7 +94,9 @@ public class ByteMessage implements Externalizable {
     @Override
     public void writeExternal(ObjectOutput out) throws IOException {
         out.writeInt(message!=null?message.length:0);
-        if ( message!=null ) out.write(message,0,message.length);
+        if ( message!=null ) {
+            out.write(message,0,message.length);
+        }
     }
 
 }

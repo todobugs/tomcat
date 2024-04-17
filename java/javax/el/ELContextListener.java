@@ -14,15 +14,13 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package javax.el;
 
 /**
  * @author Jacob Hookom [jacob/hookom.net]
- *
  */
 public interface ELContextListener extends java.util.EventListener {
 
-    public void contextCreated(ELContextEvent event);
+    void contextCreated(ELContextEvent event);
 
 }

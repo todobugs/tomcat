@@ -45,6 +45,7 @@ import org.apache.tomcat.util.digester.AbstractObjectCreationFactory;
 import org.apache.tomcat.util.digester.Digester;
 import org.apache.tomcat.util.file.ConfigFileLoader;
 import org.apache.tomcat.util.res.StringManager;
+import org.apache.tomcat.util.security.Escape;
 import org.xml.sax.Attributes;
 
 /**
@@ -295,7 +296,8 @@ public class MemoryUserDatabase implements UserDatabase {
             throw new IllegalArgumentException(msg);
         }
 
-        MemoryGroup group = new MemoryGroup(this, groupname, description);
+        @SuppressWarnings("deprecation")
+        Group group = new MemoryGroup(this, groupname, description);
         readLock.lock();
         try {
             groups.put(group.getGroupname(), group);
@@ -320,7 +322,8 @@ public class MemoryUserDatabase implements UserDatabase {
             throw new IllegalArgumentException(msg);
         }
 
-        MemoryRole role = new MemoryRole(this, rolename, description);
+        @SuppressWarnings("deprecation")
+        Role role = new MemoryRole(this, rolename, description);
         readLock.lock();
         try {
             roles.put(role.getRolename(), role);
@@ -347,7 +350,8 @@ public class MemoryUserDatabase implements UserDatabase {
             throw new IllegalArgumentException(msg);
         }
 
-        MemoryUser user = new MemoryUser(this, username, password, fullName);
+        @SuppressWarnings("deprecation")
+        User user = new MemoryUser(this, username, password, fullName);
         readLock.lock();
         try {
             users.put(user.getUsername(), user);
@@ -543,8 +547,23 @@ public class MemoryUserDatabase implements UserDatabase {
      * location.
      *
      * @return <code>true</code> if the database is writable
+     *
+     * @deprecated Use {@link #isWritable()}. This method will be removed in
+     *             Tomcat 10.1.x onwards.
      */
+    @Deprecated
     public boolean isWriteable() {
+        return isWritable();
+    }
+
+
+    /**
+     * Check for permissions to save this user database to persistent storage
+     * location.
+     *
+     * @return <code>true</code> if the database is writable
+     */
+    public boolean isWritable() {
 
         File file = new File(pathname);
         if (!file.isAbsolute()) {
@@ -569,7 +588,7 @@ public class MemoryUserDatabase implements UserDatabase {
             return;
         }
 
-        if (!isWriteable()) {
+        if (!isWritable()) {
             log.warn(sm.getString("memoryUserDatabase.notPersistable"));
             return;
         }
@@ -598,19 +617,70 @@ public class MemoryUserDatabase implements UserDatabase {
                 // Print entries for each defined role, group, and user
                 Iterator<?> values = null;
                 values = getRoles();
-                while (values.hasNext()) {
-                    writer.print("  ");
-                    writer.println(values.next());
+                while(values.hasNext()) {
+                    Role role = (Role)values.next();
+                    writer.print("  <role rolename=\"");
+                    writer.print(Escape.xml(role.getRolename()));
+                    writer.print("\"");
+                    if(null != role.getDescription()) {
+                        writer.print(" description=\"");
+                        writer.print(Escape.xml(role.getDescription()));
+                        writer.print("\"");
+                    }
+                    writer.println("/>");
                 }
                 values = getGroups();
                 while (values.hasNext()) {
-                    writer.print("  ");
-                    writer.println(values.next());
+                    Group group = (Group)values.next();
+                    writer.print("  <group groupname=\"");
+                    writer.print(Escape.xml(group.getName()));
+                    writer.print("\"");
+                    if(null != group.getDescription()) {
+                        writer.print(" description=\"");
+                        writer.print(Escape.xml(group.getDescription()));
+                        writer.print("\"");
+                    }
+                    writer.print(" roles=\"");
+                    for (Iterator<Role> roles=group.getRoles();roles.hasNext();) {
+                        Role role = roles.next();
+                        writer.print(Escape.xml(role.getRolename()));
+                        if(roles.hasNext()) {
+                            writer.print(',');
+                        }
+                    }
+                    writer.println("\"/>");
                 }
+
                 values = getUsers();
                 while (values.hasNext()) {
-                    writer.print("  ");
-                    writer.println(((MemoryUser) values.next()).toXml());
+                    User user = (User)values.next();
+                    writer.print("  <user username=\"");
+                    writer.print(Escape.xml(user.getUsername()));
+                    writer.print("\" password=\"");
+                    writer.print(Escape.xml(user.getPassword()));
+                    writer.print("\"");
+                    if(null != user.getFullName()) {
+                        writer.print(" fullName=\"");
+                        writer.print(Escape.xml(user.getFullName()));
+                        writer.print("\"");
+                    }
+                    writer.print(" groups=\"");
+                    for (Iterator<Group> groups=user.getGroups();groups.hasNext();) {
+                        Group group = groups.next();
+                        writer.print(Escape.xml(group.getGroupname()));
+                        if(groups.hasNext()) {
+                            writer.print(',');
+                        }
+                    }
+                    writer.print("\" roles=\"");
+                    for (Iterator<Role> roles=user.getRoles();roles.hasNext();) {
+                        Role role = roles.next();
+                        writer.print(Escape.xml(role.getRolename()));
+                        if(roles.hasNext()) {
+                            writer.print(',');
+                        }
+                    }
+                    writer.print("\"/>");
                 }
 
                 // Print the file epilog
@@ -727,7 +797,7 @@ public class MemoryUserDatabase implements UserDatabase {
         sb.append(this.roles.size());
         sb.append(",userCount=");
         sb.append(this.users.size());
-        sb.append("]");
+        sb.append(']');
         return sb.toString();
     }
 }
@@ -738,7 +808,7 @@ public class MemoryUserDatabase implements UserDatabase {
  */
 class MemoryGroupCreationFactory extends AbstractObjectCreationFactory {
 
-    public MemoryGroupCreationFactory(MemoryUserDatabase database) {
+    MemoryGroupCreationFactory(MemoryUserDatabase database) {
         this.database = database;
     }
 
@@ -751,7 +821,14 @@ class MemoryGroupCreationFactory extends AbstractObjectCreationFactory {
         }
         String description = attributes.getValue("description");
         String roles = attributes.getValue("roles");
-        Group group = database.createGroup(groupname, description);
+        Group group = database.findGroup(groupname);
+        if (group == null) {
+            group = database.createGroup(groupname, description);
+        } else {
+            if (group.getDescription() == null) {
+                group.setDescription(description);
+            }
+        }
         if (roles != null) {
             while (roles.length() > 0) {
                 String rolename = null;
@@ -784,7 +861,7 @@ class MemoryGroupCreationFactory extends AbstractObjectCreationFactory {
  */
 class MemoryRoleCreationFactory extends AbstractObjectCreationFactory {
 
-    public MemoryRoleCreationFactory(MemoryUserDatabase database) {
+    MemoryRoleCreationFactory(MemoryUserDatabase database) {
         this.database = database;
     }
 
@@ -796,8 +873,14 @@ class MemoryRoleCreationFactory extends AbstractObjectCreationFactory {
             rolename = attributes.getValue("name");
         }
         String description = attributes.getValue("description");
-        Role role = database.createRole(rolename, description);
-        return role;
+        Role existingRole = database.findRole(rolename);
+        if (existingRole == null) {
+            return database.createRole(rolename, description);
+        }
+        if (existingRole.getDescription() == null) {
+            existingRole.setDescription(description);
+        }
+        return existingRole;
     }
 
     private final MemoryUserDatabase database;
@@ -809,7 +892,7 @@ class MemoryRoleCreationFactory extends AbstractObjectCreationFactory {
  */
 class MemoryUserCreationFactory extends AbstractObjectCreationFactory {
 
-    public MemoryUserCreationFactory(MemoryUserDatabase database) {
+    MemoryUserCreationFactory(MemoryUserDatabase database) {
         this.database = database;
     }
 

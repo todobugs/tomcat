@@ -138,6 +138,16 @@ public abstract class TomcatBaseTest extends LoggingBaseTest {
         return tomcat;
     }
 
+
+    public Context getProgrammaticRootContext() {
+        // No file system docBase required
+        Context ctx = tomcat.addContext("", null);
+        // Disable class path scanning - it slows the tests down by almost an order of magnitude
+        ((StandardJarScanner) ctx.getJarScanner()).setScanClassPath(false);
+        return ctx;
+    }
+
+
     /*
      * Sub-classes need to know port so they can connect
      */
@@ -170,12 +180,13 @@ public abstract class TomcatBaseTest extends LoggingBaseTest {
         String protocol = getProtocol();
         Connector connector = new Connector(protocol);
         // Listen only on localhost
-        connector.setAttribute("address",
-                InetAddress.getByName("localhost").getHostAddress());
+        Assert.assertTrue(connector.setProperty("address", InetAddress.getByName("localhost").getHostAddress()));
         // Use random free port
         connector.setPort(0);
+        // By default, a connector failure means a failed test
+        connector.setThrowOnFailure(true);
         // Mainly set to reduce timeouts during async tests
-        connector.setAttribute("connectionTimeout", "3000");
+        Assert.assertTrue(connector.setProperty("connectionTimeout", "3000"));
         tomcat.getService().addConnector(connector);
         tomcat.setConnector(connector);
 
@@ -185,15 +196,13 @@ public abstract class TomcatBaseTest extends LoggingBaseTest {
             AprLifecycleListener listener = new AprLifecycleListener();
             listener.setSSLRandomSeed("/dev/urandom");
             server.addLifecycleListener(listener);
-            connector.setAttribute("pollerThreadCount", Integer.valueOf(1));
         }
 
         File catalinaBase = getTemporaryDirectory();
         tomcat.setBaseDir(catalinaBase.getAbsolutePath());
         tomcat.getHost().setAppBase(appBase.getAbsolutePath());
 
-        accessLogEnabled = Boolean.parseBoolean(
-            System.getProperty("tomcat.test.accesslog", "false"));
+        accessLogEnabled = Boolean.getBoolean("tomcat.test.accesslog");
         if (accessLogEnabled) {
             String accessLogDirectory = System
                     .getProperty("tomcat.test.reports");
@@ -454,7 +463,6 @@ public abstract class TomcatBaseTest extends LoggingBaseTest {
 
         private static final long serialVersionUID = 1L;
 
-        @SuppressWarnings("deprecation")
         @Override
         public void service(HttpServletRequest request,
                             HttpServletResponse response)
@@ -527,7 +535,7 @@ public abstract class TomcatBaseTest extends LoggingBaseTest {
                      h.hasMoreElements();) {
                     value.append(h.nextElement());
                     if (h.hasMoreElements()) {
-                        value.append(";");
+                        value.append(';');
                     }
                 }
                 out.println("HEADER:" + name + ": " + value);
@@ -550,7 +558,7 @@ public abstract class TomcatBaseTest extends LoggingBaseTest {
                 for (int j = 0; j < m; j++) {
                     value.append(values[j]);
                     if (j < m - 1) {
-                        value.append(";");
+                        value.append(';');
                     }
                 }
                 out.println("PARAM/" + name + ": " + value);
@@ -561,7 +569,7 @@ public abstract class TomcatBaseTest extends LoggingBaseTest {
             out.println("SESSION-REQUESTED-ID-COOKIE: " +
                         request.isRequestedSessionIdFromCookie());
             out.println("SESSION-REQUESTED-ID-URL: " +
-                        request.isRequestedSessionIdFromUrl());
+                        request.isRequestedSessionIdFromURL());
             out.println("SESSION-REQUESTED-ID-VALID: " +
                         request.isRequestedSessionIdValid());
 
@@ -750,8 +758,11 @@ public abstract class TomcatBaseTest extends LoggingBaseTest {
 
             @Override
             public int available() {
-                if (done) return 0;
-                else return getLength();
+                if (done) {
+                  return 0;
+                } else {
+                  return getLength();
+                }
             }
         };
         return postUrl(false,s,path,out,reqHead,resHead);

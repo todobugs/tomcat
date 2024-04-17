@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package javax.el;
 
 import java.beans.BeanInfo;
@@ -34,38 +33,44 @@ import java.util.Objects;
 import java.util.WeakHashMap;
 import java.util.concurrent.ConcurrentHashMap;
 
+/**
+ * Standard ELResolver for working with JavaBeans.
+ */
 public class BeanELResolver extends ELResolver {
 
     private static final int CACHE_SIZE;
-    private static final String CACHE_SIZE_PROP =
-        "org.apache.el.BeanELResolver.CACHE_SIZE";
+    private static final String CACHE_SIZE_PROP = "org.apache.el.BeanELResolver.CACHE_SIZE";
 
     static {
-        String cacheSizeStr;
         if (System.getSecurityManager() == null) {
-            cacheSizeStr = System.getProperty(CACHE_SIZE_PROP, "1000");
+            CACHE_SIZE = Integer.getInteger(CACHE_SIZE_PROP, 1000).intValue();
         } else {
-            cacheSizeStr = AccessController.doPrivileged(
-                    new PrivilegedAction<String>() {
+            CACHE_SIZE = AccessController.doPrivileged(new PrivilegedAction<Integer>() {
 
-                    @Override
-                    public String run() {
-                        return System.getProperty(CACHE_SIZE_PROP, "1000");
-                    }
-                });
+                @Override
+                public Integer run() {
+                    return Integer.getInteger(CACHE_SIZE_PROP, 1000);
+                }
+            }).intValue();
         }
-        CACHE_SIZE = Integer.parseInt(cacheSizeStr);
     }
 
     private final boolean readOnly;
 
-    private final ConcurrentCache<String, BeanProperties> cache =
-        new ConcurrentCache<>(CACHE_SIZE);
+    private final ConcurrentCache<String,BeanProperties> cache = new ConcurrentCache<>(CACHE_SIZE);
 
+    /**
+     * Creates a writable instance of the standard JavaBean resolver.
+     */
     public BeanELResolver() {
         this.readOnly = false;
     }
 
+    /**
+     * Creates an instance of the standard JavaBean resolver.
+     *
+     * @param readOnly {@code true} if the created instance should be read-only otherwise false.
+     */
     public BeanELResolver(boolean readOnly) {
         this.readOnly = readOnly;
     }
@@ -95,16 +100,15 @@ public class BeanELResolver extends ELResolver {
         } catch (InvocationTargetException e) {
             Throwable cause = e.getCause();
             Util.handleThrowable(cause);
-            throw new ELException(Util.message(context, "propertyReadError",
-                    base.getClass().getName(), property.toString()), cause);
+            throw new ELException(
+                    Util.message(context, "propertyReadError", base.getClass().getName(), property.toString()), cause);
         } catch (Exception e) {
             throw new ELException(e);
         }
     }
 
     @Override
-    public void setValue(ELContext context, Object base, Object property,
-            Object value) {
+    public void setValue(ELContext context, Object base, Object property, Object value) {
         Objects.requireNonNull(context);
         if (base == null || property == null) {
             return;
@@ -113,8 +117,8 @@ public class BeanELResolver extends ELResolver {
         context.setPropertyResolved(base, property);
 
         if (this.readOnly) {
-            throw new PropertyNotWritableException(Util.message(context,
-                    "resolverNotWriteable", base.getClass().getName()));
+            throw new PropertyNotWritableException(
+                    Util.message(context, "resolverNotWritable", base.getClass().getName()));
         }
 
         Method m = this.property(context, base, property).write(context, base);
@@ -123,19 +127,15 @@ public class BeanELResolver extends ELResolver {
         } catch (InvocationTargetException e) {
             Throwable cause = e.getCause();
             Util.handleThrowable(cause);
-            throw new ELException(Util.message(context, "propertyWriteError",
-                    base.getClass().getName(), property.toString()), cause);
+            throw new ELException(
+                    Util.message(context, "propertyWriteError", base.getClass().getName(), property.toString()), cause);
         } catch (Exception e) {
             throw new ELException(e);
         }
     }
 
-    /**
-     * @since EL 2.2
-     */
     @Override
-    public Object invoke(ELContext context, Object base, Object method,
-            Class<?>[] paramTypes, Object[] params) {
+    public Object invoke(ELContext context, Object base, Object method, Class<?>[] paramTypes, Object[] params) {
         Objects.requireNonNull(context);
         if (base == null || method == null) {
             return null;
@@ -146,12 +146,10 @@ public class BeanELResolver extends ELResolver {
         String methodName = (String) factory.coerceToType(method, String.class);
 
         // Find the matching method
-        Method matchingMethod =
-                Util.findMethod(base.getClass(), base, methodName, paramTypes, params);
+        Method matchingMethod = Util.findMethod(context, base.getClass(), base, methodName, paramTypes, params);
 
-        Object[] parameters = Util.buildParameters(
-                matchingMethod.getParameterTypes(), matchingMethod.isVarArgs(),
-                params);
+        Object[] parameters =
+                Util.buildParameters(context, matchingMethod.getParameterTypes(), matchingMethod.isVarArgs(), params);
 
         Object result = null;
         try {
@@ -188,9 +186,9 @@ public class BeanELResolver extends ELResolver {
         try {
             BeanInfo info = Introspector.getBeanInfo(base.getClass());
             PropertyDescriptor[] pds = info.getPropertyDescriptors();
-            for (int i = 0; i < pds.length; i++) {
-                pds[i].setValue(RESOLVABLE_AT_DESIGN_TIME, Boolean.TRUE);
-                pds[i].setValue(TYPE, pds[i].getPropertyType());
+            for (PropertyDescriptor pd : pds) {
+                pd.setValue(RESOLVABLE_AT_DESIGN_TIME, Boolean.TRUE);
+                pd.setValue(TYPE, pd.getPropertyType());
             }
             return Arrays.asList((FeatureDescriptor[]) pds).iterator();
         } catch (IntrospectionException e) {
@@ -210,17 +208,17 @@ public class BeanELResolver extends ELResolver {
     }
 
     static final class BeanProperties {
-        private final Map<String, BeanProperty> properties;
+        private final Map<String,BeanProperty> properties;
 
         private final Class<?> type;
 
-        public BeanProperties(Class<?> type) throws ELException {
+        BeanProperties(Class<?> type) throws ELException {
             this.type = type;
             this.properties = new HashMap<>();
             try {
                 BeanInfo info = Introspector.getBeanInfo(this.type);
                 PropertyDescriptor[] pds = info.getPropertyDescriptors();
-                for (PropertyDescriptor pd: pds) {
+                for (PropertyDescriptor pd : pds) {
                     this.properties.put(pd.getName(), new BeanProperty(type, pd));
                 }
                 if (System.getSecurityManager() != null) {
@@ -241,8 +239,7 @@ public class BeanELResolver extends ELResolver {
                     PropertyDescriptor[] pds = info.getPropertyDescriptors();
                     for (PropertyDescriptor pd : pds) {
                         if (!this.properties.containsKey(pd.getName())) {
-                            this.properties.put(pd.getName(), new BeanProperty(
-                                    this.type, pd));
+                            this.properties.put(pd.getName(), new BeanProperty(this.type, pd));
                         }
                     }
                     populateFromInterfaces(ifs);
@@ -257,8 +254,7 @@ public class BeanELResolver extends ELResolver {
         private BeanProperty get(ELContext ctx, String name) {
             BeanProperty property = this.properties.get(name);
             if (property == null) {
-                throw new PropertyNotFoundException(Util.message(ctx,
-                        "propertyNotFound", type.getName(), name));
+                throw new PropertyNotFoundException(Util.message(ctx, "propertyNotFound", type.getName(), name));
             }
             return property;
         }
@@ -279,7 +275,7 @@ public class BeanELResolver extends ELResolver {
 
         private Method write;
 
-        public BeanProperty(Class<?> owner, PropertyDescriptor descriptor) {
+        BeanProperty(Class<?> owner, PropertyDescriptor descriptor) {
             this.owner = owner;
             this.descriptor = descriptor;
             this.type = descriptor.getPropertyType();
@@ -298,9 +294,8 @@ public class BeanELResolver extends ELResolver {
             if (this.write == null) {
                 this.write = Util.getMethod(this.owner, base, descriptor.getWriteMethod());
                 if (this.write == null) {
-                    throw new PropertyNotWritableException(Util.message(ctx,
-                            "propertyNotWritable", new Object[] {
-                                    owner.getName(), descriptor.getName() }));
+                    throw new PropertyNotWritableException(Util.message(ctx, "propertyNotWritable",
+                            new Object[] { owner.getName(), descriptor.getName() }));
                 }
             }
             return this.write;
@@ -310,17 +305,15 @@ public class BeanELResolver extends ELResolver {
             if (this.read == null) {
                 this.read = Util.getMethod(this.owner, base, descriptor.getReadMethod());
                 if (this.read == null) {
-                    throw new PropertyNotFoundException(Util.message(ctx,
-                            "propertyNotReadable", new Object[] {
-                                    owner.getName(), descriptor.getName() }));
+                    throw new PropertyNotFoundException(Util.message(ctx, "propertyNotReadable",
+                            new Object[] { owner.getName(), descriptor.getName() }));
                 }
             }
             return this.read;
         }
     }
 
-    private final BeanProperty property(ELContext ctx, Object base,
-            Object property) {
+    private BeanProperty property(ELContext ctx, Object base, Object property) {
         Class<?> type = base.getClass();
         String prop = property.toString();
 
@@ -333,13 +326,13 @@ public class BeanELResolver extends ELResolver {
         return props.get(ctx, prop);
     }
 
-    private static final class ConcurrentCache<K,V> {
+    private static final class ConcurrentCache<K, V> {
 
         private final int size;
         private final Map<K,V> eden;
         private final Map<K,V> longterm;
 
-        public ConcurrentCache(int size) {
+        ConcurrentCache(int size) {
             this.size = size;
             this.eden = new ConcurrentHashMap<>(size);
             this.longterm = new WeakHashMap<>(size);

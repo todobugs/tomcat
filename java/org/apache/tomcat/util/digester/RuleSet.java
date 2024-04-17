@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.tomcat.util.digester;
 
 
@@ -47,8 +46,7 @@ public interface RuleSet {
      *
      * @deprecated Unused. Will be removed in Tomcat 9
      */
-    @Deprecated
-    public String getNamespaceURI();
+    @Deprecated String getNamespaceURI();
 
 
     // --------------------------------------------------------- Public Methods
@@ -63,7 +61,7 @@ public interface RuleSet {
      * @param digester Digester instance to which the new Rule instances
      *  should be added.
      */
-    public void addRuleInstances(Digester digester);
+    void addRuleInstances(Digester digester);
 
 
 }

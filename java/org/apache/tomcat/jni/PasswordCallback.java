@@ -14,13 +14,16 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  */
-
 package org.apache.tomcat.jni;
 
-/** PasswordCallback Interface
+/**
+ * PasswordCallback Interface
  *
  * @author Mladen Turk
+ *
+ * @deprecated Unused. Will be removed in Tomcat 10.1
  */
+@Deprecated
 public interface PasswordCallback {
 
     /**
@@ -28,5 +31,5 @@ public interface PasswordCallback {
      * @param prompt Password prompt
      * @return Valid password or null
      */
-    public String callback(String prompt);
+    String callback(String prompt);
 }

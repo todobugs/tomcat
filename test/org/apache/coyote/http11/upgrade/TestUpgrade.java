@@ -26,6 +26,7 @@ import java.io.PrintWriter;
 import java.io.Reader;
 import java.io.Writer;
 import java.net.Socket;
+import java.net.SocketException;
 import java.nio.charset.StandardCharsets;
 
 import javax.net.SocketFactory;
@@ -107,7 +108,13 @@ public class TestUpgrade extends TomcatBaseTest {
         UpgradeConnection conn = doUpgrade(upgradeHandlerClass);
 
         Reader r = conn.getReader();
-        int c = r.read();
+        int c;
+        try {
+            c = r.read();
+        } catch (SocketException se) {
+            // Some platforms will throw an exception rather than returning -1
+            c = -1;
+        }
 
         Assert.assertEquals(-1, c);
     }
@@ -158,7 +165,7 @@ public class TestUpgrade extends TomcatBaseTest {
         Tomcat tomcat = getTomcatInstance();
 
         // No file system docBase required
-        Context ctx = tomcat.addContext("", null);
+        Context ctx = getProgrammaticRootContext();
 
         UpgradeServlet servlet = new UpgradeServlet(upgradeHandlerClass);
         Tomcat.addServlet(ctx, "servlet", servlet);
@@ -177,6 +184,7 @@ public class TestUpgrade extends TomcatBaseTest {
 
         uc.getWriter().write("GET / HTTP/1.1" + CRLF);
         uc.getWriter().write("Host: whatever" + CRLF);
+        uc.getWriter().write("Upgrade: test" + CRLF);
         uc.getWriter().write(CRLF);
         uc.getWriter().flush();
 
@@ -201,7 +209,7 @@ public class TestUpgrade extends TomcatBaseTest {
 
         private final Class<? extends HttpUpgradeHandler> upgradeHandlerClass;
 
-        public UpgradeServlet(Class<? extends HttpUpgradeHandler> upgradeHandlerClass) {
+        UpgradeServlet(Class<? extends HttpUpgradeHandler> upgradeHandlerClass) {
             this.upgradeHandlerClass = upgradeHandlerClass;
         }
 
@@ -209,6 +217,9 @@ public class TestUpgrade extends TomcatBaseTest {
         protected void doGet(HttpServletRequest req, HttpServletResponse resp)
                 throws ServletException, IOException {
 
+            // In these tests only a single protocol is requested so it is safe
+            // to echo it to the response.
+            resp.setHeader("upgrade", req.getHeader("upgrade"));
             req.upgrade(upgradeHandlerClass);
         }
     }
@@ -218,7 +229,7 @@ public class TestUpgrade extends TomcatBaseTest {
         private final Writer writer;
         private final BufferedReader reader;
 
-        public UpgradeConnection(Socket socket) {
+        UpgradeConnection(Socket socket) {
             this.socket = socket;
             InputStream is;
             OutputStream os;
@@ -311,7 +322,7 @@ public class TestUpgrade extends TomcatBaseTest {
             private final ServletOutputStream sos;
             private final byte[] buffer = new byte[8192];
 
-            public EchoListener(ServletInputStream sis, ServletOutputStream sos) {
+            EchoListener(ServletInputStream sis, ServletOutputStream sos) {
                 this.sis = sis;
                 this.sos = sos;
             }

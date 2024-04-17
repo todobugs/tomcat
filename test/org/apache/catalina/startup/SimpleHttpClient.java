@@ -14,7 +14,6 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  */
-
 package org.apache.catalina.startup;
 
 import java.io.BufferedReader;
@@ -95,6 +94,7 @@ public abstract class SimpleHttpClient {
     private String[] request;
     private boolean useContinue = false;
     private boolean useCookies = true;
+    private boolean useHttp09 = false;
     private int requestPause = 1000;
 
     private String responseLine;
@@ -132,6 +132,10 @@ public abstract class SimpleHttpClient {
 
     public boolean getUseCookies() {
         return useCookies;
+    }
+
+    public void setUseHttp09(boolean theUseHttp09Flag) {
+        useHttp09 = theUseHttp09Flag;
     }
 
     public void setRequestPause(int theRequestPause) {
@@ -195,7 +199,7 @@ public abstract class SimpleHttpClient {
         reader = new BufferedReader(r);
     }
     public void connect() throws UnknownHostException, IOException {
-        connect(0,0);
+        connect(10000, 10000);
     }
 
     protected OutputStream createOutputStream(Socket socket) throws IOException {
@@ -224,8 +228,7 @@ public abstract class SimpleHttpClient {
             if (requestPart != null) {
                 if (first) {
                     first = false;
-                }
-                else {
+                } else {
                     Thread.sleep(requestPause);
                 }
                 writer.write(requestPart);
@@ -242,23 +245,26 @@ public abstract class SimpleHttpClient {
             bodyUriElements.clear();
         }
 
-        // Read the response status line
-        responseLine = readLine();
+        // HTTP 0.9 has neither response line nor headers
+        if (!useHttp09) {
+            // Read the response status line
+            responseLine = readLine();
 
-        // Is a 100 continue response expected?
-        if (useContinue) {
-            if (isResponse100()) {
-                // Skip the blank after the 100 Continue response
-                readLine();
-                // Now get the final response
-                responseLine = readLine();
-            } else {
-                throw new IOException("No 100 Continue response");
+            // Is a 100 continue response expected?
+            if (useContinue) {
+                if (isResponse100()) {
+                    // Skip the blank after the 100 Continue response
+                    readLine();
+                    // Now get the final response
+                    responseLine = readLine();
+                } else {
+                    throw new IOException("No 100 Continue response");
+                }
             }
-        }
 
-        // Put the headers into a map, and process interesting ones
-        processHeaders();
+            // Put the headers into a map, and process interesting ones
+            processHeaders();
+        }
 
         // Read the body, if requested and if one exists
         processBody(wantBody);
@@ -312,8 +318,7 @@ public abstract class SimpleHttpClient {
                 int read = reader.read(body);
                 Assert.assertEquals(contentLength, read);
                 builder.append(body);
-            }
-            else {
+            } else {
                 // not using content length, so just read it line by line
                 String line = null;
                 try {
