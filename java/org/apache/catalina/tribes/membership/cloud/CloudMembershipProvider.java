@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.catalina.tribes.membership.cloud;
 
 import java.io.IOException;
@@ -28,6 +27,8 @@ import java.time.Instant;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Properties;
+import java.util.Queue;
+import java.util.concurrent.ConcurrentLinkedQueue;
 
 import org.apache.catalina.tribes.ChannelListener;
 import org.apache.catalina.tribes.Heartbeat;
@@ -38,58 +39,131 @@ import org.apache.catalina.tribes.util.StringManager;
 import org.apache.juli.logging.Log;
 import org.apache.juli.logging.LogFactory;
 
+/**
+ * Abstract base class for cloud-based membership providers.
+ */
 public abstract class CloudMembershipProvider extends MembershipProviderBase implements Heartbeat, ChannelListener {
+
     private static final Log log = LogFactory.getLog(CloudMembershipProvider.class);
+    private static final Queue<MessageDigest> queue = new ConcurrentLinkedQueue<>();
+
+    /**
+     * String manager for this class.
+     */
     protected static final StringManager sm = StringManager.getManager(CloudMembershipProvider.class);
 
+    /**
+     * Prefix for custom environment variables.
+     */
     protected static final String CUSTOM_ENV_PREFIX = "OPENSHIFT_KUBE_PING_";
 
+    /**
+     * The URL for the cloud membership service.
+     */
     protected String url;
+    /**
+     * The provider for cloud API streams.
+     */
     protected StreamProvider streamProvider;
+    /**
+     * Connection timeout in milliseconds.
+     */
     protected int connectionTimeout;
+    /**
+     * Read timeout in milliseconds.
+     */
     protected int readTimeout;
 
+    /**
+     * The time when this provider started.
+     */
     protected Instant startTime;
-    protected MessageDigest md5;
 
-    protected Map<String, String> headers = new HashMap<>();
+    /**
+     * HTTP headers for cloud API requests.
+     */
+    protected Map<String,String> headers = new HashMap<>();
 
+    /**
+     * The local IP address.
+     */
     protected String localIp;
+    /**
+     * The local port number.
+     */
     protected int port;
 
+    /**
+     * The local secure port number.
+     */
+    protected int securePort;
+
+    /**
+     * Member expiration time in milliseconds.
+     */
     protected long expirationTime = 5000;
 
-    public CloudMembershipProvider() {
-        try {
-            md5 = MessageDigest.getInstance("md5");
-        } catch (NoSuchAlgorithmException e) {
-            // Ignore
+    /**
+     * Thread safe MD5 digest.
+     *
+     * @param input The bytes to digest
+     * @return The MD5 digest for the given input
+     */
+    /*
+     * Keep in sync with org.apache.tomcat.util.security.ConcurrentMessageDigest. Can't re-use that directly as tribes
+     * is not permitted to create a dependency on that package.
+     */
+    protected static byte[] digest(byte[] input) {
+        MessageDigest md = queue.poll();
+        if (md == null) {
+            try {
+                md = MessageDigest.getInstance("MD5");
+            } catch (NoSuchAlgorithmException e) {
+                // Newer JVMs are not required to support MD5
+                throw new IllegalStateException(sm.getString("cloudMembershipProvider.noDigest"), e);
+            }
         }
+        byte[] result = md.digest(input);
+        queue.add(md);
+        return result;
     }
 
     /**
      * Get value of environment variable.
+     *
      * @param keys the environment variables
+     *
      * @return the env variables values, or null if not found
      */
     protected static String getEnv(String... keys) {
         String val = null;
         for (String key : keys) {
             val = AccessController.doPrivileged((PrivilegedAction<String>) () -> System.getenv(key));
-            if (val != null)
+            if (val != null) {
                 break;
+            }
         }
         return val;
     }
 
     /**
-     * Get the Kubernetes namespace, or "tomcat" if the Kubernetes environment variable
-     * cannot be found (with a warning log about the missing namespace).
+     * Default constructor.
+     */
+    public CloudMembershipProvider() {
+        // Early check that required digest is available
+        digest(new byte[0]);
+    }
+
+
+    /**
+     * Get the Kubernetes namespace, or "tomcat" if the Kubernetes environment variable cannot be found (with a warning
+     * log about the missing namespace).
+     *
      * @return the namespace
      */
     protected String getNamespace() {
         String namespace = getEnv(CUSTOM_ENV_PREFIX + "NAMESPACE", "KUBERNETES_NAMESPACE");
-        if (namespace == null || namespace.length() == 0) {
+        if (namespace == null || namespace.isEmpty()) {
             log.warn(sm.getString("kubernetesMembershipProvider.noNamespace"));
             namespace = "tomcat";
         }
@@ -104,9 +178,14 @@ public abstract class CloudMembershipProvider extends MembershipProviderBase imp
         connectionTimeout = service.getConnectTimeout();
         readTimeout = service.getReadTimeout();
         expirationTime = service.getExpirationTime();
+        if (expirationTime <= 0) {
+            throw new IllegalArgumentException(sm.getString("cloudMembershipProvider.invalidTimingProperty",
+                    "expirationTime", Long.valueOf(expirationTime)));
+        }
 
         localIp = InetAddress.getLocalHost().getHostAddress();
         port = Integer.parseInt(properties.getProperty("tcpListenPort"));
+        securePort = Integer.parseInt(properties.getProperty("tcpSecurePort"));
     }
 
     @Override
@@ -119,60 +198,66 @@ public abstract class CloudMembershipProvider extends MembershipProviderBase imp
 
     @Override
     public boolean stop(int level) throws Exception {
+        service.getChannel().removeChannelListener(this);
         return true;
     }
 
     @Override
     public void heartbeat() {
         Member[] announcedMembers = fetchMembers();
+        if (announcedMembers == null) {
+            return;
+        }
         // Add new members or refresh the members in the membership
         for (Member member : announcedMembers) {
-            if (membership.memberAlive(member)) {
-                if (log.isDebugEnabled()) {
-                    log.debug("Member added: " + member);
-                }
-                Runnable r = new Runnable() {
-                    @Override
-                    public void run(){
-                        String name = Thread.currentThread().getName();
-                        try {
-                            Thread.currentThread().setName("CloudMembership-memberAdded");
-                            membershipListener.memberAdded(member);
-                        } finally {
-                            Thread.currentThread().setName(name);
-                        }
-                    }
-                };
-                executor.execute(r);
-            }
+            updateMember(member, true);
         }
         // Remove non refreshed members from the membership
         Member[] expired = membership.expire(expirationTime);
         for (Member member : expired) {
-            if (log.isDebugEnabled()) {
-                log.debug("Member disappeared: " + member);
-            }
-            Runnable r = new Runnable() {
-                @Override
-                public void run(){
-                    String name = Thread.currentThread().getName();
-                    try {
-                        Thread.currentThread().setName("CloudMembership-memberDisappeared");
-                        membershipListener.memberDisappeared(member);
-                    } finally {
-                        Thread.currentThread().setName(name);
-                    }
-                }
-            };
-            executor.execute(r);
+            updateMember(member, false);
         }
     }
 
     /**
      * Fetch current cluster members from the cloud orchestration.
-     * @return the member array
+     *
+     * @return the member array, or {@code null} if an error occurred
      */
     protected abstract Member[] fetchMembers();
+
+    /**
+     * Add or remove specified member.
+     *
+     * @param member the member to add
+     * @param add    true if the member is added, false otherwise
+     */
+    protected void updateMember(Member member, boolean add) {
+        if (add && !membership.memberAlive(member)) {
+            return;
+        }
+        if (log.isDebugEnabled()) {
+            String message = add ? sm.getString("cloudMembershipProvider.add", member) :
+                    sm.getString("cloudMembershipProvider.remove", member);
+            log.debug(message);
+        }
+        Runnable r = () -> {
+            Thread currentThread = Thread.currentThread();
+            String name = currentThread.getName();
+            try {
+                String threadName = add ? "CloudMembership-memberAdded" : "CloudMembership-memberDisappeared";
+                currentThread.setName(threadName);
+                if (add) {
+                    membershipListener.memberAdded(member);
+                } else {
+                    membershipListener.memberDisappeared(member);
+                }
+            } finally {
+                currentThread.setName(name);
+            }
+        };
+        executor.execute(r);
+    }
 
     @Override
     public void messageReceived(Serializable msg, Member sender) {
@@ -182,5 +267,4 @@ public abstract class CloudMembershipProvider extends MembershipProviderBase imp
     public boolean accept(Serializable msg, Member sender) {
         return false;
     }
-
 }

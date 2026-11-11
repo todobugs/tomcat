@@ -14,27 +14,29 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
-
 package org.apache.catalina.ha;
 
 import javax.servlet.http.HttpSession;
 
 import org.apache.catalina.Session;
 
+/**
+ * Interface for a cluster-aware session that extends both {@link Session} and {@link HttpSession}.
+ */
 public interface ClusterSession extends Session, HttpSession {
-   /**
-    * returns true if this session is the primary session, if that is the
-    * case, the manager can expire it upon timeout.
-    * @return True if this session is primary
-    */
-   public boolean isPrimarySession();
+    /**
+     * returns true if this session is the primary session, if that is the case, the manager can expire it upon timeout.
+     *
+     * @return True if this session is primary
+     */
+    boolean isPrimarySession();
 
-   /**
-    * Sets whether this is the primary session or not.
-    * @param primarySession Flag value
-    */
-   public void setPrimarySession(boolean primarySession);
+    /**
+     * Sets whether this is the primary session or not.
+     *
+     * @param primarySession Flag value
+     */
+    void setPrimarySession(boolean primarySession);
 
 
 }

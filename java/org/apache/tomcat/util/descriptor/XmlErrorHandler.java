@@ -25,10 +25,18 @@ import org.xml.sax.ErrorHandler;
 import org.xml.sax.SAXException;
 import org.xml.sax.SAXParseException;
 
+/**
+ * SAX error handler that collects warnings and errors for later processing.
+ */
 public class XmlErrorHandler implements ErrorHandler {
 
-    private static final StringManager sm =
-        StringManager.getManager(Constants.PACKAGE_NAME);
+    /**
+     * Default constructor.
+     */
+    public XmlErrorHandler() {
+    }
+
+    private static final StringManager sm = StringManager.getManager(Constants.PACKAGE_NAME);
 
     private final List<SAXParseException> errors = new ArrayList<>();
 
@@ -52,24 +60,38 @@ public class XmlErrorHandler implements ErrorHandler {
         warnings.add(exception);
     }
 
+    /**
+     * Returns the list of collected parsing errors.
+     *
+     * @return the list of errors
+     */
     public List<SAXParseException> getErrors() {
         // Internal use only - don't worry about immutability
         return errors;
     }
 
+    /**
+     * Returns the list of collected parsing warnings.
+     *
+     * @return the list of warnings
+     */
     public List<SAXParseException> getWarnings() {
         // Internal use only - don't worry about immutability
         return warnings;
     }
 
+    /**
+     * Logs all collected warnings and errors to the specified log.
+     *
+     * @param log    the log to use
+     * @param source the source of the XML being parsed
+     */
     public void logFindings(Log log, String source) {
         for (SAXParseException e : getWarnings()) {
-            log.warn(sm.getString(
-                    "xmlErrorHandler.warning", e.getMessage(), source));
+            log.warn(sm.getString("xmlErrorHandler.warning", e.getMessage(), source));
         }
         for (SAXParseException e : getErrors()) {
-            log.warn(sm.getString(
-                    "xmlErrorHandler.error", e.getMessage(), source));
+            log.warn(sm.getString("xmlErrorHandler.error", e.getMessage(), source));
         }
     }
 }

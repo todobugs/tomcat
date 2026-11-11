@@ -16,16 +16,28 @@
  */
 package org.apache.catalina.ssi;
 
-
 /**
- * Exception used to tell SSIProcessor that it should stop processing SSI
- * commands. This is used to mimic the Apache behavior in #set with invalid
- * attributes.
- *
- * @author Paul Speed
- * @author Dan Sandberg
+ * Exception used to tell SSIProcessor that it should stop processing SSI commands, causing the remainder of the
+ * document to be discarded. This is used, among other cases, to mimic the Apache behavior in #set with invalid
+ * attributes and for unparseable #if/#elif expressions.
  */
 public class SSIStopProcessingException extends Exception {
+
+    /**
+     * Default constructor.
+     */
+    public SSIStopProcessingException() {
+        super();
+    }
+
+    /**
+     * Constructor with cause.
+     *
+     * @param cause the underlying cause
+     */
+    public SSIStopProcessingException(Throwable cause) {
+        super(cause);
+    }
 
     private static final long serialVersionUID = 1L;
     // No specific functionality for this class

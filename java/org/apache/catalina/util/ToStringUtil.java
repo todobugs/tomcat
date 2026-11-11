@@ -21,8 +21,7 @@ import org.apache.catalina.Container;
 import org.apache.catalina.Manager;
 
 /**
- * Utility class used to help generate return values for calls to
- * {@link Object#toString()}.
+ * Utility class used to help generate return values for calls to {@link Object#toString()}.
  */
 public class ToStringUtil {
 
@@ -31,23 +30,42 @@ public class ToStringUtil {
     }
 
 
-    public static final String toString(Contained contained) {
+    /**
+     * Generates a toString representation for a Contained component.
+     *
+     * @param contained the component
+     * @return the string representation
+     */
+    public static String toString(Contained contained) {
         return toString(contained, contained.getContainer());
     }
 
 
-    public static final String toString(Object obj, Container container) {
+    /**
+     * Generates a toString representation for an object with an associated container.
+     *
+     * @param obj the object
+     * @param container the associated container
+     * @return the string representation
+     */
+    public static String toString(Object obj, Container container) {
         return containedToString(obj, container, "Container");
     }
 
 
-    public static final String toString(Object obj, Manager manager) {
+    /**
+     * Generates a toString representation for an object with an associated manager.
+     *
+     * @param obj the object
+     * @param manager the associated manager
+     * @return the string representation
+     */
+    public static String toString(Object obj, Manager manager) {
         return containedToString(obj, manager, "Manager");
     }
 
 
-    private static final String containedToString(Object contained, Object container,
-            String containerTypeName) {
+    private static String containedToString(Object contained, Object container, String containerTypeName) {
         StringBuilder sb = new StringBuilder(contained.getClass().getSimpleName());
         sb.append('[');
         if (container == null) {

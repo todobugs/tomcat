@@ -23,25 +23,35 @@ import org.apache.tomcat.util.net.NioEndpoint;
 
 
 /**
- * Abstract the protocol implementation, including threading, etc.
- * Processor is single threaded and specific to stream-based protocols,
- * will not fit Jk protocols like JNI.
- *
- * @author Remy Maucherat
- * @author Costin Manolache
+ * HTTP/1.1 protocol implementation using NIO.
  */
 public class Http11NioProtocol extends AbstractHttp11JsseProtocol<NioChannel> {
 
     private static final Log log = LogFactory.getLog(Http11NioProtocol.class);
 
 
+    /**
+     * Constructs a new Http11NioProtocol with a default NIO endpoint.
+     */
     public Http11NioProtocol() {
-        super(new NioEndpoint());
+        this(new NioEndpoint());
+    }
+
+
+    /**
+     * Constructs a new Http11NioProtocol with the specified endpoint.
+     *
+     * @param endpoint the NIO endpoint to use
+     */
+    public Http11NioProtocol(NioEndpoint endpoint) {
+        super(endpoint);
     }
 
 
     @Override
-    protected Log getLog() { return log; }
+    protected Log getLog() {
+        return log;
+    }
 
 
     // -------------------- Pool setup --------------------
@@ -69,29 +79,47 @@ public class Http11NioProtocol extends AbstractHttp11JsseProtocol<NioChannel> {
         return 1;
     }
 
+    /**
+     * Sets the selector timeout for the NIO endpoint.
+     *
+     * @param timeout the selector timeout in milliseconds
+     */
     public void setSelectorTimeout(long timeout) {
-        ((NioEndpoint)getEndpoint()).setSelectorTimeout(timeout);
+        ((NioEndpoint) getEndpoint()).setSelectorTimeout(timeout);
     }
 
+    /**
+     * Gets the selector timeout for the NIO endpoint.
+     *
+     * @return the selector timeout in milliseconds
+     */
     public long getSelectorTimeout() {
-        return ((NioEndpoint)getEndpoint()).getSelectorTimeout();
+        return ((NioEndpoint) getEndpoint()).getSelectorTimeout();
     }
 
+    /**
+     * Sets the poller thread priority for the NIO endpoint.
+     *
+     * @param threadPriority the poller thread priority
+     */
     public void setPollerThreadPriority(int threadPriority) {
-        ((NioEndpoint)getEndpoint()).setPollerThreadPriority(threadPriority);
+        ((NioEndpoint) getEndpoint()).setPollerThreadPriority(threadPriority);
     }
 
+    /**
+     * Gets the poller thread priority for the NIO endpoint.
+     *
+     * @return the poller thread priority
+     */
     public int getPollerThreadPriority() {
-      return ((NioEndpoint)getEndpoint()).getPollerThreadPriority();
+        return ((NioEndpoint) getEndpoint()).getPollerThreadPriority();
     }
 
-
-    // ----------------------------------------------------- JMX related methods
 
     @Override
     protected String getNamePrefix() {
         if (isSSLEnabled()) {
-            return "https-" + getSslImplementationShortName()+ "-nio";
+            return "https-" + getSslImplementationShortName() + "-nio";
         } else {
             return "http-nio";
         }

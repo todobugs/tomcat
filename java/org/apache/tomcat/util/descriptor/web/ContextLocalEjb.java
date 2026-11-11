@@ -17,18 +17,19 @@
 package org.apache.tomcat.util.descriptor.web;
 
 
-
 /**
- * Representation of a local EJB resource reference for a web application, as
- * represented in a <code>&lt;ejb-local-ref&gt;</code> element in the
- * deployment descriptor.
- *
- * @author Craig R. McClanahan
- * @author Peter Rossbach (pero@apache.org)
+ * Representation of a local EJB resource reference for a web application, as represented in a
+ * <code>&lt;ejb-local-ref&gt;</code> element in the deployment descriptor.
  */
 public class ContextLocalEjb extends ResourceBase {
 
     private static final long serialVersionUID = 1L;
+
+    /**
+     * Default constructor for ContextLocalEjb.
+     */
+    public ContextLocalEjb() {
+    }
 
     // ------------------------------------------------------------- Properties
 
@@ -37,10 +38,20 @@ public class ContextLocalEjb extends ResourceBase {
      */
     private String home = null;
 
+    /**
+     * Returns the name of the EJB home implementation class.
+     *
+     * @return the EJB home class name
+     */
     public String getHome() {
         return this.home;
     }
 
+    /**
+     * Sets the name of the EJB home implementation class.
+     *
+     * @param home the EJB home class name
+     */
     public void setHome(String home) {
         this.home = home;
     }
@@ -51,10 +62,20 @@ public class ContextLocalEjb extends ResourceBase {
      */
     private String link = null;
 
+    /**
+     * Returns the link to a Jakarta EE EJB definition.
+     *
+     * @return the EJB link
+     */
     public String getLink() {
         return this.link;
     }
 
+    /**
+     * Sets the link to a Jakarta EE EJB definition.
+     *
+     * @param link the EJB link
+     */
     public void setLink(String link) {
         this.link = link;
     }
@@ -65,10 +86,20 @@ public class ContextLocalEjb extends ResourceBase {
      */
     private String local = null;
 
+    /**
+     * Returns the name of the EJB local implementation class.
+     *
+     * @return the EJB local class name
+     */
     public String getLocal() {
         return this.local;
     }
 
+    /**
+     * Sets the name of the EJB local implementation class.
+     *
+     * @param local the EJB local class name
+     */
     public void setLocal(String local) {
         this.local = local;
     }
@@ -106,7 +137,7 @@ public class ContextLocalEjb extends ResourceBase {
             sb.append(", local=");
             sb.append(local);
         }
-        sb.append("]");
+        sb.append(']');
         return sb.toString();
     }
 
@@ -149,12 +180,9 @@ public class ContextLocalEjb extends ResourceBase {
             return false;
         }
         if (local == null) {
-            if (other.local != null) {
-                return false;
-            }
-        } else if (!local.equals(other.local)) {
-            return false;
+            return other.local == null;
+        } else {
+            return local.equals(other.local);
         }
-        return true;
     }
 }

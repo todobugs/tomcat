@@ -23,8 +23,6 @@
   &project;
 
   <properties>
-    <author email="craigmcc@apache.org">Craig R. McClanahan</author>
-    <author email="yoavs@apache.org">Yoav Shapira</author>
     <title>The Manager Component</title>
   </properties>
 
@@ -139,6 +137,17 @@
         filter pattern in order to be restored.</p>
       </attribute>
 
+      <attribute name="persistAuthenticationNotes" required="false">
+        <p>Should authentication notes (used during FORM authentication) be
+        included when session state is preserved across application restarts?
+        If <code>true</code>, the session's authentication notes are preserved
+        so that an in progress FORM authentication can continue after the
+        application has been restarted. If not specified, the default value of
+        <code>false</code> will be used.<br />See
+        <a href="#Persistence_Across_Restarts">Persistence Across Restarts</a>
+        for more information.</p>
+      </attribute>
+
       <attribute name="processExpiresFrequency" required="false">
         <p>Frequency of the session expiration, and related manager operations.
         Manager operations will be done once for the specified amount of
@@ -176,7 +185,8 @@
 
       <attribute name="sessionAttributeNameFilter" required="false">
         <p>A regular expression used to filter which session attributes will be
-        distributed. An attribute will only be distributed if its name matches
+        serialized for clustering/replication, or storage to any persistent store.
+        An attribute will only be serialized if its name matches
         this pattern. If the pattern is zero length or <code>null</code>, all
         attributes are eligible for distribution. The pattern is anchored so the
         session attribute name must fully match the pattern. As an example, the
@@ -188,7 +198,8 @@
 
       <attribute name="sessionAttributeValueClassNameFilter" required="false">
         <p>A regular expression used to filter which session attributes will be
-        distributed. An attribute will only be distributed if the implementation
+        serialized for clustering/replication, or storage to any persistent store.
+        An attribute will only be serialized if the implementation
         class name of the value matches this pattern. If the pattern is zero
         length or <code>null</code>, all attributes are eligible for
         distribution. The pattern is anchored so the fully qualified class name
@@ -255,6 +266,11 @@
         feature is enabled, the time interval specified here should be equal to
         or longer than the value specified for <code>maxIdleBackup</code>. By
         default, this feature is disabled.</p>
+        <p>If this feature is enabled, the system property
+        <code>org.apache.catalina.session.StandardSession.ACTIVITY_CHECK</code>
+        must be set to <code>true</code> either explicitly or via
+        <code>STRICT_SERVLET_COMPLIANCE</code> else the configuration will be
+        rejected.</p>
       </attribute>
 
       <attribute name="minIdleSwap" required="false">
@@ -264,6 +280,11 @@
         swapped out to keep the active session count down. If specified, this
         value should be less than that specified by <code>maxIdleSwap</code>.
         By default, this value is set to <code>-1</code>.</p>
+        <p>If this feature is enabled, the system property
+        <code>org.apache.catalina.session.StandardSession.ACTIVITY_CHECK</code>
+        must be set to <code>true</code> either explicitly or via
+        <code>STRICT_SERVLET_COMPLIANCE</code> else the configuration will be
+        rejected.</p>
       </attribute>
 
       <attribute name="persistAuthentication" required="false">
@@ -279,6 +300,25 @@
         is specified or a <code>SecurityManager</code> is enabled, the names of
         the <code>Principal</code> class and descendant classes must match that
         filter pattern in order to be restored.</p>
+      </attribute>
+
+      <attribute name="persistAuthenticationNotes" required="false">
+        <p>Should authentication notes (used during FORM authentication) be
+        included when sessions are swapped out to persistent storage? If
+        <code>true</code>, the session's authentication notes (used during
+        FORM authentication) are preserved so that an in progress FORM
+        authentication can continue after being reloaded (swapped in) from
+        persistent storage. If not specified, the default value of
+        <code>false</code> will be used.</p>
+
+        <p>Please note that if it is possible that the session will be swapped
+        in to a different node to the node from which it was swapped out, all
+        nodes must be upgraded to at least 9.0.66 (the version where this
+        feature was introduced) before this feature is enabled else the swapping
+        in may fail.</p>
+
+        <p>This attribute has been removed for Tomcat 10.1.x onwards which
+        always persists FORM authenticaton notes.</p>
       </attribute>
 
       <attribute name="processExpiresFrequency" required="false">
@@ -314,7 +354,8 @@
 
       <attribute name="sessionAttributeNameFilter" required="false">
         <p>A regular expression used to filter which session attributes will be
-        distributed. An attribute will only be distributed if its name matches
+        serialized for clustering/replication, or storage to any persistent store.
+        An attribute will only be serialized if its name matches
         this pattern. If the pattern is zero length or <code>null</code>, all
         attributes are eligible for distribution. The pattern is anchored so the
         session attribute name must fully match the pattern. As an example, the
@@ -326,7 +367,8 @@
 
       <attribute name="sessionAttributeValueClassNameFilter" required="false">
         <p>A regular expression used to filter which session attributes will be
-        distributed. An attribute will only be distributed if the implementation
+        serialized for clustering/replication, or storage to any persistent store.
+        An attribute will only be serialized if the implementation
         class name of the value matches this pattern. If the pattern is zero
         length or <code>null</code>, all attributes are eligible for
         distribution. The pattern is anchored so the fully qualified class name
@@ -418,11 +460,11 @@
   </attributes>
 
 
-  <h5>JDBC Based Store</h5>
+  <h5>Data source Based Store</h5>
 
-  <p>The <em>JDBC Based Store</em> implementation saves swapped out
+  <p>The <em>Data source Based Store</em> implementation saves swapped out
   sessions in individual rows of a preconfigured table in a database
-  that is accessed via a JDBC driver.  With large numbers of swapped out
+  that is accessed via a data sourcer.  With large numbers of swapped out
   sessions, this implementation will exhibit improved performance over
   the File Based Store described above.</p>
 
@@ -436,39 +478,16 @@
       <p>Java class name of the implementation to use.  This class must
       implement the <code>org.apache.catalina.Store</code> interface.  You
       <strong>must</strong> specify
-      <code>org.apache.catalina.session.JDBCStore</code>
+      <code>org.apache.catalina.session.DataSourceStore</code>
       to use this implementation.</p>
     </attribute>
 
-    <attribute name="connectionName" required="true">
-      <p>The user name that will be handed to the configured JDBC driver to
-      establish a connection to the database containing the session table.</p>
-    </attribute>
-
-    <attribute name="connectionPassword" required="true">
-      <p>The password that will be handed to the configured JDBC driver to
-      establish a connection to the database containing the session table.</p>
-    </attribute>
-
-    <attribute name="connectionURL" required="true">
-      <p>The connection URL that will be handed to the configured JDBC
-      driver to establish a connection to the database containing our
-      session table.</p>
-    </attribute>
-
     <attribute name="dataSourceName" required="false">
-      <p>Name of the JNDI resource for a JDBC DataSource-factory. If this option
-      is given and a valid JDBC resource can be found, it will be used and any
-      direct configuration of a JDBC connection via <code>connectionURL</code>,
-      <code>connectionName</code>, <code>connectionPassword</code> and
-      <code>driverName</code> will be ignored. Since this code uses prepared
-      statements, you might want to configure pooled prepared statements as
-      shown in <a href="../jndi-resources-howto.html">the JNDI resources
+      <p>Name of the JNDI resource for a JDBC DataSource-factory. Since this
+      code uses prepared statements, you might want to configure pooled
+      prepared statements as shown in
+       <a href="../jndi-resources-howto.html">the JNDI resources
       How-To</a>.</p>
-    </attribute>
-
-    <attribute name="driverName" required="true">
-      <p>Java class name of the JDBC driver to be used.</p>
     </attribute>
 
     <attribute name="localDataSource" required="false">
@@ -532,7 +551,7 @@
 
   </attributes>
 
-  <p>Before attempting to use the JDBC Based Store for the first time,
+  <p>Before attempting to use the data source Store for the first time,
   you must create the table that will be used to store swapped out sessions.
   Detailed SQL commands vary depending on the database you are using, but
   a script like this will generally be required:</p>
@@ -548,14 +567,8 @@
 );</source>
 
   <p>Note: The SQL command above does not use the default names for either the
-  table or the columns so the JDBC Store would need to be configured to reflect
-  this.</p>
-
-  <p>In order for the JDBC Based Store to successfully connect to your
-  database, the JDBC driver you configure must be visible to Tomcat's
-  internal class loader.  Generally, that means you must place the JAR
-  file containing this driver into the <code>$CATALINA_HOME/lib</code>
-  directory.</p>
+  table or the columns so the data source Store would need to be configured
+  to reflect this.</p>
 
 </section>
 

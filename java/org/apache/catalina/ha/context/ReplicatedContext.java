@@ -20,6 +20,7 @@ import java.util.Collections;
 import java.util.Enumeration;
 import java.util.HashSet;
 import java.util.Map;
+import java.util.NoSuchElementException;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -39,123 +40,235 @@ import org.apache.juli.logging.LogFactory;
 import org.apache.tomcat.util.res.StringManager;
 
 /**
- * @version 1.0
+ * Replicated context that supports session replication across cluster nodes.
  */
 public class ReplicatedContext extends StandardContext implements MapOwner {
+    /**
+     * Options for sending map updates.
+     */
     private int mapSendOptions = Channel.SEND_OPTIONS_DEFAULT;
     private static final Log log = LogFactory.getLog(ReplicatedContext.class);
-    protected static final long DEFAULT_REPL_TIMEOUT = 15000;//15 seconds
+    /**
+     * Default replication timeout in milliseconds.
+     */
+    protected static final long DEFAULT_REPL_TIMEOUT = 15000;// 15 seconds
     private static final StringManager sm = StringManager.getManager(ReplicatedContext.class);
 
     /**
-     * Start this component and implement the requirements
-     * of {@link org.apache.catalina.util.LifecycleBase#startInternal()}.
+     * Default constructor.
+     */
+    public ReplicatedContext() {
+        super();
+    }
+
+    /**
+     * Start this component and implement the requirements of
+     * {@link org.apache.catalina.util.LifecycleBase#startInternal()}.
      *
-     * @exception LifecycleException if this component detects a fatal error
-     *  that prevents this component from being used
+     * @exception LifecycleException if this component detects a fatal error that prevents this component from being
+     *                                   used
      */
     @Override
-    protected synchronized void startInternal() throws LifecycleException {
+    protected void startInternal() throws LifecycleException {
         super.startInternal();
         try {
-            CatalinaCluster catclust = (CatalinaCluster)this.getCluster();
-            if ( catclust != null ) {
-                ReplicatedMap<String,Object> map = new ReplicatedMap<>(
-                        this, catclust.getChannel(),DEFAULT_REPL_TIMEOUT,
-                        getName(),getClassLoaders());
+            CatalinaCluster catclust = (CatalinaCluster) this.getCluster();
+            if (catclust != null) {
+                ReplicatedMap<String,Object> map = new ReplicatedMap<>(this, catclust.getChannel(),
+                        DEFAULT_REPL_TIMEOUT, getName(), getClassLoaders());
                 map.setChannelSendOptions(mapSendOptions);
-                ((ReplApplContext)this.context).setAttributeMap(map);
+                ((ReplApplContext) this.context).setAttributeMap(map);
             }
-        }  catch ( Exception x ) {
-            log.error(sm.getString("replicatedContext.startUnable", getName()),x);
-            throw new LifecycleException(sm.getString("replicatedContext.startFailed", getName()),x);
+        } catch (Exception e) {
+            log.error(sm.getString("replicatedContext.startUnable", getName()), e);
+            throw new LifecycleException(sm.getString("replicatedContext.startFailed", getName()), e);
         }
     }
 
     /**
-     * Stop this component and implement the requirements
-     * of {@link org.apache.catalina.util.LifecycleBase#stopInternal()}.
+     * Stop this component and implement the requirements of
+     * {@link org.apache.catalina.util.LifecycleBase#stopInternal()}.
      *
-     * @exception LifecycleException if this component detects a fatal error
-     *  that prevents this component from being used
+     * @exception LifecycleException if this component detects a fatal error that prevents this component from being
+     *                                   used
      */
     @Override
-    protected synchronized void stopInternal() throws LifecycleException {
+    protected void stopInternal() throws LifecycleException {
 
-        Map<String, Object> map = ((ReplApplContext) this.context)
-                .getAttributeMap();
+        Map<String,Object> map = this.context != null ? ((ReplApplContext) this.context).getAttributeMap() : null;
 
         super.stopInternal();
 
         if (map instanceof ReplicatedMap) {
-            ((ReplicatedMap<?, ?>) map).breakdown();
+            ((ReplicatedMap<?,?>) map).breakdown();
         }
 
     }
 
 
+    /**
+     * Set the options for sending map updates. The value is only used when
+     * the context (re)starts.
+     *
+     * @param mapSendOptions the send options
+     */
     public void setMapSendOptions(int mapSendOptions) {
         this.mapSendOptions = mapSendOptions;
     }
 
+    /**
+     * Return the options for sending map updates.
+     *
+     * @return the send options
+     */
     public int getMapSendOptions() {
         return mapSendOptions;
     }
 
+    /**
+     * Return the class loaders to use for serialization.
+     *
+     * @return the class loaders
+     */
     public ClassLoader[] getClassLoaders() {
-        Loader loader = null;
+        Loader loader;
         ClassLoader classLoader = null;
         loader = this.getLoader();
-        if (loader != null) classLoader = loader.getClassLoader();
-        if ( classLoader == null ) classLoader = Thread.currentThread().getContextClassLoader();
-        if ( classLoader == Thread.currentThread().getContextClassLoader() ) {
-            return new ClassLoader[] {classLoader};
+        if (loader != null) {
+            classLoader = loader.getClassLoader();
+        }
+        Thread currentThread = Thread.currentThread();
+        if (classLoader == null) {
+            classLoader = currentThread.getContextClassLoader();
+        }
+        if (classLoader == currentThread.getContextClassLoader()) {
+            return new ClassLoader[] { classLoader };
         } else {
-            return new ClassLoader[] {classLoader,Thread.currentThread().getContextClassLoader()};
+            return new ClassLoader[] { classLoader, currentThread.getContextClassLoader() };
         }
     }
 
     @Override
     public ServletContext getServletContext() {
         if (context == null) {
-            context = new ReplApplContext(this);
-            if (getAltDDName() != null)
-                context.setAttribute(Globals.ALT_DD_ATTR,getAltDDName());
+            synchronized (this) {
+                if (context == null) {
+                    context = new ReplApplContext(this);
+                    if (getAltDDName() != null) {
+                        context.setAttribute(Globals.ALT_DD_ATTR, getAltDDName());
+                    }
+                }
+            }
         }
 
-        return ((ReplApplContext)context).getFacade();
+        return ((ReplApplContext) context).getFacade();
 
     }
 
 
+    /**
+     * Application context implementation for replicated contexts.
+     */
     protected static class ReplApplContext extends ApplicationContext {
-        protected final Map<String, Object> tomcatAttributes = new ConcurrentHashMap<>();
+        /**
+         * Attribute name prefixes reserved for internal use: the namespaces reserved by the Servlet
+         * specification and Tomcat's own namespace. Attributes using these names likely contain node
+         * specific state and must therefore never be replicated.
+         */
+        private static final String[] NON_REPLICATED_ATTRIBUTE_PREFIXES = { "java.", "javax.", "jakarta.",
+                "org.apache." };
 
+        /**
+         * Check if an attribute with the given name is an internal attribute that must not be replicated.
+         *
+         * @param attributeName The attribute name
+         *
+         * @return {@code true} if the attribute name starts with one of the internal prefixes
+         */
+        private static boolean isNonReplicatedAttribute(String attributeName) {
+            for (String prefix : NON_REPLICATED_ATTRIBUTE_PREFIXES) {
+                if (attributeName.startsWith(prefix)) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        /**
+         * Map for Tomcat-specific attributes that should not be replicated.
+         */
+        protected final Map<String,Object> tomcatAttributes = new ConcurrentHashMap<>();
+
+        /**
+         * Create a new instance.
+         *
+         * @param context the replicated context
+         */
         public ReplApplContext(ReplicatedContext context) {
             super(context);
         }
 
+        /**
+         * Return the parent replicated context.
+         *
+         * @return the parent context
+         */
         protected ReplicatedContext getParent() {
-            return (ReplicatedContext)getContext();
+            return (ReplicatedContext) getContext();
         }
 
         @Override
         protected ServletContext getFacade() {
-             return super.getFacade();
+            return super.getFacade();
         }
 
+        /**
+         * Return the attribute map.
+         *
+         * @return the attribute map
+         */
         public Map<String,Object> getAttributeMap() {
             return this.attributes;
         }
+
+        /**
+         * Set the attribute map.
+         *
+         * @param map the new attribute map
+         */
         public void setAttributeMap(Map<String,Object> map) {
             this.attributes = map;
+            // Attributes set while the context was starting were stored in the
+            // local map. Move them to the new map so that they are handled the
+            // same way as attributes set later on, in particular replicated to
+            // the other nodes. Values that cannot be serialized are stored
+            // locally by the replicated map.
+            for (Map.Entry<String,Object> entry : tomcatAttributes.entrySet()) {
+                if (!isNonReplicatedAttribute(entry.getKey())) {
+                    map.put(entry.getKey(), entry.getValue());
+                    tomcatAttributes.remove(entry.getKey());
+                }
+            }
+        }
+
+        @Override
+        protected boolean isAttributeStored(String name) {
+            return super.isAttributeStored(name) || tomcatAttributes.containsKey(name);
         }
 
         @Override
         public void removeAttribute(String name) {
-            tomcatAttributes.remove(name);
-            //do nothing
+            if (isReadOnlyAttribute(name)) {
+                return;
+            }
+            Object localValue = tomcatAttributes.remove(name);
+            boolean inAttributeMap = attributes.containsKey(name);
             super.removeAttribute(name);
+            if (localValue != null && !inAttributeMap) {
+                // The attribute was only stored locally, so the removal event
+                // was not fired by the attribute map
+                fireContextAttributeRemoved(name, localValue);
+            }
         }
 
         @Override
@@ -167,10 +280,17 @@ public class ReplicatedContext extends StandardContext implements MapOwner {
                 removeAttribute(name);
                 return;
             }
-            if ( (!getParent().getState().isAvailable()) || "org.apache.jasper.runtime.JspApplicationContextImpl".equals(name) ){
-                tomcatAttributes.put(name,value);
-            } else
-                super.setAttribute(name,value);
+            if ((!getParent().getState().isAvailable()) || isNonReplicatedAttribute(name)) {
+                if (isReadOnlyAttribute(name)) {
+                    return;
+                }
+                Object oldValue = tomcatAttributes.put(name, value);
+                // The attribute is stored locally, so the event has to be fired
+                // here rather than by the attribute map
+                fireContextAttributeAddedOrReplaced(oldValue != null, name, oldValue != null ? oldValue : value);
+            } else {
+                super.setAttribute(name, value);
+            }
         }
 
         @Override
@@ -186,41 +306,58 @@ public class ReplicatedContext extends StandardContext implements MapOwner {
         @SuppressWarnings("unchecked")
         @Override
         public Enumeration<String> getAttributeNames() {
-            Set<String> names = new HashSet<>();
-            names.addAll(attributes.keySet());
+            Set<String> names = new HashSet<>(tomcatAttributes.keySet());
+            // Names that are present in both stores are only reported once
+            names.removeAll(attributes.keySet());
 
-            return new MultiEnumeration<>(new Enumeration[] {
-                    super.getAttributeNames(),
-                    Collections.enumeration(names) });
+            return new MultiEnumeration<String>(
+                    new Enumeration[] { super.getAttributeNames(), Collections.enumeration(names) });
         }
     }
 
+    /**
+     * Enumeration that combines multiple enumerations into one.
+     *
+     * @param <T> the type of elements
+     */
     protected static class MultiEnumeration<T> implements Enumeration<T> {
-        private final Enumeration<T>[] e;
-        public MultiEnumeration(Enumeration<T>[] lists) {
-            e = lists;
+        /**
+         * The enumerations to combine.
+         */
+        private final Enumeration<T>[] enumerations;
+
+        /**
+         * Create a new instance.
+         *
+         * @param enumerations the enumerations to combine
+         */
+        public MultiEnumeration(Enumeration<T>[] enumerations) {
+            this.enumerations = enumerations;
         }
+
         @Override
         public boolean hasMoreElements() {
-            for ( int i=0; i<e.length; i++ ) {
-                if ( e[i].hasMoreElements() ) return true;
+            for (Enumeration<T> enumeration : enumerations) {
+                if (enumeration.hasMoreElements()) {
+                    return true;
+                }
             }
             return false;
         }
+
         @Override
         public T nextElement() {
-            for ( int i=0; i<e.length; i++ ) {
-                if ( e[i].hasMoreElements() ) return e[i].nextElement();
+            for (Enumeration<T> enumeration : enumerations) {
+                if (enumeration.hasMoreElements()) {
+                    return enumeration.nextElement();
+                }
             }
-            return null;
-
+            throw new NoSuchElementException();
         }
     }
 
     @Override
     public void objectMadePrimary(Object key, Object value) {
-        //noop
+        // noop
     }
-
-
 }

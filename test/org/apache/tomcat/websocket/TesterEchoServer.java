@@ -42,9 +42,8 @@ public class TesterEchoServer {
         @Override
         public void contextInitialized(ServletContextEvent sce) {
             super.contextInitialized(sce);
-            ServerContainer sc =
-                    (ServerContainer) sce.getServletContext().getAttribute(
-                            Constants.SERVER_CONTAINER_SERVLET_CONTEXT_ATTRIBUTE);
+            ServerContainer sc = (ServerContainer) sce.getServletContext()
+                    .getAttribute(Constants.SERVER_CONTAINER_SERVLET_CONTEXT_ATTRIBUTE);
             try {
                 sc.addEndpoint(Async.class);
                 sc.addEndpoint(Basic.class);
@@ -66,10 +65,10 @@ public class TesterEchoServer {
         public void echoTextMessage(Session session, String msg, boolean last) {
             try {
                 session.getBasicRemote().sendText(msg, last);
-            } catch (IOException e) {
+            } catch (IOException ioe) {
                 try {
                     session.close();
-                } catch (IOException e1) {
+                } catch (IOException ignore) {
                     // Ignore
                 }
             }
@@ -77,14 +76,13 @@ public class TesterEchoServer {
 
 
         @OnMessage
-        public void echoBinaryMessage(Session session, ByteBuffer msg,
-                boolean last) {
+        public void echoBinaryMessage(Session session, ByteBuffer msg, boolean last) {
             try {
                 session.getBasicRemote().sendBinary(msg, last);
-            } catch (IOException e) {
+            } catch (IOException ioe) {
                 try {
                     session.close();
-                } catch (IOException e1) {
+                } catch (IOException ignore) {
                     // Ignore
                 }
             }
@@ -98,10 +96,10 @@ public class TesterEchoServer {
         public void echoTextMessage(Session session, String msg) {
             try {
                 session.getBasicRemote().sendText(msg);
-            } catch (IOException e) {
+            } catch (IOException ioe) {
                 try {
                     session.close();
-                } catch (IOException e1) {
+                } catch (IOException ignore) {
                     // Ignore
                 }
             }
@@ -112,10 +110,10 @@ public class TesterEchoServer {
         public void echoBinaryMessage(Session session, ByteBuffer msg) {
             try {
                 session.getBasicRemote().sendBinary(msg);
-            } catch (IOException e) {
+            } catch (IOException ioe) {
                 try {
                     session.close();
-                } catch (IOException e1) {
+                } catch (IOException ignore) {
                     // Ignore
                 }
             }
@@ -132,10 +130,10 @@ public class TesterEchoServer {
         public void echoTextMessage(Session session, String msg) {
             try {
                 session.getBasicRemote().sendText(msg);
-            } catch (IOException e) {
+            } catch (IOException ioe) {
                 try {
                     session.close();
-                } catch (IOException e1) {
+                } catch (IOException ignore) {
                     // Ignore
                 }
             }
@@ -146,10 +144,10 @@ public class TesterEchoServer {
         public void echoBinaryMessage(Session session, ByteBuffer msg) {
             try {
                 session.getBasicRemote().sendBinary(msg);
-            } catch (IOException e) {
+            } catch (IOException ioe) {
                 try {
                     session.close();
-                } catch (IOException e1) {
+                } catch (IOException ignore) {
                     // Ignore
                 }
             }
@@ -166,10 +164,10 @@ public class TesterEchoServer {
         public void echoTextMessage(Session session, String msg) {
             try {
                 session.getBasicRemote().sendText(msg);
-            } catch (IOException e) {
+            } catch (IOException ioe) {
                 try {
                     session.close();
-                } catch (IOException e1) {
+                } catch (IOException ignore) {
                     // Ignore
                 }
             }
@@ -180,10 +178,10 @@ public class TesterEchoServer {
         public void echoBinaryMessage(Session session, ByteBuffer msg) {
             try {
                 session.getBasicRemote().sendBinary(msg);
-            } catch (IOException e) {
+            } catch (IOException ioe) {
                 try {
                     session.close();
-                } catch (IOException e1) {
+                } catch (IOException ignore) {
                     // Ignore
                 }
             }
@@ -200,11 +198,11 @@ public class TesterEchoServer {
                 session.getBasicRemote().getSendWriter();
                 // Simulate an error
                 throw new RuntimeException();
-            } catch (IOException e) {
+            } catch (IOException ioe) {
                 // Should not happen
                 try {
                     session.close();
-                } catch (IOException e1) {
+                } catch (IOException ignore) {
                     // Ignore
                 }
             }
@@ -218,10 +216,10 @@ public class TesterEchoServer {
         public void echoTextMessage(Session session, String msg) {
             try {
                 session.getBasicRemote().sendText(msg);
-            } catch (IOException e) {
+            } catch (IOException ioe) {
                 try {
                     session.close();
-                } catch (IOException e1) {
+                } catch (IOException ignore) {
                     // Ignore
                 }
             }

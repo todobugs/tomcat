@@ -19,10 +19,22 @@ package javax.servlet;
 import java.io.Serializable;
 import java.util.Enumeration;
 
+/**
+ * Provides a base class that implements the Filter and FilterConfig interfaces to reduce boilerplate when writing new
+ * filters.
+ *
+ * @see javax.servlet.Filter
+ * @see javax.servlet.FilterConfig
+ *
+ * @since Servlet 4.0
+ */
 public abstract class GenericFilter implements Filter, FilterConfig, Serializable {
 
     private static final long serialVersionUID = 1L;
 
+    /**
+     * The filter configuration.
+     */
     private volatile FilterConfig filterConfig;
 
 
@@ -41,8 +53,7 @@ public abstract class GenericFilter implements Filter, FilterConfig, Serializabl
     /**
      * Obtain the FilterConfig used to initialise this Filter instance.
      *
-     * @return The config previously passed to the {@link #init(FilterConfig)}
-     *         method
+     * @return The config previously passed to the {@link #init(FilterConfig)} method
      */
     public FilterConfig getFilterConfig() {
         return filterConfig;
@@ -57,17 +68,16 @@ public abstract class GenericFilter implements Filter, FilterConfig, Serializabl
 
     @Override
     public void init(FilterConfig filterConfig) throws ServletException {
-        this.filterConfig  = filterConfig;
+        this.filterConfig = filterConfig;
         init();
     }
 
 
     /**
-     * Convenience method for sub-classes to save them having to call
-     * <code>super.init(config)</code>. This is a NO-OP by default.
+     * Convenience method for sub-classes to save them having to call <code>super.init(config)</code>. This is a NO-OP
+     * by default.
      *
-     * @throws ServletException If an exception occurs that interrupts the
-     *         Filter's normal operation
+     * @throws ServletException If an exception occurs that interrupts the Filter's normal operation
      */
     public void init() throws ServletException {
         // NO-OP

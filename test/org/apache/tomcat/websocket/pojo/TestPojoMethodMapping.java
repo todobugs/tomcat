@@ -21,6 +21,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 import javax.websocket.ContainerProvider;
+import javax.websocket.DeploymentException;
 import javax.websocket.OnClose;
 import javax.websocket.OnMessage;
 import javax.websocket.OnOpen;
@@ -56,20 +57,18 @@ public class TestPojoMethodMapping extends TomcatBaseTest {
 
         Tomcat tomcat = getTomcatInstance();
         // No file system docBase required
-        Context ctx = tomcat.addContext("", null);
+        Context ctx = getProgrammaticRootContext();
         ctx.addApplicationListener(ServerConfigListener.class.getName());
         Tomcat.addServlet(ctx, "default", new DefaultServlet());
-        ctx.addServletMappingDecoded("/", "default");
+        ctx.addServletMapping("/", "default");
 
-        WebSocketContainer wsContainer =
-                ContainerProvider.getWebSocketContainer();
+        WebSocketContainer wsContainer = ContainerProvider.getWebSocketContainer();
 
 
         tomcat.start();
 
         SimpleClient client = new SimpleClient();
-        URI uri = new URI("ws://localhost:" + getPort() + "/" + PARAM_ONE +
-                "/" + PARAM_TWO + "/" + PARAM_THREE);
+        URI uri = new URI("ws://localhost:" + getPort() + "/" + PARAM_ONE + "/" + PARAM_TWO + "/" + PARAM_THREE);
 
         Session session = wsContainer.connectToServer(client, uri);
         session.getBasicRemote().sendText("NO-OP");
@@ -98,29 +97,153 @@ public class TestPojoMethodMapping extends TomcatBaseTest {
     }
 
 
-    @ServerEndpoint(value="/{one}/{two}/{three}",
-            configurator=SingletonConfigurator.class)
+    /*
+     * Only String, byte[] and ByteBuffer payloads (plus the boolean last flag) are permitted for partial messages. A
+     * primitive payload combined with a boolean last flag must be rejected at deployment time rather than resulting in
+     * a partial message handler that fails when the first fragmented message arrives.
+     */
+    @Test
+    public void testPrimitiveAndBooleanParameters() throws Exception {
+        try {
+            @SuppressWarnings("unused")
+            PojoMethodMapping mapping = new PojoMethodMapping(PrimitiveAndBooleanServer.class, new ArrayList<>(),
+                    "/primitiveAndBoolean", null);
+            Assert.fail("Expected a DeploymentException");
+        } catch (DeploymentException de) {
+            Assert.assertTrue("Unexpected message: " + de.getMessage(), de.getMessage().contains("primitive type"));
+        }
+    }
+
+
+    @ServerEndpoint("/primitiveAndBoolean")
+    public static final class PrimitiveAndBooleanServer {
+
+        @OnMessage
+        public void onMessage(@SuppressWarnings("unused") int payload, @SuppressWarnings("unused") boolean last) {
+            // No-Op
+        }
+    }
+
+
+    /*
+     * A sub-class method that overrides an annotated super class method using a covariant return type is still an
+     * override. Re-declaring the annotation on the override must not be treated as a duplicate annotation and the
+     * sub-class method must be the one that is mapped.
+     */
+    @Test
+    public void testCovariantReturnOverride() throws Exception {
+        PojoMethodMapping mapping =
+                new PojoMethodMapping(CovariantReturnServer.class, new ArrayList<>(), "/covariantReturn", null);
+        Assert.assertEquals(CovariantReturnServer.class.getMethod("onOpen", Session.class), mapping.getOnOpen());
+    }
+
+
+    /*
+     * A non-annotated sub-class method that overrides an annotated super class method using a covariant return type
+     * should result in the super class method being ignored. Note that a compiler generated bridge method previously
+     * masked this in compiled code.
+     */
+    @Test
+    public void testCovariantReturnOverrideWithoutAnnotation() throws Exception {
+        PojoMethodMapping mapping = new PojoMethodMapping(CovariantReturnOverrideServer.class, new ArrayList<>(),
+                "/covariantReturnOverride", null);
+        Assert.assertNull(mapping.getOnOpen());
+    }
+
+
+    /*
+     * A sub-class method that is not an override of the annotated super class method must still be rejected as a
+     * duplicate annotation if it handles the same message type.
+     */
+    @Test
+    public void testAnnotatedMethodNotAnOverride() throws Exception {
+        try {
+            @SuppressWarnings("unused")
+            PojoMethodMapping mapping =
+                    new PojoMethodMapping(NotAnOverrideServer.class, new ArrayList<>(), "/notAnOverride", null);
+            Assert.fail("Expected a DeploymentException");
+        } catch (DeploymentException de) {
+            Assert.assertTrue("Unexpected message: " + de.getMessage(),
+                    de.getMessage().contains("Duplicate annotations"));
+        }
+    }
+
+
+    public static class CovariantReturnBase {
+
+        @OnOpen
+        public Object onOpen(Session session) {
+            return session;
+        }
+
+        @OnMessage
+        public Object onMessage(String message) {
+            return message;
+        }
+    }
+
+
+    @ServerEndpoint("/covariantReturn")
+    public static final class CovariantReturnServer extends CovariantReturnBase {
+
+        @Override
+        @OnOpen
+        public String onOpen(Session session) {
+            return session.toString();
+        }
+
+        @Override
+        @OnMessage
+        public String onMessage(String message) {
+            return message;
+        }
+    }
+
+
+    @ServerEndpoint("/covariantReturnOverride")
+    public static final class CovariantReturnOverrideServer extends CovariantReturnBase {
+
+        @Override
+        public String onOpen(Session session) {
+            return session.toString();
+        }
+
+        @Override
+        public String onMessage(String message) {
+            return message;
+        }
+    }
+
+
+    @ServerEndpoint("/notAnOverride")
+    public static final class NotAnOverrideServer extends CovariantReturnBase {
+
+        @OnMessage
+        public String otherMessage(String message) {
+            return message;
+        }
+    }
+
+
+    @ServerEndpoint(value = "/{one}/{two}/{three}", configurator = SingletonConfigurator.class)
     public static final class Server {
 
         private final List<String> errors = new ArrayList<>();
         private volatile boolean closed;
 
         @OnOpen
-        public void onOpen(@PathParam("one") String p1, @PathParam("two")int p2,
-                @PathParam("three")boolean p3) {
+        public void onOpen(@PathParam("one") String p1, @PathParam("two") int p2, @PathParam("three") boolean p3) {
             checkParams("onOpen", p1, p2, p3);
         }
 
         @OnMessage
-        public void onMessage(@SuppressWarnings("unused") String msg,
-                @PathParam("one") String p1, @PathParam("two")int p2,
-                @PathParam("three")boolean p3) {
+        public void onMessage(@SuppressWarnings("unused") String msg, @PathParam("one") String p1,
+                @PathParam("two") int p2, @PathParam("three") boolean p3) {
             checkParams("onMessage", p1, p2, p3);
         }
 
         @OnClose
-        public void onClose(@PathParam("one") String p1,
-                @PathParam("two")int p2, @PathParam("three")boolean p3) {
+        public void onClose(@PathParam("one") String p1, @PathParam("two") int p2, @PathParam("three") boolean p3) {
             checkParams("onClose", p1, p2, p3);
             closed = true;
         }
@@ -141,8 +264,7 @@ public class TestPojoMethodMapping extends TomcatBaseTest {
 
         private void checkParam(String method, String expected, String actual) {
             if (!expected.equals(actual)) {
-                errors.add("Method [" + method + "]. Expected [" + expected +
-                        "] was + [" + actual + "]");
+                errors.add("Method [" + method + "]. Expected [" + expected + "] was + [" + actual + "]");
             }
         }
     }

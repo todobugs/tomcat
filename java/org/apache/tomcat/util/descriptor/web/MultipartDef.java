@@ -14,60 +14,108 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
-
 package org.apache.tomcat.util.descriptor.web;
 
 import java.io.Serializable;
 
 
 /**
- * Representation of a the multipart configuration for a servlet.
+ * Representation of the multipart configuration for a servlet.
  */
 public class MultipartDef implements Serializable {
 
     private static final long serialVersionUID = 1L;
 
+    /**
+     * Default constructor.
+     */
+    public MultipartDef() {
+    }
+
     // ------------------------------------------------------------- Properties
+    /**
+     * The location for temporary file storage.
+     */
     private String location;
 
+    /**
+     * Get the location.
+     * @return the location
+     */
     public String getLocation() {
         return location;
     }
 
+    /**
+     * Set the location.
+     * @param location the location
+     */
     public void setLocation(String location) {
         this.location = location;
     }
 
 
+    /**
+     * The maximum allowed file size.
+     */
     private String maxFileSize;
 
+    /**
+     * Get the maximum file size.
+     * @return the maximum file size
+     */
     public String getMaxFileSize() {
         return maxFileSize;
     }
 
+    /**
+     * Set the maximum file size.
+     * @param maxFileSize the maximum file size
+     */
     public void setMaxFileSize(String maxFileSize) {
         this.maxFileSize = maxFileSize;
     }
 
 
+    /**
+     * The maximum allowed request size.
+     */
     private String maxRequestSize;
 
+    /**
+     * Get the maximum request size.
+     * @return the maximum request size
+     */
     public String getMaxRequestSize() {
         return maxRequestSize;
     }
 
+    /**
+     * Set the maximum request size.
+     * @param maxRequestSize the maximum request size
+     */
     public void setMaxRequestSize(String maxRequestSize) {
         this.maxRequestSize = maxRequestSize;
     }
 
 
+    /**
+     * The file size threshold for switching to disk storage.
+     */
     private String fileSizeThreshold;
 
+    /**
+     * Get the file size threshold.
+     * @return the file size threshold
+     */
     public String getFileSizeThreshold() {
         return fileSizeThreshold;
     }
 
+    /**
+     * Set the file size threshold.
+     * @param fileSizeThreshold the file size threshold
+     */
     public void setFileSizeThreshold(String fileSizeThreshold) {
         this.fileSizeThreshold = fileSizeThreshold;
     }
@@ -79,16 +127,10 @@ public class MultipartDef implements Serializable {
     public int hashCode() {
         final int prime = 31;
         int result = 1;
-        result = prime
-                * result
-                + ((fileSizeThreshold == null) ? 0 : fileSizeThreshold
-                        .hashCode());
-        result = prime * result
-                + ((location == null) ? 0 : location.hashCode());
-        result = prime * result
-                + ((maxFileSize == null) ? 0 : maxFileSize.hashCode());
-        result = prime * result
-                + ((maxRequestSize == null) ? 0 : maxRequestSize.hashCode());
+        result = prime * result + ((fileSizeThreshold == null) ? 0 : fileSizeThreshold.hashCode());
+        result = prime * result + ((location == null) ? 0 : location.hashCode());
+        result = prime * result + ((maxFileSize == null) ? 0 : maxFileSize.hashCode());
+        result = prime * result + ((maxRequestSize == null) ? 0 : maxRequestSize.hashCode());
         return result;
     }
 
@@ -126,13 +168,10 @@ public class MultipartDef implements Serializable {
             return false;
         }
         if (maxRequestSize == null) {
-            if (other.maxRequestSize != null) {
-                return false;
-            }
-        } else if (!maxRequestSize.equals(other.maxRequestSize)) {
-            return false;
+            return other.maxRequestSize == null;
+        } else {
+            return maxRequestSize.equals(other.maxRequestSize);
         }
-        return true;
     }
 
 }

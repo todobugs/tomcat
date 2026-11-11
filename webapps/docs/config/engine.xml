@@ -23,7 +23,6 @@
   &project;
 
   <properties>
-    <author email="craigmcc@apache.org">Craig R. McClanahan</author>
     <title>The Engine Container</title>
   </properties>
 
@@ -95,9 +94,9 @@
         instance.</p>
         <p>
             Note that the <code>jvmRoute</code> can also be set using the
-            <code>jvmRoute</code> system property. The <code>jvmRoute</code>
-            set in an <code>&lt;Engine&gt;</code> attribute will override
-            any <code>jvmRoute</code> system property.
+            deprecated <code>jvmRoute</code> system property. The
+            <code>jvmRoute</code> set in an <code>&lt;Engine&gt;</code>
+            attribute will override any <code>jvmRoute</code> system property.
         </p>
       </attribute>
 
@@ -249,8 +248,8 @@
   ...
   <Valve className="org.apache.catalina.valves.RemoteHostValve"
          allow=".*\.mycompany\.com|www\.yourcompany\.com"/>
-  <Valve className="org.apache.catalina.valves.RemoteAddrValve"
-         deny="192\.168\.1\.\d+"/>
+  <Valve className="org.apache.catalina.valves.RemoteCIDRValve"
+         deny="192.168.1.0/24"/>
   ...
 </Engine>]]></source>
 

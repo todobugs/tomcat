@@ -14,48 +14,70 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
-
 package org.apache.catalina.ant;
-
 
 import org.apache.tools.ant.BuildException;
 
-
 /**
- * Ant task that implements the <code>/sessions</code> command
- * supported by the Tomcat manager application.
- *
- * @author Vivek Chopra
+ * Ant task that implements the <code>/sessions</code> command supported by the Tomcat manager application. Note that
+ * the <code>/sessions</code> command is deprecated in favour of the <code>/expire</code> command.
  */
 public class SessionsTask extends AbstractCatalinaCommandTask {
 
+    /**
+     * Default constructor.
+     */
+    public SessionsTask() {
+    }
 
+    /**
+     * Minimum idle time in minutes for sessions to be expired (invalidated).
+     */
     protected String idle = null;
 
+    /**
+     * Returns the minimum idle time in minutes for sessions to be expired (invalidated).
+     *
+     * @return the minimum idle time
+     */
     public String getIdle() {
         return this.idle;
     }
 
+    /**
+     * Sets the minimum idle time in minutes for sessions to be expired (invalidated).
+     *
+     * @param idle the minimum idle time
+     */
     public void setIdle(String idle) {
         this.idle = idle;
     }
 
+    /**
+     * Appends the idle parameter to the query string if both path and idle are set.
+     *
+     * @param command the command being executed
+     * @return the query string buffer
+     */
     @Override
     public StringBuilder createQueryString(String command) {
         StringBuilder buffer = super.createQueryString(command);
         if (path != null && idle != null) {
             buffer.append("&idle=");
-            buffer.append(this.idle);
+            try {
+                int idleMinutes = Integer.parseInt(idle);
+                if (idleMinutes < 0 || idleMinutes > Integer.MAX_VALUE / 60) {
+                    throw new BuildException("Invalid 'idle' attribute (must be a non-negative integer no greater "
+                            + "than " + (Integer.MAX_VALUE / 60) + "): [" + idle + "]");
+                }
+                buffer.append(idleMinutes);
+            } catch (NumberFormatException nfe) {
+                throw new BuildException("Invalid 'idle' attribute (must be an integer): [" + idle + "]",  nfe);
+            }
         }
         return buffer;
     }
 
-    /**
-     * Execute the requested operation.
-     *
-     * @exception BuildException if an error occurs
-     */
     @Override
     public void execute() throws BuildException {
 

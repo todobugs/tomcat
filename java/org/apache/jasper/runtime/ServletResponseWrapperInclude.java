@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.jasper.runtime;
 
 import java.io.IOException;
@@ -27,15 +26,9 @@ import javax.servlet.http.HttpServletResponseWrapper;
 import javax.servlet.jsp.JspWriter;
 
 /**
- * ServletResponseWrapper used by the JSP 'include' action.
- *
- * This wrapper response object is passed to RequestDispatcher.include(), so
- * that the output of the included resource is appended to that of the
- * including page.
- *
- * @author Pierre Delisle
+ * ServletResponseWrapper used by the JSP 'include' action. This wrapper response object is passed to
+ * RequestDispatcher.include(), so that the output of the included resource is appended to that of the including page.
  */
-
 public class ServletResponseWrapperInclude extends HttpServletResponseWrapper {
 
     /**
@@ -45,15 +38,19 @@ public class ServletResponseWrapperInclude extends HttpServletResponseWrapper {
 
     private final JspWriter jspWriter;
 
-    public ServletResponseWrapperInclude(ServletResponse response,
-                                         JspWriter jspWriter) {
-        super((HttpServletResponse)response);
+    /**
+     * Creates a new response wrapper for include operations.
+     * @param response the servlet response
+     * @param jspWriter the JSP writer
+     */
+    public ServletResponseWrapperInclude(ServletResponse response, JspWriter jspWriter) {
+        super((HttpServletResponse) response);
         this.printWriter = new PrintWriter(jspWriter);
         this.jspWriter = jspWriter;
     }
 
     /**
-     * Returns a wrapper around the JspWriter of the including page.
+     * @return a wrapper around the JspWriter of the including page.
      */
     @Override
     public PrintWriter getWriter() throws IOException {
@@ -66,14 +63,14 @@ public class ServletResponseWrapperInclude extends HttpServletResponseWrapper {
     }
 
     /**
-     * Clears the output buffer of the JspWriter associated with the including
-     * page.
+     * Clears the output buffer of the JspWriter associated with the including page.
      */
     @Override
     public void resetBuffer() {
         try {
             jspWriter.clearBuffer();
         } catch (IOException ioe) {
+            // Ignore
         }
     }
 }

@@ -36,6 +36,14 @@
 #                   will be redirected.
 #                   Default is $CATALINA_BASE/logs/catalina.out
 #
+#   CATALINA_OUT_CMD (Optional) Command which will be executed and receive
+#                   as its stdin the stdout and stderr from the Tomcat java
+#                   process. If CATALINA_OUT_CMD is set, the value of
+#                   CATALINA_OUT will be used as a named pipe.
+#                   No default.
+#                   Example (all one line)
+#                   CATALINA_OUT_CMD="/usr/bin/rotatelogs -f $CATALINA_BASE/logs/catalina.out.%Y-%m-%d.log 86400"
+#
 #   CATALINA_OPTS   (Optional) Java runtime options used when the "start",
 #                   "run" or "debug" command is executed.
 #                   Include here and not in JAVA_OPTS all options, that should
@@ -94,9 +102,14 @@
 #                   of the catalina startup java process, when start (fork) is
 #                   used
 #
-#   LOGGING_CONFIG  (Optional) Override Tomcat's logging config file
+#   CATALINA_LOGGING_CONFIG (Optional) Override Tomcat's logging config file
 #                   Example (all one line)
-#                   LOGGING_CONFIG="-Djava.util.logging.config.file=$CATALINA_BASE/conf/logging.properties"
+#                   CATALINA_LOGGING_CONFIG="-Djava.util.logging.config.file=$CATALINA_BASE/conf/logging.properties"
+#
+#   LOGGING_CONFIG  Deprecated
+#                   Use CATALINA_LOGGING_CONFIG
+#                   This is only used if CATALINA_LOGGING_CONFIG is not set
+#                   and LOGGING_CONFIG starts with "-D..."
 #
 #   LOGGING_MANAGER (Optional) Override Tomcat's logging manager
 #                   Example (all one line)
@@ -255,13 +268,28 @@ JAVA_OPTS="$JAVA_OPTS $JSSE_OPTS"
 # Do this here so custom URL handles (specifically 'war:...') can be used in the security policy
 JAVA_OPTS="$JAVA_OPTS -Djava.protocol.handler.pkgs=org.apache.catalina.webresources"
 
+# Disable the global canonical file name cache to protect against CVE-2024-56337
+# Note: The cache is disabled by default in Java 12 to 20 inclusive
+#       The cache is removed in Java 21 onwards
+# Need to set this here as java.io.FileSystem caches this in a static field during class
+# initialisation so it needs to be set before any file system access
+JAVA_OPTS="$JAVA_OPTS -Dsun.io.useCanonCaches=false"
+
+# Check for the deprecated LOGGING_CONFIG
+# Only use it if CATALINA_LOGGING_CONFIG is not set and LOGGING_CONFIG starts with "-D..."
+if [ -z "$CATALINA_LOGGING_CONFIG" ]; then
+  case $LOGGING_CONFIG in
+    -D*) CATALINA_LOGGING_CONFIG="$LOGGING_CONFIG"
+  esac
+fi
+
 # Set juli LogManager config file if it is present and an override has not been issued
-if [ -z "$LOGGING_CONFIG" ]; then
+if [ -z "$CATALINA_LOGGING_CONFIG" ]; then
   if [ -r "$CATALINA_BASE"/conf/logging.properties ]; then
-    LOGGING_CONFIG="-Djava.util.logging.config.file=$CATALINA_BASE/conf/logging.properties"
+    CATALINA_LOGGING_CONFIG="-Djava.util.logging.config.file=$CATALINA_BASE/conf/logging.properties"
   else
     # Bugzilla 45585
-    LOGGING_CONFIG="-Dnop"
+    CATALINA_LOGGING_CONFIG="-Dnop"
   fi
 fi
 
@@ -304,7 +332,11 @@ fi
 
 # Add the JAVA 9 specific start-up parameters required by Tomcat
 JDK_JAVA_OPTIONS="$JDK_JAVA_OPTIONS --add-opens=java.base/java.lang=ALL-UNNAMED"
+JDK_JAVA_OPTIONS="$JDK_JAVA_OPTIONS --add-opens=java.base/java.lang.invoke=ALL-UNNAMED"
+JDK_JAVA_OPTIONS="$JDK_JAVA_OPTIONS --add-opens=java.base/java.lang.reflect=ALL-UNNAMED"
 JDK_JAVA_OPTIONS="$JDK_JAVA_OPTIONS --add-opens=java.base/java.io=ALL-UNNAMED"
+JDK_JAVA_OPTIONS="$JDK_JAVA_OPTIONS --add-opens=java.base/java.util=ALL-UNNAMED"
+JDK_JAVA_OPTIONS="$JDK_JAVA_OPTIONS --add-opens=java.base/java.util.concurrent=ALL-UNNAMED"
 JDK_JAVA_OPTIONS="$JDK_JAVA_OPTIONS --add-opens=java.rmi/sun.rmi.transport=ALL-UNNAMED"
 export JDK_JAVA_OPTIONS
 
@@ -321,6 +353,7 @@ if [ $have_tty -eq 1 ]; then
     echo "Using JRE_HOME:        $JRE_HOME"
   fi
   echo "Using CLASSPATH:       $CLASSPATH"
+  echo "Using CATALINA_OPTS:   $CATALINA_OPTS"
   if [ ! -z "$CATALINA_PID" ]; then
     echo "Using CATALINA_PID:    $CATALINA_PID"
   fi
@@ -343,10 +376,6 @@ if [ "$1" = "jpda" ] ; then
   shift
 fi
 
-# TODO: Bugzilla 63815
-# This doesn't currently work (and can't be made to work) if values used in
-# CATALINA_OPTS and/or JAVA_OPTS require quoting. See:
-# https://bugs.openjdk.java.net/browse/JDK-8234808
 if [ "$1" = "debug" ] ; then
   if $os400; then
     echo "Debug command not available on OS400"
@@ -358,7 +387,7 @@ if [ "$1" = "debug" ] ; then
         echo "Using Security Manager"
       fi
       shift
-      exec "$_RUNJDB" "$LOGGING_CONFIG" $LOGGING_MANAGER $JAVA_OPTS $CATALINA_OPTS \
+      eval exec "\"$_RUNJDB\"" "\"$CATALINA_LOGGING_CONFIG\"" $LOGGING_MANAGER "$JAVA_OPTS" "$CATALINA_OPTS" \
         -D$ENDORSED_PROP="$JAVA_ENDORSED_DIRS" \
         -classpath "$CLASSPATH" \
         -sourcepath "$CATALINA_HOME"/../../java \
@@ -369,7 +398,7 @@ if [ "$1" = "debug" ] ; then
         -Djava.io.tmpdir="$CATALINA_TMPDIR" \
         org.apache.catalina.startup.Bootstrap "$@" start
     else
-      exec "$_RUNJDB" "$LOGGING_CONFIG" $LOGGING_MANAGER $JAVA_OPTS $CATALINA_OPTS \
+      eval exec "\"$_RUNJDB\"" "\"$CATALINA_LOGGING_CONFIG\"" $LOGGING_MANAGER "$JAVA_OPTS" "$CATALINA_OPTS" \
         -D$ENDORSED_PROP="$JAVA_ENDORSED_DIRS" \
         -classpath "$CLASSPATH" \
         -sourcepath "$CATALINA_HOME"/../../java \
@@ -388,7 +417,7 @@ elif [ "$1" = "run" ]; then
       echo "Using Security Manager"
     fi
     shift
-    eval exec "\"$_RUNJAVA\"" "\"$LOGGING_CONFIG\"" $LOGGING_MANAGER "$JAVA_OPTS" "$CATALINA_OPTS" \
+    eval exec "\"$_RUNJAVA\"" "\"$CATALINA_LOGGING_CONFIG\"" $LOGGING_MANAGER "$JAVA_OPTS" "$CATALINA_OPTS" \
       -D$ENDORSED_PROP="\"$JAVA_ENDORSED_DIRS\"" \
       -classpath "\"$CLASSPATH\"" \
       -Djava.security.manager \
@@ -398,7 +427,7 @@ elif [ "$1" = "run" ]; then
       -Djava.io.tmpdir="\"$CATALINA_TMPDIR\"" \
       org.apache.catalina.startup.Bootstrap "$@" start
   else
-    eval exec "\"$_RUNJAVA\"" "\"$LOGGING_CONFIG\"" $LOGGING_MANAGER "$JAVA_OPTS" "$CATALINA_OPTS" \
+    eval exec "\"$_RUNJAVA\"" "\"$CATALINA_LOGGING_CONFIG\"" $LOGGING_MANAGER "$JAVA_OPTS" "$CATALINA_OPTS" \
       -D$ENDORSED_PROP="\"$JAVA_ENDORSED_DIRS\"" \
       -classpath "\"$CLASSPATH\"" \
       -Dcatalina.base="\"$CATALINA_BASE\"" \
@@ -450,13 +479,26 @@ elif [ "$1" = "start" ] ; then
   fi
 
   shift
-  touch "$CATALINA_OUT"
+  if [ -z "$CATALINA_OUT_CMD" ] ; then
+    touch "$CATALINA_OUT"
+  else
+    if [ ! -e "$CATALINA_OUT" ]; then
+      if ! mkfifo "$CATALINA_OUT"; then
+        echo "cannot create named pipe $CATALINA_OUT. Start aborted."
+        exit 1
+      fi
+    elif [ ! -p "$CATALINA_OUT" ]; then
+      echo "$CATALINA_OUT exists and is not a named pipe. Start aborted."
+      exit 1
+    fi
+    $CATALINA_OUT_CMD <"$CATALINA_OUT" &
+  fi
   if [ "$1" = "-security" ] ; then
     if [ $have_tty -eq 1 ]; then
       echo "Using Security Manager"
     fi
     shift
-    eval $_NOHUP "\"$_RUNJAVA\"" "\"$LOGGING_CONFIG\"" $LOGGING_MANAGER "$JAVA_OPTS" "$CATALINA_OPTS" \
+    eval $_NOHUP "\"$_RUNJAVA\"" "\"$CATALINA_LOGGING_CONFIG\"" $LOGGING_MANAGER "$JAVA_OPTS" "$CATALINA_OPTS" \
       -D$ENDORSED_PROP="\"$JAVA_ENDORSED_DIRS\"" \
       -classpath "\"$CLASSPATH\"" \
       -Djava.security.manager \
@@ -468,7 +510,7 @@ elif [ "$1" = "start" ] ; then
       >> "$CATALINA_OUT" 2>&1 "&"
 
   else
-    eval $_NOHUP "\"$_RUNJAVA\"" "\"$LOGGING_CONFIG\"" $LOGGING_MANAGER "$JAVA_OPTS" "$CATALINA_OPTS" \
+    eval $_NOHUP "\"$_RUNJAVA\"" "\"$CATALINA_LOGGING_CONFIG\"" $LOGGING_MANAGER "$JAVA_OPTS" "$CATALINA_OPTS" \
       -D$ENDORSED_PROP="\"$JAVA_ENDORSED_DIRS\"" \
       -classpath "\"$CLASSPATH\"" \
       -Dcatalina.base="\"$CATALINA_BASE\"" \
@@ -623,9 +665,11 @@ elif [ "$1" = "configtest" ] ; then
 
 elif [ "$1" = "version" ] ; then
 
-    "$_RUNJAVA"   \
-      -classpath "$CATALINA_HOME/lib/catalina.jar" \
-      org.apache.catalina.util.ServerInfo
+   eval "\"$_RUNJAVA\"" "$JAVA_OPTS" \
+         -classpath "\"$CATALINA_HOME/bin/tomcat-juli.jar:$CATALINA_HOME/lib/*\"" \
+         -Dcatalina.home="\"$CATALINA_HOME\"" \
+         -Dcatalina.base="\"$CATALINA_BASE\"" \
+         org.apache.catalina.util.ServerInfo
 
 else
 

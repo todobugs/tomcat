@@ -16,36 +16,44 @@
  */
 package org.apache.tomcat.util.net;
 
+/**
+ * Base class for sendfile operations. Tracks the file path, position, length,
+ * and keep-alive state for zero-copy file transfer to a socket.
+ */
 public abstract class SendfileDataBase {
 
     /**
-     * Is the current request being processed on a keep-alive connection? This
-     * determines if the socket is closed once the send file completes or if
-     * processing continues with the next request on the connection or waiting
-     * for that next request to arrive.
+     * Is the current request being processed on a keep-alive connection? This determines if the socket is closed once
+     * the send file completes or if processing continues with the next request on the connection or waiting for that
+     * next request to arrive.
      */
     public SendfileKeepAliveState keepAliveState = SendfileKeepAliveState.NONE;
 
     /**
-     * The full path to the file that contains the data to be written to the
-     * socket.
+     * The full path to the file that contains the data to be written to the socket.
      */
     public final String fileName;
 
     /**
-     * The position of the next byte in the file to be written to the socket.
-     * This is initialised to the start point and then updated as the file is
-     * written.
+     * The position of the next byte in the file to be written to the socket. This is initialised to the start point and
+     * then updated as the file is written.
      */
     public long pos;
 
     /**
-     * The number of bytes remaining to be written from the file (from the
-     * current {@link #pos}. This is initialised to the end point - the start
-     * point and then updated as the file is written.
+     * The number of bytes remaining to be written from the file (from the current {@link #pos}). This is initialised to
+     * the value provided by the caller and then updated as the file is written.
      */
     public long length;
 
+    /**
+     * Initialise the sendfile data with the given file path, starting position,
+     * and byte count.
+     *
+     * @param filename the path to the file to send
+     * @param pos      the starting position within the file
+     * @param length   the number of bytes to send
+     */
     public SendfileDataBase(String filename, long pos, long length) {
         this.fileName = filename;
         this.pos = pos;

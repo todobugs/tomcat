@@ -16,16 +16,95 @@
  */
 package org.apache.catalina.tribes.group.interceptors;
 
+/**
+ * MBean interface for managing the {@link EncryptInterceptor} configuration and status.
+ *
+ * @deprecated Configure the cluster to use TLS instead. This interceptor will be removed in Tomcat 12.
+ */
+@Deprecated
 public interface EncryptInterceptorMBean {
 
-    // Config
-    public int getOptionFlag();
-    public void setOptionFlag(int optionFlag);
+    /**
+     * Returns the option flag for the encryption interceptor.
+     *
+     * @return the option flag value
+     */
+    int getOptionFlag();
 
-    public void setEncryptionAlgorithm(String algorithm);
-    public String getEncryptionAlgorithm();
-    public void setEncryptionKey(byte[] key);
-    public byte[] getEncryptionKey();
-    public void setProviderName(String provider);
-    public String getProviderName();
+    /**
+     * Sets the option flag for the encryption interceptor.
+     *
+     * @param optionFlag the option flag value
+     */
+    void setOptionFlag(int optionFlag);
+
+    /**
+     * Sets the encryption algorithm to use.
+     *
+     * @param algorithm the encryption algorithm in algorithm/mode/padding format
+     */
+    void setEncryptionAlgorithm(String algorithm);
+
+    /**
+     * Returns the encryption algorithm currently in use.
+     *
+     * @return the encryption algorithm string
+     */
+    String getEncryptionAlgorithm();
+
+    /**
+     * Sets the encryption key as raw bytes.
+     *
+     * @param key the encryption key bytes
+     */
+    void setEncryptionKey(byte[] key);
+
+    /**
+     * Returns the encryption key as raw bytes.
+     *
+     * @return the encryption key bytes
+     */
+    byte[] getEncryptionKey();
+
+    /**
+     * Sets the JCA provider name for cryptographic operations.
+     *
+     * @param provider the JCA provider name
+     */
+    void setProviderName(String provider);
+
+    /**
+     * Returns the JCA provider name for cryptographic operations.
+     *
+     * @return the JCA provider name, or {@code null} for default
+     */
+    String getProviderName();
+
+    /**
+     * Sets the time-based replay window in milliseconds.
+     *
+     * @param replayWindowTime the replay window time
+     */
+    void setReplayWindowTime(long replayWindowTime);
+
+    /**
+     * Returns the time-based replay window in milliseconds.
+     *
+     * @return the replay window time
+     */
+    long getReplayWindowTime();
+
+    /**
+     * Sets the maximum number of replay cache entries.
+     *
+     * @param replayWindowMessageCount the replay window message count
+     */
+    void setReplayWindowMessageCount(int replayWindowMessageCount);
+
+    /**
+     * Returns the maximum number of replay cache entries.
+     *
+     * @return the replay window message count
+     */
+    int getReplayWindowMessageCount();
 }

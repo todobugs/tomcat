@@ -16,6 +16,8 @@
  */
 package org.apache.catalina.tribes.transport;
 
+import java.io.IOException;
+
 import javax.management.ObjectName;
 
 import org.apache.catalina.tribes.Channel;
@@ -23,13 +25,12 @@ import org.apache.catalina.tribes.ChannelException;
 import org.apache.catalina.tribes.ChannelMessage;
 import org.apache.catalina.tribes.ChannelSender;
 import org.apache.catalina.tribes.Member;
+import org.apache.catalina.tribes.group.GroupChannel;
 import org.apache.catalina.tribes.jmx.JmxRegistry;
 import org.apache.catalina.tribes.transport.nio.PooledParallelSender;
 
 /**
- * Transmit message to other cluster members
- * Actual senders are created based on the replicationMode
- * type
+ * Transmit message to other cluster members Actual senders are created based on the replicationMode type
  */
 public class ReplicationTransmitter implements ChannelSender {
 
@@ -40,29 +41,41 @@ public class ReplicationTransmitter implements ChannelSender {
      */
     private ObjectName oname = null;
 
+    /**
+     * Default constructor.
+     */
     public ReplicationTransmitter() {
     }
 
     private MultiPointSender transport = new PooledParallelSender();
 
+    /**
+     * Return the transport used for message sending.
+     *
+     * @return the transport
+     */
     public MultiPointSender getTransport() {
         return transport;
     }
 
+    /**
+     * Set the transport used for message sending.
+     *
+     * @param transport the new transport
+     */
     public void setTransport(MultiPointSender transport) {
         this.transport = transport;
     }
 
     // ------------------------------------------------------------- public
 
-    /**
-     * Send data to one member
-     * @see org.apache.catalina.tribes.ChannelSender#sendMessage(org.apache.catalina.tribes.ChannelMessage, org.apache.catalina.tribes.Member[])
-     */
     @Override
     public void sendMessage(ChannelMessage message, Member[] destination) throws ChannelException {
+        if (channel instanceof GroupChannel && ((GroupChannel) channel).getSecure()) {
+            message.setOptions(message.getOptions() | Channel.SEND_OPTIONS_SECURE);
+        }
         MultiPointSender sender = getTransport();
-        sender.sendMessage(destination,message);
+        sender.sendMessage(destination, message);
     }
 
 
@@ -72,11 +85,13 @@ public class ReplicationTransmitter implements ChannelSender {
      * @see org.apache.catalina.tribes.ChannelSender#start()
      */
     @Override
-    public void start() throws java.io.IOException {
+    public synchronized void start() throws IOException {
         getTransport().connect();
         // register jmx
         JmxRegistry jmxRegistry = JmxRegistry.getRegistry(channel);
-        if (jmxRegistry != null) this.oname = jmxRegistry.registerJmx(",component=Sender", transport);
+        if (jmxRegistry != null) {
+            this.oname = jmxRegistry.registerJmx(",component=Sender", transport);
+        }
     }
 
     /**
@@ -88,7 +103,10 @@ public class ReplicationTransmitter implements ChannelSender {
     public synchronized void stop() {
         getTransport().disconnect();
         if (oname != null) {
-            JmxRegistry.getRegistry(channel).unregisterJmx(oname);
+            JmxRegistry jmxRegistry = JmxRegistry.getRegistry(channel);
+            if (jmxRegistry != null) {
+                jmxRegistry.unregisterJmx(oname);
+            }
             oname = null;
         }
         channel = null;
@@ -97,16 +115,17 @@ public class ReplicationTransmitter implements ChannelSender {
     /**
      * Call transmitter to check for sender socket status
      *
-     * @see org.apache.catalina.ha.tcp.SimpleTcpCluster#backgroundProcess()
+     * @see org.apache.catalina.tribes.ChannelSender#heartbeat()
      */
     @Override
     public void heartbeat() {
-        if (getTransport()!=null) getTransport().keepalive();
+        if (getTransport() != null) {
+            getTransport().keepalive();
+        }
     }
 
     /**
-     * add new cluster member and create sender ( s. replicationMode) transfer
-     * current properties to sender
+     * add new cluster member and create sender ( s. replicationMode) transfer current properties to sender
      *
      * @see org.apache.catalina.tribes.ChannelSender#add(org.apache.catalina.tribes.Member)
      */
@@ -133,6 +152,9 @@ public class ReplicationTransmitter implements ChannelSender {
     @Override
     public void setChannel(Channel channel) {
         this.channel = channel;
+        if (transport instanceof AbstractSender && channel instanceof GroupChannel) {
+            ((AbstractSender) transport).setSslContext(((GroupChannel) channel).getSslContext());
+        }
     }
 
 }

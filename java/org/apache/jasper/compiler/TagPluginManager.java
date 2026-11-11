@@ -36,37 +36,48 @@ import org.xml.sax.SAXException;
 
 /**
  * Manages tag plugin optimizations.
- *
- * @author Kin-man Chung
  */
 public class TagPluginManager {
 
-    private static final String META_INF_JASPER_TAG_PLUGINS_XML =
-            "META-INF/org.apache.jasper/tagPlugins.xml";
+    private static final String META_INF_JASPER_TAG_PLUGINS_XML = "META-INF/org.apache.jasper/tagPlugins.xml";
     private static final String TAG_PLUGINS_XML = "/WEB-INF/tagPlugins.xml";
     private final ServletContext ctxt;
-    private HashMap<String, TagPlugin> tagPlugins;
-    private boolean initialized = false;
+    private HashMap<String,TagPlugin> tagPlugins;
+    private volatile boolean initialized = false;
 
+    /**
+     * Creates a new TagPluginManager for the given servlet context.
+     *
+     * @param ctxt the servlet context
+     */
     public TagPluginManager(ServletContext ctxt) {
         this.ctxt = ctxt;
     }
 
-    public void apply(Node.Nodes page, ErrorDispatcher err, PageInfo pageInfo)
-            throws JasperException {
+    /**
+     * Applies tag plugin optimizations to the given page.
+     *
+     * @param page the page node tree
+     * @param err the error dispatcher
+     * @param pageInfo page information
+     * @throws JasperException if an error occurs during optimization
+     */
+    public void apply(Node.Nodes page, ErrorDispatcher err, PageInfo pageInfo) throws JasperException {
 
-        init(err);
+        if (!initialized) {
+            init(err);
+        }
         if (!tagPlugins.isEmpty()) {
             page.visit(new NodeVisitor(this, pageInfo));
         }
     }
 
-    private void init(ErrorDispatcher err) throws JasperException {
-        if (initialized)
+    private synchronized void init(ErrorDispatcher err) throws JasperException {
+        if (initialized) {
             return;
+        }
 
-        String blockExternalString = ctxt.getInitParameter(
-                Constants.XML_BLOCK_EXTERNAL_INIT_PARAM);
+        String blockExternalString = ctxt.getInitParameter(Constants.XML_BLOCK_EXTERNAL_INIT_PARAM);
         boolean blockExternal;
         if (blockExternalString == null) {
             blockExternal = true;
@@ -76,26 +87,24 @@ public class TagPluginManager {
 
         TagPluginParser parser;
         ClassLoader original;
+        Thread currentThread = Thread.currentThread();
         if (Constants.IS_SECURITY_ENABLED) {
-            PrivilegedGetTccl pa = new PrivilegedGetTccl();
+            PrivilegedGetTccl pa = new PrivilegedGetTccl(currentThread);
             original = AccessController.doPrivileged(pa);
         } else {
-            original = Thread.currentThread().getContextClassLoader();
+            original = currentThread.getContextClassLoader();
         }
         try {
             if (Constants.IS_SECURITY_ENABLED) {
-                PrivilegedSetTccl pa =
-                        new PrivilegedSetTccl(TagPluginManager.class.getClassLoader());
+                PrivilegedSetTccl pa = new PrivilegedSetTccl(currentThread, TagPluginManager.class.getClassLoader());
                 AccessController.doPrivileged(pa);
             } else {
-                Thread.currentThread().setContextClassLoader(
-                        TagPluginManager.class.getClassLoader());
+                currentThread.setContextClassLoader(TagPluginManager.class.getClassLoader());
             }
 
             parser = new TagPluginParser(ctxt, blockExternal);
 
-            Enumeration<URL> urls =
-                    ctxt.getClassLoader().getResources(META_INF_JASPER_TAG_PLUGINS_XML);
+            Enumeration<URL> urls = ctxt.getClassLoader().getResources(META_INF_JASPER_TAG_PLUGINS_XML);
             while (urls.hasMoreElements()) {
                 URL url = urls.nextElement();
                 parser.parse(url);
@@ -109,16 +118,16 @@ public class TagPluginManager {
             throw new JasperException(e);
         } finally {
             if (Constants.IS_SECURITY_ENABLED) {
-                PrivilegedSetTccl pa = new PrivilegedSetTccl(original);
+                PrivilegedSetTccl pa = new PrivilegedSetTccl(currentThread, original);
                 AccessController.doPrivileged(pa);
             } else {
-                Thread.currentThread().setContextClassLoader(original);
+                currentThread.setContextClassLoader(original);
             }
         }
 
-        Map<String, String> plugins = parser.getPlugins();
+        Map<String,String> plugins = parser.getPlugins();
         tagPlugins = new HashMap<>(plugins.size());
-        for (Map.Entry<String, String> entry : plugins.entrySet()) {
+        for (Map.Entry<String,String> entry : plugins.entrySet()) {
             try {
                 String tagClass = entry.getKey();
                 String pluginName = entry.getValue();
@@ -133,8 +142,7 @@ public class TagPluginManager {
     }
 
     /**
-     * Invoke tag plugin for the given custom tag, if a plugin exists for
-     * the custom tag's tag handler.
+     * Invoke tag plugin for the given custom tag, if a plugin exists for the custom tag's tag handler.
      * <p/>
      * The given custom tag node will be manipulated by the plugin.
      */
@@ -153,7 +161,7 @@ public class TagPluginManager {
         private final TagPluginManager manager;
         private final PageInfo pageInfo;
 
-        public NodeVisitor(TagPluginManager manager, PageInfo pageInfo) {
+        NodeVisitor(TagPluginManager manager, PageInfo pageInfo) {
             this.manager = manager;
             this.pageInfo = pageInfo;
         }
@@ -168,7 +176,7 @@ public class TagPluginManager {
     private static class TagPluginContextImpl implements TagPluginContext {
         private final Node.CustomTag node;
         private final PageInfo pageInfo;
-        private final HashMap<String, Object> pluginAttributes;
+        private final HashMap<String,Object> pluginAttributes;
         private Node.Nodes curNodes;
 
         TagPluginContextImpl(Node.CustomTag n, PageInfo pageInfo) {
@@ -184,11 +192,38 @@ public class TagPluginManager {
 
         @Override
         public TagPluginContext getParentContext() {
+            // If the tag of this context no longer uses the plugin, its body
+            // is generated by the standard tag mechanism, which places
+            // scriptless body content in a separate method of the generated
+            // servlet. The local variables of the outer tags are then out of
+            // scope inside that body, so do not let a child walk through this
+            // context into an outer scope.
+            if (!node.useTagPlugin()) {
+                return null;
+            }
             Node parent = node.getParent();
             if (!(parent instanceof Node.CustomTag)) {
                 return null;
             }
             return ((Node.CustomTag) parent).getTagPluginContext();
+        }
+
+        @Override
+        public TagPluginContext getParentContext(boolean crossTagHandlers) {
+            if (!crossTagHandlers) {
+                return getParentContext();
+            }
+            Node parent = node.getParent();
+            while (parent != null) {
+                if (parent instanceof Node.CustomTag) {
+                    TagPluginContext parentContext = ((Node.CustomTag) parent).getTagPluginContext();
+                    if (parentContext != null) {
+                        return parentContext;
+                    }
+                }
+                parent = parent.getParent();
+            }
+            return null;
         }
 
         @Override
@@ -207,18 +242,25 @@ public class TagPluginManager {
         }
 
         @Override
+        public boolean hasBody() {
+            return !node.hasEmptyBody();
+        }
+
+        @Override
         public boolean isConstantAttribute(String attribute) {
             Node.JspAttribute attr = getNodeAttribute(attribute);
-            if (attr == null)
+            if (attr == null) {
                 return false;
+            }
             return attr.isLiteral();
         }
 
         @Override
         public String getConstantAttribute(String attribute) {
             Node.JspAttribute attr = getNodeAttribute(attribute);
-            if (attr == null)
+            if (attr == null) {
                 return null;
+            }
             return attr.getValue();
         }
 
@@ -247,15 +289,12 @@ public class TagPluginManager {
 
         @Override
         public void generateJavaSource(String sourceCode) {
-            curNodes.add(new Node.Scriptlet(sourceCode, node.getStart(),
-                    null));
+            curNodes.add(new Node.Scriptlet(sourceCode, node.getStart(), null));
         }
 
         @Override
         public void generateAttribute(String attributeName) {
-            curNodes.add(new Node.AttributeGenerator(node.getStart(),
-                    attributeName,
-                    node));
+            curNodes.add(new Node.AttributeGenerator(node.getStart(), attributeName, node));
         }
 
         @Override
@@ -285,7 +324,11 @@ public class TagPluginManager {
             }
             return null;
         }
-    }
 
+        @Override
+        public void generatePageTermination() {
+            curNodes.add(new Node.PageTerminationGenerator());
+        }
+    }
 }
 

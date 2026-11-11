@@ -14,8 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
-
 package org.apache.catalina.ha.backend;
 
 import java.io.BufferedReader;
@@ -30,17 +28,36 @@ import java.util.StringTokenizer;
 
 import org.apache.juli.logging.Log;
 import org.apache.juli.logging.LogFactory;
+import org.apache.tomcat.util.compat.JreCompat;
 import org.apache.tomcat.util.res.StringManager;
 
-/*
- * Sender to proxies using multicast socket.
+/**
+ * TCP-based sender for sending heartbeat messages to proxy servers.
  */
-public class TcpSender
-    implements Sender {
+public class TcpSender implements Sender {
 
-    private static final Log log = LogFactory.getLog(HeartbeatListener.class);
+    /**
+     * Constructs a new TcpSender.
+     */
+    public TcpSender() {
+    }
+
+    private static final Log log = LogFactory.getLog(TcpSender.class);
     private static final StringManager sm = StringManager.getManager(TcpSender.class);
 
+    /**
+     * Timeout, in milliseconds, when connecting to a proxy.
+     */
+    private static final int CONNECT_TIMEOUT = 5000;
+
+    /**
+     * Timeout, in milliseconds, when reading a response from a proxy.
+     */
+    private static final int READ_TIMEOUT = 5000;
+
+    /**
+     * The heartbeat listener configuration.
+     */
     HeartbeatListener config = null;
 
     /**
@@ -50,30 +67,58 @@ public class TcpSender
 
 
     /**
-     * Active connections.
+     * Active socket connections to proxies.
      */
-
     protected Socket[] connections = null;
+
+    /**
+     * Readers for active connections.
+     */
     protected BufferedReader[] connectionReaders = null;
+
+    /**
+     * Writers for active connections.
+     */
     protected BufferedWriter[] connectionWriters = null;
+
+    /**
+     * The proxy list that the current connections were established for.
+     */
+    protected String proxyList = null;
 
 
     @Override
     public void init(HeartbeatListener config) throws Exception {
+        String newProxyList = config.getProxyList();
+        if (connections != null && newProxyList != null && newProxyList.equals(proxyList)) {
+            // The proxy list has not changed since the previous init, so the
+            // existing connections can be kept. The init is called for every
+            // heartbeat and closing the connections here would defeat the
+            // keep-alive design.
+            this.config = config;
+            return;
+        }
+        // Close any existing connections from a previous init
+        if (connections != null) {
+            for (int i = 0; i < connections.length; i++) {
+                close(i);
+            }
+        }
         this.config = config;
         StringTokenizer tok = new StringTokenizer(config.getProxyList(), ",");
         proxies = new Proxy[tok.countTokens()];
         int i = 0;
         while (tok.hasMoreTokens()) {
-            String token = tok.nextToken().trim();
+            String token = JreCompat.getInstance().strip(tok.nextToken());
             int pos = token.indexOf(':');
             if (pos <= 0) {
                 throw new Exception(sm.getString("tcpSender.invalidProxyList"));
             }
             proxies[i] = new Proxy();
-            proxies[i].port = Integer.parseInt(token.substring(pos + 1));
             try {
-                 proxies[i].address = InetAddress.getByName(token.substring(0, pos));
+                proxies[i].port = Integer.parseInt(token.substring(pos + 1));
+                proxies[i].host = token.substring(0, pos);
+                proxies[i].address = InetAddress.getByName(proxies[i].host);
             } catch (Exception e) {
                 throw new Exception(sm.getString("tcpSender.invalidProxyList"));
             }
@@ -82,6 +127,7 @@ public class TcpSender
         connections = new Socket[proxies.length];
         connectionReaders = new BufferedReader[proxies.length];
         connectionWriters = new BufferedWriter[proxies.length];
+        proxyList = newProxyList;
 
     }
 
@@ -96,25 +142,32 @@ public class TcpSender
         for (int i = 0; i < connections.length; i++) {
             if (connections[i] == null) {
                 try {
+                    // Pick up any DNS change since this proxy was last resolved
+                    refreshProxyAddress(i);
+                    connections[i] = new Socket();
+                    // Never block the periodic event thread indefinitely
+                    connections[i].setSoTimeout(READ_TIMEOUT);
                     if (config.getHost() != null) {
-                        connections[i] = new Socket();
-                        InetAddress addr =  InetAddress.getByName(config.getHost());
+                        InetAddress addr = InetAddress.getByName(config.getHost());
                         InetSocketAddress addrs = new InetSocketAddress(addr, 0);
                         connections[i].setReuseAddress(true);
                         connections[i].bind(addrs);
                         addrs = new InetSocketAddress(proxies[i].address, proxies[i].port);
-                        connections[i].connect(addrs);
-                    } else
-                        connections[i] = new Socket(proxies[i].address, proxies[i].port);
+                        connections[i].connect(addrs, CONNECT_TIMEOUT);
+                    } else {
+                        connections[i].connect(new InetSocketAddress(proxies[i].address, proxies[i].port),
+                                CONNECT_TIMEOUT);
+                    }
                     connectionReaders[i] = new BufferedReader(new InputStreamReader(connections[i].getInputStream()));
                     connectionWriters[i] = new BufferedWriter(new OutputStreamWriter(connections[i].getOutputStream()));
-                } catch (Exception ex) {
-                    log.error(sm.getString("tcpSender.connectionFailed"), ex);
+                } catch (Exception e) {
+                    log.error(sm.getString("tcpSender.connectionFailed"), e);
                     close(i);
                 }
             }
-            if (connections[i] == null)
+            if (connections[i] == null) {
                 continue; // try next proxy in the list
+            }
             BufferedWriter writer = connectionWriters[i];
             try {
                 writer.write(requestLine);
@@ -126,24 +179,39 @@ public class TcpSender
                 writer.write(mess);
                 writer.write("\r\n");
                 writer.flush();
-            } catch (Exception ex) {
-                log.error(sm.getString("tcpSender.sendFailed"), ex);
+            } catch (Exception e) {
+                log.error(sm.getString("tcpSender.sendFailed"), e);
                 close(i);
             }
-            if (connections[i] == null)
+            if (connections[i] == null) {
                 continue; // try next proxy in the list
+            }
 
             /* Read httpd answer */
-            String responseStatus = connectionReaders[i].readLine();
-            if (responseStatus == null) {
-                log.error(sm.getString("tcpSender.responseError"));
-                close(i);
-                continue;
-            } else {
-                responseStatus = responseStatus.substring(responseStatus.indexOf(' ') + 1, responseStatus.indexOf(' ', responseStatus.indexOf(' ') + 1));
-                int status = Integer.parseInt(responseStatus);
+            try {
+                String responseStatus = connectionReaders[i].readLine();
+                if (responseStatus == null) {
+                    log.error(sm.getString("tcpSender.responseError"));
+                    close(i);
+                    continue;
+                }
+
+                int firstSpace = responseStatus.indexOf(' ');
+                int secondSpace = responseStatus.indexOf(' ', firstSpace + 1);
+                if (firstSpace < 0 || secondSpace < 0 || secondSpace <= firstSpace + 1) {
+                    log.error(sm.getString("tcpSender.responseError"));
+                    close(i);
+                    continue;
+                }
+                responseStatus = responseStatus.substring(firstSpace + 1, secondSpace);
+                int status = 500;
+                try {
+                    status = Integer.parseInt(responseStatus);
+                } catch (NumberFormatException e) {
+                    // Ignore
+                }
                 if (status != 200) {
-                    log.error(sm.getString("tcpSender.responseErrorCode", Integer.valueOf(status)));
+                    log.error(sm.getString("tcpSender.responseErrorCode", responseStatus));
                     close(i);
                     continue;
                 }
@@ -151,19 +219,45 @@ public class TcpSender
                 // read all the headers.
                 String header = connectionReaders[i].readLine();
                 int contentLength = 0;
-                while (!"".equals(header)) {
+                boolean contentLengthSeen = false;
+                while (header != null && !header.isEmpty()) {
                     int colon = header.indexOf(':');
-                    String headerName = header.substring(0, colon).trim();
-                    String headerValue = header.substring(colon + 1).trim();
-                    if ("content-length".equalsIgnoreCase(headerName)) {
-                        contentLength = Integer.parseInt(headerValue);
+                    if (colon >= 0) {
+                        String headerName = header.substring(0, colon).trim();
+                        String headerValue = header.substring(colon + 1).trim();
+                        if ("content-length".equalsIgnoreCase(headerName)) {
+                            if (contentLengthSeen) {
+                                log.error(sm.getString("tcpSender.duplicateContentLength"));
+                                close(i);
+                                // Clear any content length if one has been read.
+                                contentLength = 0;
+                                break;
+                            } else {
+                                contentLengthSeen = true;
+                            }
+                            try {
+                                contentLength = Integer.parseInt(headerValue);
+                            } catch (NumberFormatException e) {
+                                log.error(sm.getString("tcpSender.invalidContentLength", headerValue));
+                                close(i);
+                                // Clear any content length if one has been read.
+                                contentLength = 0;
+                                break;
+                            }
+                        }
+                    } else {
+                        log.error(sm.getString("tcpSender.invalidHeaderLine", header));
+                        close(i);
+                        // Clear any content length if one has been read.
+                        contentLength = 0;
+                        break;
                     }
                     header = connectionReaders[i].readLine();
                 }
                 if (contentLength > 0) {
                     char[] buf = new char[512];
                     while (contentLength > 0) {
-                        int thisTime = (contentLength > buf.length) ? buf.length : contentLength;
+                        int thisTime = Math.min(contentLength, buf.length);
                         int n = connectionReaders[i].read(buf, 0, thisTime);
                         if (n <= 0) {
                             log.error(sm.getString("tcpSender.readError"));
@@ -172,10 +266,14 @@ public class TcpSender
                         } else {
                             contentLength -= n;
                         }
-                   }
+                    }
                 }
+            } catch (IOException e) {
+                // Includes read timeouts. Close the connection so it is not
+                // reused in a desynchronised state
+                log.error(sm.getString("tcpSender.responseError"), e);
+                close(i);
             }
-
         }
 
         return 0;
@@ -183,6 +281,7 @@ public class TcpSender
 
     /**
      * Close connection.
+     *
      * @param i The index of the connection that will be closed
      */
     protected void close(int i) {
@@ -190,22 +289,42 @@ public class TcpSender
             if (connectionReaders[i] != null) {
                 connectionReaders[i].close();
             }
-        } catch (IOException e) {
+        } catch (IOException ignore) {
+            // Ignore
         }
         connectionReaders[i] = null;
         try {
             if (connectionWriters[i] != null) {
                 connectionWriters[i].close();
             }
-        } catch (IOException e) {
+        } catch (IOException ignore) {
+            // Ignore
         }
         connectionWriters[i] = null;
         try {
             if (connections[i] != null) {
                 connections[i].close();
             }
-        } catch (IOException e) {
+        } catch (IOException ignore) {
+            // Ignore
         }
         connections[i] = null;
+    }
+
+
+    /**
+     * Re-resolve the address of the given proxy. If resolution fails the previously resolved address is kept so a
+     * transient DNS failure does not stop heartbeats to a proxy that is still reachable.
+     *
+     * @param i The index of the proxy
+     */
+    private void refreshProxyAddress(int i) {
+        try {
+            proxies[i].address = InetAddress.getByName(proxies[i].host);
+        } catch (IOException e) {
+            if (log.isDebugEnabled()) {
+                log.debug(sm.getString("tcpSender.resolveFailed", proxies[i].host), e);
+            }
+        }
     }
 }

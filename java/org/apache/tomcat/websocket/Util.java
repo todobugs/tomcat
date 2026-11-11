@@ -33,6 +33,7 @@ import java.util.Queue;
 import java.util.Set;
 import java.util.concurrent.ConcurrentLinkedQueue;
 
+import javax.naming.NamingException;
 import javax.websocket.CloseReason.CloseCode;
 import javax.websocket.CloseReason.CloseCodes;
 import javax.websocket.Decoder;
@@ -48,20 +49,20 @@ import javax.websocket.MessageHandler;
 import javax.websocket.PongMessage;
 import javax.websocket.Session;
 
+import org.apache.tomcat.InstanceManager;
+import org.apache.tomcat.util.http.parser.HttpParser;
 import org.apache.tomcat.util.res.StringManager;
 import org.apache.tomcat.websocket.pojo.PojoMessageHandlerPartialBinary;
 import org.apache.tomcat.websocket.pojo.PojoMessageHandlerWholeBinary;
 import org.apache.tomcat.websocket.pojo.PojoMessageHandlerWholeText;
 
 /**
- * Utility class for internal use only within the
- * {@link org.apache.tomcat.websocket} package.
+ * Utility class for internal use only within the {@link org.apache.tomcat.websocket} package.
  */
 public class Util {
 
     private static final StringManager sm = StringManager.getManager(Util.class);
-    private static final Queue<SecureRandom> randoms =
-            new ConcurrentLinkedQueue<>();
+    private static final Queue<SecureRandom> randoms = new ConcurrentLinkedQueue<>();
 
     private Util() {
         // Hide default constructor
@@ -136,11 +137,10 @@ public class Util {
     }
 
 
-    static byte[] generateMask() {
-        // SecureRandom is not thread-safe so need to make sure only one thread
-        // uses it at a time. In theory, the pool could grow to the same size
-        // as the number of request processing threads. In reality it will be
-        // a lot smaller.
+    static byte[] generateRandomBytes(int len) {
+        // SecureRandom is thread-safe, but creating instances is expensive, so instances are pooled and one is
+        // handed out to each concurrent user. In theory, the pool could grow to the same size as the number of
+        // request processing threads. In reality, it will be a lot smaller.
 
         // Get a SecureRandom from the pool
         SecureRandom sr = randoms.poll();
@@ -155,11 +155,11 @@ public class Util {
             }
         }
 
-        // Generate the mask
-        byte[] result = new byte[4];
+        // Generate the random byte array
+        byte[] result = new byte[len];
         sr.nextBytes(result);
 
-        // Put the SecureRandom back in the poll
+        // Put the SecureRandom back in the pool
         randoms.add(sr);
 
         return result;
@@ -167,23 +167,21 @@ public class Util {
 
 
     static Class<?> getMessageType(MessageHandler listener) {
-        return Util.getGenericType(MessageHandler.class,
-                listener.getClass()).getClazz();
+        return getGenericType(MessageHandler.class, listener.getClass()).getClazz();
     }
 
 
     private static Class<?> getDecoderType(Class<? extends Decoder> decoder) {
-        return Util.getGenericType(Decoder.class, decoder).getClazz();
+        return getGenericType(Decoder.class, decoder).getClazz();
     }
 
 
     static Class<?> getEncoderType(Class<? extends Encoder> encoder) {
-        return Util.getGenericType(Encoder.class, encoder).getClazz();
+        return getGenericType(Encoder.class, encoder).getClazz();
     }
 
 
-    private static <T> TypeResult getGenericType(Class<T> type,
-            Class<? extends T> clazz) {
+    private static <T> TypeResult getGenericType(Class<T> type, Class<? extends T> clazz) {
 
         // Look to see if this class implements the interface of interest
 
@@ -196,8 +194,7 @@ public class Util {
                 // Look for the interface of interest
                 if (pi.getRawType() instanceof Class) {
                     if (type.isAssignableFrom((Class<?>) pi.getRawType())) {
-                        return getTypeParameter(
-                                clazz, pi.getActualTypeArguments()[0]);
+                        return getTypeParameter(clazz, pi.getActualTypeArguments()[0]);
                     }
                 }
             }
@@ -205,11 +202,10 @@ public class Util {
 
         // Interface not found on this class. Look at the superclass.
         @SuppressWarnings("unchecked")
-        Class<? extends T> superClazz =
-                (Class<? extends T>) clazz.getSuperclass();
+        Class<? extends T> superClazz = (Class<? extends T>) clazz.getSuperclass();
         if (superClazz == null) {
             // Finished looking up the class hierarchy without finding anything
-            return null;
+            throw new IllegalStateException();
         }
 
         TypeResult superClassTypeResult = getGenericType(type, superClazz);
@@ -224,11 +220,9 @@ public class Util {
             // Superclass implements interface and defines unknown type for
             // the interface of interest
             // Map that unknown type to the generic types defined in this class
-            ParameterizedType superClassType =
-                    (ParameterizedType) clazz.getGenericSuperclass();
-            TypeResult result = getTypeParameter(clazz,
-                    superClassType.getActualTypeArguments()[
-                            superClassTypeResult.getIndex()]);
+            ParameterizedType superClassType = (ParameterizedType) clazz.getGenericSuperclass();
+            TypeResult result =
+                    getTypeParameter(clazz, superClassType.getActualTypeArguments()[superClassTypeResult.getIndex()]);
             result.incrementDimension(superClassTypeResult.getDimension());
             if (result.getClazz() != null && result.getDimension() > 0) {
                 superClassTypeResult = result;
@@ -257,19 +251,19 @@ public class Util {
         }
 
         // Error will be logged further up the call stack
-        return null;
+        throw new IllegalStateException();
     }
 
 
     /*
-     * For a generic parameter, return either the Class used or if the type
-     * is unknown, the index for the type in definition of the class
+     * For a generic parameter, return either the Class used or if the type is unknown, the index for the type in
+     * definition of the class
      */
     private static TypeResult getTypeParameter(Class<?> clazz, Type argType) {
         if (argType instanceof Class<?>) {
             return new TypeResult((Class<?>) argType, -1, 0);
         } else if (argType instanceof ParameterizedType) {
-            return new TypeResult((Class<?>)((ParameterizedType) argType).getRawType(), -1, 0);
+            return new TypeResult((Class<?>) ((ParameterizedType) argType).getRawType(), -1, 0);
         } else if (argType instanceof GenericArrayType) {
             Type arrayElementType = ((GenericArrayType) argType).getGenericComponentType();
             TypeResult result = getTypeParameter(clazz, arrayElementType);
@@ -282,28 +276,42 @@ public class Util {
                     return new TypeResult(null, i, 0);
                 }
             }
-            return null;
+            throw new IllegalStateException();
         }
     }
 
 
+    /**
+     * Returns whether the given class is a primitive type or its wrapper class.
+     *
+     * @param clazz The class to check
+     *
+     * @return {@code true} if the class is a primitive or wrapper type, {@code false} otherwise
+     */
     public static boolean isPrimitive(Class<?> clazz) {
         if (clazz.isPrimitive()) {
             return true;
-        } else if(clazz.equals(Boolean.class) ||
-                clazz.equals(Byte.class) ||
-                clazz.equals(Character.class) ||
-                clazz.equals(Double.class) ||
-                clazz.equals(Float.class) ||
-                clazz.equals(Integer.class) ||
-                clazz.equals(Long.class) ||
-                clazz.equals(Short.class)) {
-            return true;
+        } else {
+            return clazz.equals(Boolean.class) || clazz.equals(Byte.class) || clazz.equals(Character.class) ||
+                    clazz.equals(Double.class) || clazz.equals(Float.class) || clazz.equals(Integer.class) ||
+                    clazz.equals(Long.class) || clazz.equals(Short.class);
         }
-        return false;
     }
 
 
+    /**
+     * Coerces a string value to the specified type.
+     *
+     * @param type  The target type
+     * @param value The string value to coerce
+     *
+     * @return The coerced value
+     *
+     * @throws IllegalArgumentException            If the type is not supported
+     * @throws NumberFormatException               If the value cannot be parsed as the target numeric type
+     * @throws StringIndexOutOfBoundsException    If the target type is <code>char</code> or <code>Character</code>
+     *                                               and the value is empty
+     */
     public static Object coerceToType(Class<?> type, String value) {
         if (type.equals(String.class)) {
             return value;
@@ -324,32 +332,62 @@ public class Util {
         } else if (type.equals(short.class) || type.equals(Short.class)) {
             return Short.valueOf(value);
         } else {
-            throw new IllegalArgumentException(sm.getString(
-                    "util.invalidType", value, type.getName()));
+            throw new IllegalArgumentException(sm.getString("util.invalidType", value, type.getName()));
         }
     }
 
 
-    public static List<DecoderEntry> getDecoders(
-            List<Class<? extends Decoder>> decoderClazzes)
-                    throws DeploymentException{
+    /**
+     * Build the list of decoder entries from a set of decoder implementations.
+     *
+     * @param decoderClazzes Decoder implementation classes
+     *
+     * @return List of mappings from target type to associated decoder
+     *
+     * @throws DeploymentException If a provided decoder class is not valid
+     *
+     * @deprecated Will be removed in Tomcat 10.1.x. Use {@link Util#getDecoders(List, InstanceManager)}
+     */
+    @Deprecated
+    public static List<DecoderEntry> getDecoders(List<Class<? extends Decoder>> decoderClazzes)
+            throws DeploymentException {
+        return getDecoders(decoderClazzes, null);
+    }
+
+
+    /**
+     * Build the list of decoder entries from a set of decoder implementations.
+     *
+     * @param decoderClazzes  Decoder implementation classes
+     * @param instanceManager Instance manager to use to create Decoder instances
+     *
+     * @return List of mappings from target type to associated decoder
+     *
+     * @throws DeploymentException If a provided decoder class is not valid
+     */
+    public static List<DecoderEntry> getDecoders(List<Class<? extends Decoder>> decoderClazzes,
+            InstanceManager instanceManager) throws DeploymentException {
 
         List<DecoderEntry> result = new ArrayList<>();
         if (decoderClazzes != null) {
             for (Class<? extends Decoder> decoderClazz : decoderClazzes) {
                 // Need to instantiate decoder to ensure it is valid and that
                 // deployment can be failed if it is not
-                @SuppressWarnings("unused")
                 Decoder instance;
                 try {
-                    instance = decoderClazz.getConstructor().newInstance();
-                } catch (ReflectiveOperationException e) {
+                    if (instanceManager == null) {
+                        instance = decoderClazz.getConstructor().newInstance();
+                    } else {
+                        instance = (Decoder) instanceManager.newInstance(decoderClazz);
+                        // Don't need this instance, so destroy it
+                        instanceManager.destroyInstance(instance);
+                    }
+                } catch (ReflectiveOperationException | IllegalArgumentException | SecurityException |
+                        NamingException e) {
                     throw new DeploymentException(
-                            sm.getString("pojoMethodMapping.invalidDecoder",
-                                    decoderClazz.getName()), e);
+                            sm.getString("pojoMethodMapping.invalidDecoder", decoderClazz.getName()), e);
                 }
-                DecoderEntry entry = new DecoderEntry(
-                        Util.getDecoderType(decoderClazz), decoderClazz);
+                DecoderEntry entry = new DecoderEntry(getDecoderType(decoderClazz), decoderClazz);
                 result.add(entry);
             }
         }
@@ -358,9 +396,8 @@ public class Util {
     }
 
 
-    static Set<MessageHandlerResult> getMessageHandlers(Class<?> target,
-            MessageHandler listener, EndpointConfig endpointConfig,
-            Session session) {
+    static Set<MessageHandlerResult> getMessageHandlers(Class<?> target, MessageHandler listener,
+            EndpointConfig endpointConfig, Session session) {
 
         // Will never be more than 2 types
         Set<MessageHandlerResult> results = new HashSet<>(2);
@@ -368,103 +405,91 @@ public class Util {
         // Simple cases - handlers already accepts one of the types expected by
         // the frame handling code
         if (String.class.isAssignableFrom(target)) {
-            MessageHandlerResult result =
-                    new MessageHandlerResult(listener,
-                            MessageHandlerResultType.TEXT);
+            MessageHandlerResult result = new MessageHandlerResult(listener, MessageHandlerResultType.TEXT);
             results.add(result);
         } else if (ByteBuffer.class.isAssignableFrom(target)) {
-            MessageHandlerResult result =
-                    new MessageHandlerResult(listener,
-                            MessageHandlerResultType.BINARY);
+            MessageHandlerResult result = new MessageHandlerResult(listener, MessageHandlerResultType.BINARY);
             results.add(result);
         } else if (PongMessage.class.isAssignableFrom(target)) {
-            MessageHandlerResult result =
-                    new MessageHandlerResult(listener,
-                            MessageHandlerResultType.PONG);
+            MessageHandlerResult result = new MessageHandlerResult(listener, MessageHandlerResultType.PONG);
             results.add(result);
-        // Handler needs wrapping and optional decoder to convert it to one of
-        // the types expected by the frame handling code
+            // Handler needs wrapping and optional decoder to convert it to one of
+            // the types expected by the frame handling code
         } else if (byte[].class.isAssignableFrom(target)) {
             boolean whole = MessageHandler.Whole.class.isAssignableFrom(listener.getClass());
-            MessageHandlerResult result = new MessageHandlerResult(
-                    whole ? new PojoMessageHandlerWholeBinary(listener,
-                                    getOnMessageMethod(listener), session,
-                                    endpointConfig, matchDecoders(target, endpointConfig, true),
+            MessageHandlerResult result =
+                    new MessageHandlerResult(whole ?
+                            new PojoMessageHandlerWholeBinary(listener, getOnMessageMethod(listener), session,
+                                    endpointConfig,
+                                    matchDecoders(target, endpointConfig, true,
+                                            ((WsSession) session).getInstanceManager()),
                                     new Object[1], 0, true, -1, false, -1) :
-                            new PojoMessageHandlerPartialBinary(listener,
-                                    getOnMessagePartialMethod(listener), session,
+                            new PojoMessageHandlerPartialBinary(listener, getOnMessagePartialMethod(listener), session,
                                     new Object[2], 0, true, 1, -1, -1),
-                    MessageHandlerResultType.BINARY);
+                            MessageHandlerResultType.BINARY);
             results.add(result);
         } else if (InputStream.class.isAssignableFrom(target)) {
             MessageHandlerResult result = new MessageHandlerResult(
-                    new PojoMessageHandlerWholeBinary(listener,
-                            getOnMessageMethod(listener), session,
-                            endpointConfig, matchDecoders(target, endpointConfig, true),
+                    new PojoMessageHandlerWholeBinary(listener, getOnMessageMethod(listener), session, endpointConfig,
+                            matchDecoders(target, endpointConfig, true, ((WsSession) session).getInstanceManager()),
                             new Object[1], 0, true, -1, true, -1),
                     MessageHandlerResultType.BINARY);
             results.add(result);
         } else if (Reader.class.isAssignableFrom(target)) {
             MessageHandlerResult result = new MessageHandlerResult(
-                    new PojoMessageHandlerWholeText(listener,
-                            getOnMessageMethod(listener), session,
-                            endpointConfig, matchDecoders(target, endpointConfig, false),
+                    new PojoMessageHandlerWholeText(listener, getOnMessageMethod(listener), session, endpointConfig,
+                            matchDecoders(target, endpointConfig, false, ((WsSession) session).getInstanceManager()),
                             new Object[1], 0, true, -1, -1),
                     MessageHandlerResultType.TEXT);
             results.add(result);
         } else {
             // Handler needs wrapping and requires decoder to convert it to one
             // of the types expected by the frame handling code
-            DecoderMatch decoderMatch = matchDecoders(target, endpointConfig);
+            DecoderMatch decoderMatch =
+                    matchDecoders(target, endpointConfig, ((WsSession) session).getInstanceManager());
             Method m = getOnMessageMethod(listener);
-            if (decoderMatch.getBinaryDecoders().size() > 0) {
+            if (!decoderMatch.getBinaryDecoders().isEmpty()) {
                 MessageHandlerResult result = new MessageHandlerResult(
-                        new PojoMessageHandlerWholeBinary(listener, m, session,
-                                endpointConfig,
-                                decoderMatch.getBinaryDecoders(), new Object[1],
-                                0, false, -1, false, -1),
-                                MessageHandlerResultType.BINARY);
+                        new PojoMessageHandlerWholeBinary(listener, m, session, endpointConfig,
+                                decoderMatch.getBinaryDecoders(), new Object[1], 0, false, -1, false, -1),
+                        MessageHandlerResultType.BINARY);
                 results.add(result);
             }
-            if (decoderMatch.getTextDecoders().size() > 0) {
+            if (!decoderMatch.getTextDecoders().isEmpty()) {
                 MessageHandlerResult result = new MessageHandlerResult(
-                        new PojoMessageHandlerWholeText(listener, m, session,
-                                endpointConfig,
-                                decoderMatch.getTextDecoders(), new Object[1],
-                                0, false, -1, -1),
-                                MessageHandlerResultType.TEXT);
+                        new PojoMessageHandlerWholeText(listener, m, session, endpointConfig,
+                                decoderMatch.getTextDecoders(), new Object[1], 0, false, -1, -1),
+                        MessageHandlerResultType.TEXT);
                 results.add(result);
             }
         }
 
-        if (results.size() == 0) {
-            throw new IllegalArgumentException(
-                    sm.getString("wsSession.unknownHandler", listener, target));
+        if (results.isEmpty()) {
+            throw new IllegalArgumentException(sm.getString("wsSession.unknownHandler", listener, target));
         }
 
         return results;
     }
 
-    private static List<Class<? extends Decoder>> matchDecoders(Class<?> target,
-            EndpointConfig endpointConfig, boolean binary) {
-        DecoderMatch decoderMatch = matchDecoders(target, endpointConfig);
+    private static List<Class<? extends Decoder>> matchDecoders(Class<?> target, EndpointConfig endpointConfig,
+            boolean binary, InstanceManager instanceManager) {
+        DecoderMatch decoderMatch = matchDecoders(target, endpointConfig, instanceManager);
         if (binary) {
-            if (decoderMatch.getBinaryDecoders().size() > 0) {
+            if (!decoderMatch.getBinaryDecoders().isEmpty()) {
                 return decoderMatch.getBinaryDecoders();
             }
-        } else if (decoderMatch.getTextDecoders().size() > 0) {
+        } else if (!decoderMatch.getTextDecoders().isEmpty()) {
             return decoderMatch.getTextDecoders();
         }
         return null;
     }
 
-    private static DecoderMatch matchDecoders(Class<?> target,
-            EndpointConfig endpointConfig) {
+    private static DecoderMatch matchDecoders(Class<?> target, EndpointConfig endpointConfig,
+            InstanceManager instanceManager) {
         DecoderMatch decoderMatch;
         try {
-            List<Class<? extends Decoder>> decoders =
-                    endpointConfig.getDecoders();
-            List<DecoderEntry> decoderEntries = getDecoders(decoders);
+            List<Class<? extends Decoder>> decoders = endpointConfig.getDecoders();
+            List<DecoderEntry> decoderEntries = getDecoders(decoders, instanceManager);
             decoderMatch = new DecoderMatch(target, decoderEntries);
         } catch (DeploymentException e) {
             throw new IllegalArgumentException(e);
@@ -472,17 +497,24 @@ public class Util {
         return decoderMatch;
     }
 
-    public static void parseExtensionHeader(List<Extension> extensions,
-            String header) {
+    /**
+     * Parses a Sec-WebSocket-Extensions header value and populates the given list with the parsed extensions.
+     *
+     * @param extensions The list to populate with parsed extensions
+     * @param header     The header value to parse
+     *
+     * @throws IllegalArgumentException If the header contains invalid tokens or values
+     */
+    public static void parseExtensionHeader(List<Extension> extensions, String header) {
         // The relevant ABNF for the Sec-WebSocket-Extensions is as follows:
-        //      extension-list = 1#extension
-        //      extension = extension-token *( ";" extension-param )
-        //      extension-token = registered-token
-        //      registered-token = token
-        //      extension-param = token [ "=" (token | quoted-string) ]
-        //             ; When using the quoted-string syntax variant, the value
-        //             ; after quoted-string unescaping MUST conform to the
-        //             ; 'token' ABNF.
+        // extension-list = 1#extension
+        // extension = extension-token *( ";" extension-param )
+        // extension-token = registered-token
+        // registered-token = token
+        // extension-param = token [ "=" (token | quoted-string) ]
+        // ; When using the quoted-string syntax variant, the value
+        // ; after quoted-string unescaping MUST conform to the
+        // ; 'token' ABNF.
         //
         // The limiting of parameter values to tokens or "quoted tokens" makes
         // the parsing of the header significantly simpler and allows a number
@@ -490,11 +522,11 @@ public class Util {
 
         // Step one, split the header into individual extensions using ',' as a
         // separator
-        String unparsedExtensions[] = header.split(",");
+        String[] unparsedExtensions = header.split(",");
         for (String unparsedExtension : unparsedExtensions) {
             // Step two, split the extension into the registered name and
             // parameter/value pairs using ';' as a separator
-            String unparsedParameters[] = unparsedExtension.split(";");
+            String[] unparsedParameters = unparsedExtension.split(";");
             WsExtension extension = new WsExtension(unparsedParameters[0].trim());
 
             for (int i = 1; i < unparsedParameters.length; i++) {
@@ -510,20 +542,22 @@ public class Util {
                     int len = value.length();
                     if (len > 1) {
                         if (value.charAt(0) == '\"' && value.charAt(len - 1) == '\"') {
-                            value = value.substring(1, value.length() - 1);
+                            String unquoted = HttpParser.unquote(value);
+                            if (unquoted == null) {
+                                throw new IllegalArgumentException(sm.getString("util.invalidValue", value));
+                            }
+                            value = unquoted;
                         }
                     }
                 }
                 // Make sure value doesn't contain any of the delimiters since
                 // that would indicate something went wrong
                 if (containsDelims(name) || containsDelims(value)) {
-                    throw new IllegalArgumentException(sm.getString(
-                            "util.notToken", name, value));
+                    throw new IllegalArgumentException(sm.getString("util.notToken", name, value));
                 }
-                if (value != null &&
-                        (value.indexOf(',') > -1 || value.indexOf(';') > -1 ||
-                        value.indexOf('\"') > -1 || value.indexOf('=') > -1)) {
-                    throw new IllegalArgumentException(sm.getString("", value));
+                if (value != null && (value.indexOf(',') > -1 || value.indexOf(';') > -1 || value.indexOf('\"') > -1 ||
+                        value.indexOf('=') > -1)) {
+                    throw new IllegalArgumentException(sm.getString("util.invalidValue", value));
                 }
                 extension.addParameter(new WsExtensionParameter(name, value));
             }
@@ -533,7 +567,7 @@ public class Util {
 
 
     private static boolean containsDelims(String input) {
-        if (input == null || input.length() == 0) {
+        if (input == null || input.isEmpty()) {
             return false;
         }
         for (char c : input.toCharArray()) {
@@ -555,8 +589,7 @@ public class Util {
         try {
             return listener.getClass().getMethod("onMessage", Object.class);
         } catch (NoSuchMethodException | SecurityException e) {
-            throw new IllegalArgumentException(
-                    sm.getString("util.invalidMessageHandler"), e);
+            throw new IllegalArgumentException(sm.getString("util.invalidMessageHandler"), e);
         }
     }
 
@@ -564,74 +597,97 @@ public class Util {
         try {
             return listener.getClass().getMethod("onMessage", Object.class, Boolean.TYPE);
         } catch (NoSuchMethodException | SecurityException e) {
-            throw new IllegalArgumentException(
-                    sm.getString("util.invalidMessageHandler"), e);
+            throw new IllegalArgumentException(sm.getString("util.invalidMessageHandler"), e);
         }
     }
 
 
+    /**
+     * Holds the result of matching decoders against a target type.
+     */
     public static class DecoderMatch {
 
-        private final List<Class<? extends Decoder>> textDecoders =
-                new ArrayList<>();
-        private final List<Class<? extends Decoder>> binaryDecoders =
-                new ArrayList<>();
+        private final List<Class<? extends Decoder>> textDecoders = new ArrayList<>();
+        private final List<Class<? extends Decoder>> binaryDecoders = new ArrayList<>();
         private final Class<?> target;
 
+        /**
+         * Constructs a new DecoderMatch by matching decoder entries against the target type.
+         *
+         * @param target          The target type to match decoders against
+         * @param decoderEntries  The available decoder entries
+         *
+         * @throws IllegalArgumentException If an unknown decoder type is encountered
+         */
         public DecoderMatch(Class<?> target, List<DecoderEntry> decoderEntries) {
             this.target = target;
             for (DecoderEntry decoderEntry : decoderEntries) {
                 if (decoderEntry.getClazz().isAssignableFrom(target)) {
-                    if (Binary.class.isAssignableFrom(
-                            decoderEntry.getDecoderClazz())) {
+                    if (Binary.class.isAssignableFrom(decoderEntry.getDecoderClazz())) {
                         binaryDecoders.add(decoderEntry.getDecoderClazz());
                         // willDecode() method means this decoder may or may not
                         // decode a message so need to carry on checking for
                         // other matches
-                    } else if (BinaryStream.class.isAssignableFrom(
-                            decoderEntry.getDecoderClazz())) {
+                    } else if (BinaryStream.class.isAssignableFrom(decoderEntry.getDecoderClazz())) {
                         binaryDecoders.add(decoderEntry.getDecoderClazz());
                         // Stream decoders have to process the message so no
                         // more decoders can be matched
                         break;
-                    } else if (Text.class.isAssignableFrom(
-                            decoderEntry.getDecoderClazz())) {
+                    } else if (Text.class.isAssignableFrom(decoderEntry.getDecoderClazz())) {
                         textDecoders.add(decoderEntry.getDecoderClazz());
                         // willDecode() method means this decoder may or may not
                         // decode a message so need to carry on checking for
                         // other matches
-                    } else if (TextStream.class.isAssignableFrom(
-                            decoderEntry.getDecoderClazz())) {
+                    } else if (TextStream.class.isAssignableFrom(decoderEntry.getDecoderClazz())) {
                         textDecoders.add(decoderEntry.getDecoderClazz());
                         // Stream decoders have to process the message so no
                         // more decoders can be matched
                         break;
                     } else {
-                        throw new IllegalArgumentException(
-                                sm.getString("util.unknownDecoderType"));
+                        throw new IllegalArgumentException(sm.getString("util.unknownDecoderType"));
                     }
                 }
             }
         }
 
 
+        /**
+         * Returns the list of matched text decoders.
+         *
+         * @return the list of text decoder classes
+         */
         public List<Class<? extends Decoder>> getTextDecoders() {
             return textDecoders;
         }
 
 
+        /**
+         * Returns the list of matched binary decoders.
+         *
+         * @return the list of binary decoder classes
+         */
         public List<Class<? extends Decoder>> getBinaryDecoders() {
             return binaryDecoders;
         }
 
 
+        /**
+         * Returns the target type that decoders were matched against.
+         *
+         * @return the target type
+         */
         public Class<?> getTarget() {
             return target;
         }
 
 
+        /**
+         * Returns whether any decoders matched the target type.
+         *
+         * @return {@code true} if there are matching text or binary decoders, {@code false} otherwise
+         */
         public boolean hasMatches() {
-            return (textDecoders.size() > 0) || (binaryDecoders.size() > 0);
+            return (!textDecoders.isEmpty()) || (!binaryDecoders.isEmpty());
         }
     }
 
@@ -641,8 +697,8 @@ public class Util {
         private final int index;
         private int dimension;
 
-        public TypeResult(Class<?> clazz, int index, int dimension) {
-            this.clazz= clazz;
+        TypeResult(Class<?> clazz, int index, int dimension) {
+            this.clazz = clazz;
             this.index = index;
             this.dimension = dimension;
         }

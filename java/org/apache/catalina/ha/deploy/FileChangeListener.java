@@ -14,11 +14,27 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.catalina.ha.deploy;
+
 import java.io.File;
 
+/**
+ * Interface for listening to file changes in a deployment directory.
+ */
 public interface FileChangeListener {
-    public void fileModified(File f);
-    public void fileRemoved(File f);
+
+    /**
+     * Modification from watchDir war detected.
+     *
+     * @param f the modified file
+     */
+    void fileModified(File f);
+
+    /**
+     * War remove from watchDir.
+     *
+     * @param f the file removed
+     */
+    void fileRemoved(File f);
+
 }

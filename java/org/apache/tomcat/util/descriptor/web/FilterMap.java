@@ -26,14 +26,19 @@ import javax.servlet.DispatcherType;
 import org.apache.tomcat.util.buf.UDecoder;
 
 /**
- * Representation of a filter mapping for a web application, as represented
- * in a <code>&lt;filter-mapping&gt;</code> element in the deployment
- * descriptor.  Each filter mapping must contain a filter name plus either
- * a URL pattern or a servlet name.
- *
- * @author Craig R. McClanahan
+ * Representation of a filter mapping for a web application, as represented in a <code>&lt;filter-mapping&gt;</code>
+ * element in the deployment descriptor. Each filter mapping must contain a filter name plus either a URL pattern or a
+ * servlet name.
  */
+@SuppressWarnings("deprecation")
 public class FilterMap extends XmlEncodingBase implements Serializable {
+
+    /**
+     * Default constructor for FilterMap.
+     */
+    public FilterMap() {
+        // Default constructor
+    }
 
 
     // ------------------------------------------------------------- Properties
@@ -42,28 +47,54 @@ public class FilterMap extends XmlEncodingBase implements Serializable {
     private static final long serialVersionUID = 1L;
 
     /**
-     * The name of this filter to be executed when this mapping matches
-     * a particular request.
+     * Dispatcher type constant for error dispatch.
      */
-
     public static final int ERROR = 1;
+    /**
+     * Dispatcher type constant for forward dispatch.
+     */
     public static final int FORWARD = 2;
+    /**
+     * Dispatcher type constant for include dispatch.
+     */
     public static final int INCLUDE = 4;
+    /**
+     * Dispatcher type constant for request dispatch.
+     */
     public static final int REQUEST = 8;
+    /**
+     * Dispatcher type constant for async dispatch.
+     */
     public static final int ASYNC = 16;
 
     // represents nothing having been set. This will be seen
     // as equal to a REQUEST
     private static final int NOT_SET = 0;
 
+    /**
+     * The dispatcher mapping bitmask for this filter mapping.
+     */
     private int dispatcherMapping = NOT_SET;
 
+    /**
+     * The name of the filter associated with this mapping.
+     */
     private String filterName = null;
 
+    /**
+     * Returns the name of the filter associated with this mapping.
+     *
+     * @return The filter name
+     */
     public String getFilterName() {
         return this.filterName;
     }
 
+    /**
+     * Sets the name of the filter associated with this mapping.
+     *
+     * @param filterName The filter name
+     */
     public void setFilterName(String filterName) {
         this.filterName = filterName;
     }
@@ -74,6 +105,11 @@ public class FilterMap extends XmlEncodingBase implements Serializable {
      */
     private String[] servletNames = new String[0];
 
+    /**
+     * Returns the servlet names this mapping matches.
+     *
+     * @return The servlet names, or an empty array if all servlet names match
+     */
     public String[] getServletNames() {
         if (matchAllServletNames) {
             return new String[] {};
@@ -82,6 +118,11 @@ public class FilterMap extends XmlEncodingBase implements Serializable {
         }
     }
 
+    /**
+     * Adds a servlet name to the set of servlet names this mapping matches.
+     *
+     * @param servletName The servlet name to add
+     */
     public void addServletName(String servletName) {
         if ("*".equals(servletName)) {
             this.matchAllServletNames = true;
@@ -99,6 +140,11 @@ public class FilterMap extends XmlEncodingBase implements Serializable {
      */
     private boolean matchAllUrlPatterns = false;
 
+    /**
+     * Returns whether this mapping matches all URL patterns.
+     *
+     * @return True if all URL patterns match
+     */
     public boolean getMatchAllUrlPatterns() {
         return matchAllUrlPatterns;
     }
@@ -109,6 +155,11 @@ public class FilterMap extends XmlEncodingBase implements Serializable {
      */
     private boolean matchAllServletNames = false;
 
+    /**
+     * Returns whether this mapping matches all servlet names.
+     *
+     * @return True if all servlet names match
+     */
     public boolean getMatchAllServletNames() {
         return matchAllServletNames;
     }
@@ -119,6 +170,11 @@ public class FilterMap extends XmlEncodingBase implements Serializable {
      */
     private String[] urlPatterns = new String[0];
 
+    /**
+     * Returns the URL patterns this mapping matches.
+     *
+     * @return The URL patterns, or an empty array if all URL patterns match
+     */
     public String[] getURLPatterns() {
         if (matchAllUrlPatterns) {
             return new String[] {};
@@ -127,25 +183,39 @@ public class FilterMap extends XmlEncodingBase implements Serializable {
         }
     }
 
+    /**
+     * Adds a URL pattern to the set of URL patterns this mapping matches.
+     *
+     * @param urlPattern The URL pattern to add
+     */
     public void addURLPattern(String urlPattern) {
         addURLPatternDecoded(UDecoder.URLDecode(urlPattern, getCharset()));
     }
+
+    /**
+     * Adds a decoded URL pattern to the set of URL patterns this mapping matches.
+     *
+     * @param urlPattern The decoded URL pattern to add
+     *
+     * @deprecated This method will be removed in Tomcat 12 onwards
+     */
+    @Deprecated
     public void addURLPatternDecoded(String urlPattern) {
         if ("*".equals(urlPattern)) {
             this.matchAllUrlPatterns = true;
         } else {
             String[] results = new String[urlPatterns.length + 1];
             System.arraycopy(urlPatterns, 0, results, 0, urlPatterns.length);
-            results[urlPatterns.length] = UDecoder.URLDecode(urlPattern);
+            results[urlPatterns.length] = urlPattern;
             urlPatterns = results;
         }
     }
 
     /**
-     * This method will be used to set the current state of the FilterMap
-     * representing the state of when filters should be applied.
-     * @param dispatcherString the dispatcher type which should
-     *  match this filter
+     * This method will be used to set the current state of the FilterMap representing the state of when filters should
+     * be applied.
+     *
+     * @param dispatcherString the dispatcher type which should match this filter
      */
     public void setDispatcher(String dispatcherString) {
         String dispatcher = dispatcherString.toUpperCase(Locale.ENGLISH);
@@ -159,23 +229,35 @@ public class FilterMap extends XmlEncodingBase implements Serializable {
         } else if (dispatcher.equals(DispatcherType.REQUEST.name())) {
             // apply REQUEST to the global dispatcherMapping.
             dispatcherMapping |= REQUEST;
-        }  else if (dispatcher.equals(DispatcherType.ERROR.name())) {
+        } else if (dispatcher.equals(DispatcherType.ERROR.name())) {
             // apply ERROR to the global dispatcherMapping.
             dispatcherMapping |= ERROR;
-        }  else if (dispatcher.equals(DispatcherType.ASYNC.name())) {
-            // apply ERROR to the global dispatcherMapping.
+        } else if (dispatcher.equals(DispatcherType.ASYNC.name())) {
+            // apply ASYNC to the global dispatcherMapping.
             dispatcherMapping |= ASYNC;
         }
     }
 
+    /**
+     * Returns the dispatcher mapping bitmask for this filter mapping.
+     *
+     * @return The dispatcher mapping bitmask, defaulting to REQUEST if not set
+     */
     public int getDispatcherMapping() {
         // per the SRV.6.2.5 absence of any dispatcher elements is
         // equivalent to a REQUEST value
-        if (dispatcherMapping == NOT_SET) return REQUEST;
+        if (dispatcherMapping == NOT_SET) {
+            return REQUEST;
+        }
 
         return dispatcherMapping;
     }
 
+    /**
+     * Returns the names of the dispatchers mapped to this filter.
+     *
+     * @return Array of dispatcher type names
+     */
     public String[] getDispatcherNames() {
         List<String> result = new ArrayList<>();
         if ((dispatcherMapping & FORWARD) != 0) {
@@ -193,7 +275,7 @@ public class FilterMap extends XmlEncodingBase implements Serializable {
         if ((dispatcherMapping & ASYNC) != 0) {
             result.add(DispatcherType.ASYNC.name());
         }
-        return result.toArray(new String[result.size()]);
+        return result.toArray(new String[0]);
     }
 
     // --------------------------------------------------------- Public Methods
@@ -207,15 +289,15 @@ public class FilterMap extends XmlEncodingBase implements Serializable {
         StringBuilder sb = new StringBuilder("FilterMap[");
         sb.append("filterName=");
         sb.append(this.filterName);
-        for (int i = 0; i < servletNames.length; i++) {
+        for (String servletName : servletNames) {
             sb.append(", servletName=");
-            sb.append(servletNames[i]);
+            sb.append(servletName);
         }
-        for (int i = 0; i < urlPatterns.length; i++) {
+        for (String urlPattern : urlPatterns) {
             sb.append(", urlPattern=");
-            sb.append(urlPatterns[i]);
+            sb.append(urlPattern);
         }
-        sb.append("]");
+        sb.append(']');
         return sb.toString();
     }
 

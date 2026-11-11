@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.catalina.storeconfig;
 
 import java.io.PrintWriter;
@@ -22,6 +21,8 @@ import java.io.PrintWriter;
 import org.apache.catalina.Manager;
 import org.apache.catalina.SessionIdGenerator;
 import org.apache.catalina.session.StandardManager;
+import org.apache.catalina.util.SessionIdGeneratorBase;
+import org.apache.catalina.util.StandardSessionIdGenerator;
 import org.apache.juli.logging.Log;
 import org.apache.juli.logging.LogFactory;
 
@@ -30,58 +31,130 @@ import org.apache.juli.logging.LogFactory;
  */
 public class ManagerSF extends StoreFactoryBase {
 
-    private static Log log = LogFactory.getLog(ManagerSF.class);
-
     /**
-     * Store the only the Manager elements
-     *
-     * @see NamingResourcesSF#storeChildren(PrintWriter, int, Object, StoreDescription)
+     * Default constructor.
      */
+    public ManagerSF() {
+    }
+
+    private static final Log log = LogFactory.getLog(ManagerSF.class);
+
     @Override
-    public void store(PrintWriter aWriter, int indent, Object aElement)
-            throws Exception {
-        StoreDescription elementDesc = getRegistry().findDescription(
-                aElement.getClass());
+    public void store(PrintWriter aWriter, int indent, Object aElement) throws Exception {
+        StoreDescription elementDesc = getRegistry().findDescription(aElement.getClass());
         if (elementDesc != null) {
             if (aElement instanceof StandardManager) {
                 StandardManager manager = (StandardManager) aElement;
                 if (!isDefaultManager(manager)) {
-                    if (log.isDebugEnabled())
-                        log.debug(sm.getString("factory.storeTag", elementDesc
-                                .getTag(), aElement));
+                    if (log.isTraceEnabled()) {
+                        log.trace(sm.getString("factory.storeTag", elementDesc.getTag(), aElement));
+                    }
                     super.store(aWriter, indent, aElement);
                 }
             } else {
                 super.store(aWriter, indent, aElement);
             }
         } else {
-            if (log.isWarnEnabled())
-                log.warn(sm.getString("factory.storeNoDescriptor", aElement
-                        .getClass()));
+            log.warn(sm.getString("factory.storeNoDescriptor", aElement.getClass()));
         }
     }
 
     /**
-     * Is this an instance of the default <code>Manager</code> configuration,
-     * with all-default properties?
+     * Is this an instance of the default <code>Manager</code> configuration, with all-default properties?
      *
-     * @param smanager
-     *            Manager to be tested
+     * @param smanager Manager to be tested
+     *
      * @return <code>true</code> if this is an instance of the default manager
      */
     protected boolean isDefaultManager(StandardManager smanager) {
 
-        if (!"SESSIONS.ser".equals(smanager.getPathname())
-                || (smanager.getMaxActiveSessions() != -1)) {
+        // A custom sub-class is configured through its className attribute
+        if (!StandardManager.class.equals(smanager.getClass())) {
             return false;
         }
+
+        // StandardManager-specific property
+        if (!"SESSIONS.ser".equals(smanager.getPathname())) {
+            return false;
+        }
+
+        // LifecycleBase property
+        if (!smanager.getThrowOnFailure()) {
+            return false;
+        }
+
+        // ManagerBase properties
+        if (smanager.getMaxActiveSessions() != -1) {
+            return false;
+        }
+        if (smanager.getSecureRandomClass() != null) {
+            return false;
+        }
+        if (!SessionIdGeneratorBase.DEFAULT_SECURE_RANDOM_ALGORITHM.equals(smanager.getSecureRandomAlgorithm())) {
+            return false;
+        }
+        if (smanager.getSecureRandomProvider() != null) {
+            return false;
+        }
+        if (smanager.getProcessExpiresFrequency() != 6) {
+            return false;
+        }
+        if (smanager.getSessionAttributeNameFilter() != null) {
+            return false;
+        }
+        if (smanager.getSessionAttributeValueClassNameFilter() != null) {
+            return false;
+        }
+        if (smanager.getWarnOnSessionAttributeFilterFailure()) {
+            return false;
+        }
+        if (smanager.getNotifyBindingListenerOnUnchangedValue()) {
+            return false;
+        }
+        if (!smanager.getNotifyAttributeListenerOnUnchangedValue()) {
+            return false;
+        }
+        if (smanager.getPersistAuthentication()) {
+            return false;
+        }
+        SessionIdGenerator sessionIdGenerator = smanager.getSessionIdGenerator();
+        if (sessionIdGenerator != null &&
+                !StandardSessionIdGenerator.class.equals(sessionIdGenerator.getClass())) {
+            return false;
+        }
+        if (sessionIdGenerator instanceof SessionIdGeneratorBase) {
+            SessionIdGeneratorBase sigBase = (SessionIdGeneratorBase) sessionIdGenerator;
+            // The manager propagates its jvmRoute to the generator when it starts,
+            // so a value matching the manager's is runtime state, not configuration
+            String sigJvmRoute = sigBase.getJvmRoute();
+            if (sigJvmRoute != null && !sigJvmRoute.isEmpty() &&
+                    !sigJvmRoute.equals(smanager.getJvmRoute())) {
+                return false;
+            }
+            if (!sigBase.getThrowOnFailure()) {
+                return false;
+            }
+            if (sigBase.getSecureRandomClass() != null) {
+                return false;
+            }
+            if (!SessionIdGeneratorBase.DEFAULT_SECURE_RANDOM_ALGORITHM.equals(sigBase.getSecureRandomAlgorithm())) {
+                return false;
+            }
+            if (sigBase.getSecureRandomProvider() != null) {
+                return false;
+            }
+            if (sigBase.getSessionIdLength() != 16) {
+                return false;
+            }
+        }
+
         return true;
 
     }
 
     @Override
-    public void storeChildren(PrintWriter aWriter, int indent, Object aManager,
-            StoreDescription parentDesc) throws Exception {
+    public void storeChildren(PrintWriter aWriter, int indent, Object aManager, StoreDescription parentDesc)
+            throws Exception {
         if (aManager instanceof Manager) {
             Manager manager = (Manager) aManager;
             // Store nested <SessionIdGenerator> element;

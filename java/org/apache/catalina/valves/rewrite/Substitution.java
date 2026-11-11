@@ -22,14 +22,59 @@ import java.util.Map;
 import java.util.regex.Matcher;
 
 import org.apache.catalina.util.URLEncoder;
+import org.apache.tomcat.util.res.StringManager;
 
+/**
+ * Represents a URL substitution pattern for rewrite rules. Supports back-references
+ * to rewrite rules and conditions, server variables, and map lookups.
+ */
 public class Substitution {
 
-    public abstract class SubstitutionElement {
+    /**
+     * Constructs a new Substitution.
+     */
+    public Substitution() {
+    }
+
+    /**
+     * The string manager for this package.
+     */
+    protected static final StringManager sm = StringManager.getManager(Substitution.class);
+
+    /**
+     * Abstract base class for individual substitution elements.
+     */
+    public abstract static class SubstitutionElement {
+        /**
+         * Constructs a new SubstitutionElement.
+         */
+        public SubstitutionElement() {
+        }
+
+        /**
+         * Evaluates this element against the given matchers and resolver.
+         *
+         * @param rule the rewrite rule matcher
+         * @param cond the condition matcher
+         * @param resolver the property resolver
+         * @return the evaluated string
+         */
         public abstract String evaluate(Matcher rule, Matcher cond, Resolver resolver);
     }
 
-    public class StaticElement extends SubstitutionElement {
+    /**
+     * Substitution element that produces a static string value.
+     */
+    public static class StaticElement extends SubstitutionElement {
+        /**
+         * Constructs a new StaticElement.
+         */
+        public StaticElement() {
+        }
+
+        /**
+         * The static string value.
+         */
         public String value;
 
         @Override
@@ -39,19 +84,32 @@ public class Substitution {
 
     }
 
+    /**
+     * Substitution element that produces a back-reference to a rewrite rule group.
+     */
     public class RewriteRuleBackReferenceElement extends SubstitutionElement {
+        /**
+         * Constructs a new RewriteRuleBackReferenceElement.
+         */
+        public RewriteRuleBackReferenceElement() {
+        }
+
+        /**
+         * The group number to reference.
+         */
         public int n;
+
         @Override
         public String evaluate(Matcher rule, Matcher cond, Resolver resolver) {
-            String result = rule.group(n);
+            String result = (n <= rule.groupCount()) ? rule.group(n) : null;
             if (result == null) {
                 result = "";
             }
             if (escapeBackReferences) {
                 // Note: This should be consistent with the way httpd behaves.
-                //       We might want to consider providing a dedicated decoder
-                //       with an option to add additional safe characters to
-                //       provide users with more flexibility
+                // We might want to consider providing a dedicated decoder
+                // with an option to add additional safe characters to
+                // provide users with more flexibility
                 return URLEncoder.DEFAULT.encode(result, resolver.getUriCharset());
             } else {
                 return result;
@@ -59,50 +117,137 @@ public class Substitution {
         }
     }
 
-    public class RewriteCondBackReferenceElement extends SubstitutionElement {
+    /**
+     * Substitution element that produces a back-reference to a rewrite condition group.
+     */
+    public static class RewriteCondBackReferenceElement extends SubstitutionElement {
+        /**
+         * Constructs a new RewriteCondBackReferenceElement.
+         */
+        public RewriteCondBackReferenceElement() {
+        }
+
+        /**
+         * The group number to reference.
+         */
         public int n;
+
         @Override
         public String evaluate(Matcher rule, Matcher cond, Resolver resolver) {
-            return (cond.group(n) == null ? "" : cond.group(n));
+            String result = (cond != null && n <= cond.groupCount()) ? cond.group(n) : null;
+            return (result == null) ? "" : result;
         }
     }
 
-    public class ServerVariableElement extends SubstitutionElement {
+    /**
+     * Substitution element that resolves a server variable.
+     */
+    public static class ServerVariableElement extends SubstitutionElement {
+        /**
+         * Constructs a new ServerVariableElement.
+         */
+        public ServerVariableElement() {
+        }
+
+        /**
+         * The server variable name to resolve.
+         */
         public String key;
+
         @Override
         public String evaluate(Matcher rule, Matcher cond, Resolver resolver) {
             return resolver.resolve(key);
         }
     }
 
-    public class ServerVariableEnvElement extends SubstitutionElement {
+    /**
+     * Substitution element that resolves an environment variable.
+     */
+    public static class ServerVariableEnvElement extends SubstitutionElement {
+        /**
+         * Constructs a new ServerVariableEnvElement.
+         */
+        public ServerVariableEnvElement() {
+        }
+
+        /**
+         * The environment variable name to resolve.
+         */
         public String key;
+
         @Override
         public String evaluate(Matcher rule, Matcher cond, Resolver resolver) {
             return resolver.resolveEnv(key);
         }
     }
 
-    public class ServerVariableSslElement extends SubstitutionElement {
+    /**
+     * Substitution element that resolves an SSL variable.
+     */
+    public static class ServerVariableSslElement extends SubstitutionElement {
+        /**
+         * Constructs a new ServerVariableSslElement.
+         */
+        public ServerVariableSslElement() {
+        }
+
+        /**
+         * The SSL variable name to resolve.
+         */
         public String key;
+
         @Override
         public String evaluate(Matcher rule, Matcher cond, Resolver resolver) {
             return resolver.resolveSsl(key);
         }
     }
 
-    public class ServerVariableHttpElement extends SubstitutionElement {
+    /**
+     * Substitution element that resolves an HTTP header variable.
+     */
+    public static class ServerVariableHttpElement extends SubstitutionElement {
+        /**
+         * Constructs a new ServerVariableHttpElement.
+         */
+        public ServerVariableHttpElement() {
+        }
+
+        /**
+         * The HTTP header name to resolve.
+         */
         public String key;
+
         @Override
         public String evaluate(Matcher rule, Matcher cond, Resolver resolver) {
             return resolver.resolveHttp(key);
         }
     }
 
+    /**
+     * Substitution element that performs a rewrite map lookup.
+     */
     public class MapElement extends SubstitutionElement {
+        /**
+         * Constructs a new MapElement.
+         */
+        public MapElement() {
+        }
+
+        /**
+         * The rewrite map to use for lookup.
+         */
         public RewriteMap map = null;
+
+        /**
+         * The default value elements if map lookup fails.
+         */
         public SubstitutionElement[] defaultValue = null;
+
+        /**
+         * The key elements for the map lookup.
+         */
         public SubstitutionElement[] key = null;
+
         @Override
         public String evaluate(Matcher rule, Matcher cond, Resolver resolver) {
             String result = map.lookup(evaluateSubstitution(key, rule, cond, resolver));
@@ -113,28 +258,64 @@ public class Substitution {
         }
     }
 
+    /**
+     * The parsed substitution elements.
+     */
     protected SubstitutionElement[] elements = null;
 
+    /**
+     * The raw substitution string.
+     */
     protected String sub = null;
-    public String getSub() { return sub; }
-    public void setSub(String sub) { this.sub = sub; }
 
+    /**
+     * Returns the raw substitution string.
+     *
+     * @return the substitution string
+     */
+    public String getSub() {
+        return sub;
+    }
+
+    /**
+     * Sets the raw substitution string to be parsed.
+     *
+     * @param sub the substitution string
+     */
+    public void setSub(String sub) {
+        this.sub = sub;
+    }
+
+    /**
+     * Whether to escape back references.
+     */
     private boolean escapeBackReferences;
+
+    /**
+     * Sets whether back references should be URL-encoded.
+     *
+     * @param escapeBackReferences true to enable escaping
+     */
     void setEscapeBackReferences(boolean escapeBackReferences) {
         this.escapeBackReferences = escapeBackReferences;
     }
 
-    public void parse(Map<String, RewriteMap> maps) {
-        this.elements = parseSubtitution(sub, maps);
+    /**
+     * Parses the substitution string into individual elements.
+     *
+     * @param maps the available rewrite maps
+     */
+    public void parse(Map<String,RewriteMap> maps) {
+        this.elements = parseSubstitution(sub, maps);
     }
 
-    private SubstitutionElement[] parseSubtitution(String sub, Map<String, RewriteMap> maps) {
+    private SubstitutionElement[] parseSubstitution(String sub, Map<String,RewriteMap> maps) {
 
         List<SubstitutionElement> elements = new ArrayList<>();
         int pos = 0;
-        int percentPos = 0;
-        int dollarPos = 0;
-        int backslashPos = 0;
+        int percentPos;
+        int dollarPos;
+        int backslashPos;
 
         while (pos < sub.length()) {
             percentPos = sub.indexOf('%', pos);
@@ -143,12 +324,12 @@ public class Substitution {
             if (percentPos == -1 && dollarPos == -1 && backslashPos == -1) {
                 // Static text
                 StaticElement newElement = new StaticElement();
-                newElement.value = sub.substring(pos, sub.length());
+                newElement.value = sub.substring(pos);
                 pos = sub.length();
                 elements.add(newElement);
             } else if (isFirstPos(backslashPos, dollarPos, percentPos)) {
                 if (backslashPos + 1 == sub.length()) {
-                    throw new IllegalArgumentException(sub);
+                    throw new IllegalArgumentException(sm.getString("substitution.invalid", sub));
                 }
                 StaticElement newElement = new StaticElement();
                 newElement.value = sub.substring(pos, backslashPos) + sub.substring(backslashPos + 1, backslashPos + 2);
@@ -157,13 +338,12 @@ public class Substitution {
             } else if (isFirstPos(dollarPos, percentPos)) {
                 // $: back reference to rule or map lookup
                 if (dollarPos + 1 == sub.length()) {
-                    throw new IllegalArgumentException(sub);
+                    throw new IllegalArgumentException(sm.getString("substitution.invalid", sub));
                 }
                 if (pos < dollarPos) {
                     // Static text
                     StaticElement newElement = new StaticElement();
                     newElement.value = sub.substring(pos, dollarPos);
-                    pos = dollarPos;
                     elements.add(newElement);
                 }
                 if (Character.isDigit(sub.charAt(dollarPos + 1))) {
@@ -180,42 +360,42 @@ public class Substitution {
                     int def = findMatchingColonOrBar(false, sub, open);
                     int close = findMatchingBrace(sub, open);
                     if (!(-1 < open && open < colon && colon < close)) {
-                        throw new IllegalArgumentException(sub);
+                        throw new IllegalArgumentException(sm.getString("substitution.invalid", sub));
                     }
                     newElement.map = maps.get(sub.substring(open + 1, colon));
                     if (newElement.map == null) {
-                        throw new IllegalArgumentException(sub + ": No map: " + sub.substring(open + 1, colon));
+                        throw new IllegalArgumentException(
+                                sm.getString("substitution.noMap", sub.substring(open + 1, colon), sub));
                     }
-                    String key = null;
+                    String key;
                     String defaultValue = null;
                     if (def > -1) {
                         if (!(colon < def && def < close)) {
-                            throw new IllegalArgumentException(sub);
+                            throw new IllegalArgumentException(sm.getString("substitution.invalid", sub));
                         }
                         key = sub.substring(colon + 1, def);
                         defaultValue = sub.substring(def + 1, close);
                     } else {
                         key = sub.substring(colon + 1, close);
                     }
-                    newElement.key = parseSubtitution(key, maps);
+                    newElement.key = parseSubstitution(key, maps);
                     if (defaultValue != null) {
-                        newElement.defaultValue = parseSubtitution(defaultValue, maps);
+                        newElement.defaultValue = parseSubstitution(defaultValue, maps);
                     }
                     pos = close + 1;
                     elements.add(newElement);
                 } else {
-                    throw new IllegalArgumentException(sub + ": missing digit or curly brace.");
+                    throw new IllegalArgumentException(sm.getString("substitution.missingDigit", sub));
                 }
             } else {
                 // %: back reference to condition or server variable
                 if (percentPos + 1 == sub.length()) {
-                    throw new IllegalArgumentException(sub);
+                    throw new IllegalArgumentException(sm.getString("substitution.invalid", sub));
                 }
                 if (pos < percentPos) {
                     // Static text
                     StaticElement newElement = new StaticElement();
                     newElement.value = sub.substring(pos, percentPos);
-                    pos = percentPos;
                     elements.add(newElement);
                 }
                 if (Character.isDigit(sub.charAt(percentPos + 1))) {
@@ -226,12 +406,12 @@ public class Substitution {
                     elements.add(newElement);
                 } else if (sub.charAt(percentPos + 1) == '{') {
                     // %: server variable as %{variable}
-                    SubstitutionElement newElement = null;
+                    SubstitutionElement newElement;
                     int open = sub.indexOf('{', percentPos);
                     int colon = findMatchingColonOrBar(true, sub, open);
                     int close = findMatchingBrace(sub, open);
                     if (!(-1 < open && open < close)) {
-                        throw new IllegalArgumentException(sub);
+                        throw new IllegalArgumentException(sm.getString("substitution.invalid", sub));
                     }
                     if (colon > -1 && open < colon && colon < close) {
                         String type = sub.substring(open + 1, colon);
@@ -245,7 +425,7 @@ public class Substitution {
                             newElement = new ServerVariableHttpElement();
                             ((ServerVariableHttpElement) newElement).key = sub.substring(colon + 1, close);
                         } else {
-                            throw new IllegalArgumentException(sub + ": Bad type: " + type);
+                            throw new IllegalArgumentException(sm.getString("substitution.badType", type, sub));
                         }
                     } else {
                         newElement = new ServerVariableElement();
@@ -254,7 +434,7 @@ public class Substitution {
                     pos = close + 1;
                     elements.add(newElement);
                 } else {
-                    throw new IllegalArgumentException(sub + ": missing digit or curly brace.");
+                    throw new IllegalArgumentException(sm.getString("substitution.missingDigit", sub));
                 }
             }
         }
@@ -268,7 +448,7 @@ public class Substitution {
         for (int i = start + 1; i < sub.length(); i++) {
             char c = sub.charAt(i);
             if (c == '{') {
-                char previousChar = sub.charAt(i-1);
+                char previousChar = sub.charAt(i - 1);
                 if (previousChar == '$' || previousChar == '%') {
                     nesting++;
                 }
@@ -287,13 +467,13 @@ public class Substitution {
         for (int i = start + 1; i < sub.length(); i++) {
             char c = sub.charAt(i);
             if (c == '{') {
-                char previousChar = sub.charAt(i-1);
+                char previousChar = sub.charAt(i - 1);
                 if (previousChar == '$' || previousChar == '%') {
                     nesting++;
                 }
             } else if (c == '}') {
                 nesting--;
-            } else if (colon ? c == ':' : c =='|') {
+            } else if (colon ? c == ':' : c == '|') {
                 if (nesting == 0) {
                     return i;
                 }
@@ -304,9 +484,11 @@ public class Substitution {
 
     /**
      * Evaluate the substitution based on the context.
-     * @param rule corresponding matched rule
-     * @param cond last matched condition
+     *
+     * @param rule     corresponding matched rule
+     * @param cond     last matched condition
      * @param resolver The property resolver
+     *
      * @return The substitution result
      */
     public String evaluate(Matcher rule, Matcher cond, Resolver resolver) {
@@ -314,24 +496,28 @@ public class Substitution {
     }
 
     private String evaluateSubstitution(SubstitutionElement[] elements, Matcher rule, Matcher cond, Resolver resolver) {
-        StringBuffer buf = new StringBuffer();
-        for (int i = 0; i < elements.length; i++) {
-            buf.append(elements[i].evaluate(rule, cond, resolver));
+        StringBuilder buf = new StringBuilder();
+        for (SubstitutionElement element : elements) {
+            // Elements may return null, for example when a server variable,
+            // environment variable, SSL variable or map lookup is undefined.
+            // Like mod_rewrite, undefined values expand to an empty string.
+            String value = element.evaluate(rule, cond, resolver);
+            if (value != null) {
+                buf.append(value);
+            }
         }
         return buf.toString();
     }
 
     /**
-     * Checks whether the first int is non negative and smaller than any non negative other int
-     * given with {@code others}.
+     * Checks whether the first int is non negative and smaller than any non negative other int given with
+     * {@code others}.
      *
-     * @param testPos
-     *            integer to test against
-     * @param others
-     *            list of integers that are paired against {@code testPos}. Any
-     *            negative integer will be ignored.
-     * @return {@code true} if {@code testPos} is not negative and is less then any given other
-     *         integer, {@code false} otherwise
+     * @param testPos integer to test against
+     * @param others  list of integers that are paired against {@code testPos}. Any negative integer will be ignored.
+     *
+     * @return {@code true} if {@code testPos} is not negative and is less then any given other integer, {@code false}
+     *             otherwise
      */
     private boolean isFirstPos(int testPos, int... others) {
         if (testPos < 0) {

@@ -31,10 +31,16 @@ import org.apache.catalina.util.IOTools;
 import org.apache.tomcat.util.res.StringManager;
 
 /**
- * If the main resources are packaged as a WAR file then any JARs will be
- * extracted to the work directory and used from there.
+ * If the main resources are packaged as a WAR file then any JARs will be extracted to the work directory and used from
+ * there.
  */
 public class ExtractingRoot extends StandardRoot {
+
+    /**
+     * Creates a new ExtractingRoot instance.
+     */
+    public ExtractingRoot() {
+    }
 
     private static final StringManager sm = StringManager.getManager(ExtractingRoot.class);
 
@@ -53,8 +59,7 @@ public class ExtractingRoot extends StandardRoot {
         File expansionTarget = getExpansionTarget();
         if (!expansionTarget.isDirectory()) {
             if (!expansionTarget.mkdirs()) {
-                throw new LifecycleException(
-                        sm.getString("extractingRoot.targetFailed", expansionTarget));
+                throw new LifecycleException(sm.getString("extractingRoot.targetFailed", expansionTarget));
             }
         }
 
@@ -65,16 +70,25 @@ public class ExtractingRoot extends StandardRoot {
                 try {
                     File dest = new File(expansionTarget, possibleJar.getName());
                     dest = dest.getCanonicalFile();
+                    try {
+                        String expansionCanonical = expansionTarget.getCanonicalPath();
+                        String destCanonical = dest.getCanonicalPath();
+                        if (!destCanonical.startsWith(expansionCanonical + File.separator) &&
+                                !destCanonical.equals(expansionCanonical)) {
+                            throw new LifecycleException(
+                                    sm.getString("extractingRoot.pathTraversal", possibleJar.getName()));
+                        }
+                    } catch (IOException ioe) {
+                        throw new LifecycleException(sm.getString("extractingRoot.targetFailed", expansionTarget), ioe);
+                    }
                     try (InputStream sourceStream = possibleJar.getInputStream();
-                            OutputStream destStream= new FileOutputStream(dest)) {
+                            OutputStream destStream = new FileOutputStream(dest)) {
                         IOTools.flow(sourceStream, destStream);
                     }
 
-                    createWebResourceSet(ResourceSetType.CLASSES_JAR,
-                            "/WEB-INF/classes", dest.toURI().toURL(), "/");
+                    createWebResourceSet(ResourceSetType.CLASSES_JAR, "/WEB-INF/classes", dest.toURI().toURL(), "/");
                 } catch (IOException ioe) {
-                    throw new LifecycleException(
-                            sm.getString("extractingRoot.jarFailed", possibleJar.getName()), ioe);
+                    throw new LifecycleException(sm.getString("extractingRoot.jarFailed", possibleJar.getName()), ioe);
                 }
             }
         }
@@ -82,11 +96,15 @@ public class ExtractingRoot extends StandardRoot {
 
     private File getExpansionTarget() {
         File tmpDir = (File) getContext().getServletContext().getAttribute(ServletContext.TEMPDIR);
-        File expansionTarget = new File(tmpDir, APPLICATION_JARS_DIR);
-        return expansionTarget;
+        return new File(tmpDir, APPLICATION_JARS_DIR);
     }
 
 
+    /**
+     * Always returns false because ExtractingRoot extracts JARs to the work
+     * directory, making the deployment behave as if it were exploded. Callers
+     * that check isPackedWarFile() should treat this as an exploded deployment.
+     */
     @Override
     protected boolean isPackedWarFile() {
         return false;

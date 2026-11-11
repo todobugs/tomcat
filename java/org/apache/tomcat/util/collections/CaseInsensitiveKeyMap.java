@@ -27,11 +27,9 @@ import java.util.Set;
 import org.apache.tomcat.util.res.StringManager;
 
 /**
- * A Map implementation that uses case-insensitive (using {@link
- * Locale#ENGLISH}) strings as keys.
+ * A Map implementation that uses case-insensitive (using {@link Locale#ENGLISH}) strings as keys.
  * <p>
- * Keys must be instances of {@link String}. Note that this means that
- * <code>null</code> keys are not permitted.
+ * Keys must be instances of {@link String}. Note that this means that <code>null</code> keys are not permitted.
  * <p>
  * This implementation is not thread-safe.
  *
@@ -39,8 +37,13 @@ import org.apache.tomcat.util.res.StringManager;
  */
 public class CaseInsensitiveKeyMap<V> extends AbstractMap<String,V> {
 
-    private static final StringManager sm =
-            StringManager.getManager(CaseInsensitiveKeyMap.class);
+    /**
+     * Default constructor.
+     */
+    public CaseInsensitiveKeyMap() {
+    }
+
+    private static final StringManager sm = StringManager.getManager(CaseInsensitiveKeyMap.class);
 
     private final Map<Key,V> map = new HashMap<>();
 
@@ -64,12 +67,11 @@ public class CaseInsensitiveKeyMap<V> extends AbstractMap<String,V> {
     /**
      * {@inheritDoc}
      * <p>
-     * <b>Use this method with caution</b>. If the input Map contains duplicate
-     * keys when the keys are compared in a case insensitive manner then some
-     * values will be lost when inserting via this method.
+     * <b>Use this method with caution</b>. If the input Map contains duplicate keys when the keys are compared in a
+     * case-insensitive manner then some values will be lost when inserting via this method.
      */
     @Override
-    public void putAll(Map<? extends String, ? extends V> m) {
+    public void putAll(Map<? extends String,? extends V> m) {
         super.putAll(m);
     }
 
@@ -87,8 +89,88 @@ public class CaseInsensitiveKeyMap<V> extends AbstractMap<String,V> {
 
 
     @Override
-    public Set<Entry<String, V>> entrySet() {
+    public Set<Entry<String,V>> entrySet() {
         return new EntrySet<>(map.entrySet());
+    }
+
+
+    /*
+     * The AbstractMap.keySet() implementation cannot be used since its contains() method is case-insensitive (it
+     * delegates to containsKey()) while its remove() method is case-sensitive (it iterates the keys comparing them
+     * using String.equals()). That violates the Set contract for keys that differ in case. This view keeps all
+     * operations case-insensitive.
+     */
+    @Override
+    public Set<String> keySet() {
+        return new KeySet<>(map);
+    }
+
+
+    private static class KeySet<V> extends AbstractSet<String> {
+
+        private final Map<Key,V> map;
+
+        KeySet(Map<Key,V> map) {
+            this.map = map;
+        }
+
+        @Override
+        public Iterator<String> iterator() {
+            return new KeyIterator(map.keySet().iterator());
+        }
+
+        @Override
+        public int size() {
+            return map.size();
+        }
+
+        @Override
+        public boolean contains(Object o) {
+            return map.containsKey(Key.getInstance(o));
+        }
+
+        @Override
+        public boolean remove(Object o) {
+            Key key = Key.getInstance(o);
+            if (key == null) {
+                return false;
+            }
+            if (!map.containsKey(key)) {
+                return false;
+            }
+            map.remove(key);
+            return true;
+        }
+
+        @Override
+        public void clear() {
+            map.clear();
+        }
+    }
+
+
+    private static class KeyIterator implements Iterator<String> {
+
+        private final Iterator<Key> iterator;
+
+        KeyIterator(Iterator<Key> iterator) {
+            this.iterator = iterator;
+        }
+
+        @Override
+        public boolean hasNext() {
+            return iterator.hasNext();
+        }
+
+        @Override
+        public String next() {
+            return iterator.next().getKey();
+        }
+
+        @Override
+        public void remove() {
+            iterator.remove();
+        }
     }
 
 
@@ -96,7 +178,7 @@ public class CaseInsensitiveKeyMap<V> extends AbstractMap<String,V> {
 
         private final Set<Entry<Key,V>> entrySet;
 
-        public EntrySet(Set<Map.Entry<Key,V>> entrySet) {
+        EntrySet(Set<Map.Entry<Key,V>> entrySet) {
             this.entrySet = entrySet;
         }
 
@@ -116,7 +198,7 @@ public class CaseInsensitiveKeyMap<V> extends AbstractMap<String,V> {
 
         private final Iterator<Entry<Key,V>> iterator;
 
-        public EntryIterator(Iterator<Entry<Key,V>> iterator) {
+        EntryIterator(Iterator<Entry<Key,V>> iterator) {
             this.iterator = iterator;
         }
 
@@ -128,7 +210,7 @@ public class CaseInsensitiveKeyMap<V> extends AbstractMap<String,V> {
         @Override
         public Entry<String,V> next() {
             Entry<Key,V> entry = iterator.next();
-            return new EntryImpl<>(entry.getKey().getKey(), entry.getValue());
+            return new SimpleImmutableEntry<>(entry.getKey().getKey(), entry.getValue());
         }
 
         @Override
@@ -137,32 +219,6 @@ public class CaseInsensitiveKeyMap<V> extends AbstractMap<String,V> {
         }
     }
 
-
-    private static class EntryImpl<V> implements Entry<String,V> {
-
-        private final String key;
-        private final V value;
-
-        public EntryImpl(String key, V value) {
-            this.key = key;
-            this.value = value;
-        }
-
-        @Override
-        public String getKey() {
-            return key;
-        }
-
-        @Override
-        public V getValue() {
-            return value;
-        }
-
-        @Override
-        public V setValue(V value) {
-            throw new UnsupportedOperationException();
-        }
-    }
 
     private static class Key {
 

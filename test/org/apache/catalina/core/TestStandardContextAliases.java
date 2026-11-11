@@ -14,7 +14,6 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  */
-
 package org.apache.catalina.core;
 
 import java.io.File;
@@ -45,17 +44,16 @@ public class TestStandardContextAliases extends TomcatBaseTest {
         Tomcat tomcat = getTomcatInstance();
 
         // No file system docBase required
-        Context ctx = tomcat.addContext("", null);
+        Context ctx = getProgrammaticRootContext();
 
         File lib = new File("webapps/examples/WEB-INF/lib");
         ctx.setResources(new StandardRoot(ctx));
-        ctx.getResources().createWebResourceSet(
-                WebResourceRoot.ResourceSetType.POST, "/WEB-INF/lib",
+        ctx.getResources().createWebResourceSet(WebResourceRoot.ResourceSetType.POST, "/WEB-INF/lib",
                 lib.getAbsolutePath(), null, "/");
 
 
         Tomcat.addServlet(ctx, "test", new TestServlet());
-        ctx.addServletMappingDecoded("/", "test");
+        ctx.addServletMapping("/", "test");
 
         tomcat.start();
 
@@ -80,8 +78,7 @@ public class TestStandardContextAliases extends TomcatBaseTest {
         private static final long serialVersionUID = 1L;
 
         @Override
-        protected void doGet(HttpServletRequest req, HttpServletResponse resp)
-                throws ServletException, IOException {
+        protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
 
             resp.setContentType("text/plain");
 

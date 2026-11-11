@@ -29,6 +29,9 @@ import org.apache.tomcat.util.res.StringManager;
 import org.xml.sax.InputSource;
 import org.xml.sax.SAXParseException;
 
+/**
+ * Parser for web.xml and web-fragment.xml deployment descriptors.
+ */
 public class WebXmlParser {
 
     private final Log log = LogFactory.getLog(WebXmlParser.class); // must not be static
@@ -36,44 +39,67 @@ public class WebXmlParser {
     /**
      * The string resources for this package.
      */
-    private static final StringManager sm =
-        StringManager.getManager(Constants.PACKAGE_NAME);
+    private static final StringManager sm = StringManager.getManager(Constants.PACKAGE_NAME);
 
     /**
-     * The <code>Digester</code> we will use to process web application
-     * deployment descriptor files.
+     * The <code>Digester</code> we will use to process web application deployment descriptor files.
      */
     private final Digester webDigester;
     private final WebRuleSet webRuleSet;
 
     /**
-     * The <code>Digester</code> we will use to process web fragment
-     * deployment descriptor files.
+     * The <code>Digester</code> we will use to process web fragment deployment descriptor files.
      */
     private final Digester webFragmentDigester;
     private final WebRuleSet webFragmentRuleSet;
+    private final boolean urlPatternsProvidedInDecodedForm;
+
+    /**
+     * Constructs a new WebXmlParser.
+     *
+     * @param namespaceAware Whether the parser is namespace aware
+     * @param validation     Whether validation is enabled
+     * @param blockExternal  Whether external entities are blocked
+     */
+    public WebXmlParser(boolean namespaceAware, boolean validation, boolean blockExternal) {
+        this(namespaceAware, validation, blockExternal, false);
+    }
 
 
-    public WebXmlParser(boolean namespaceAware, boolean validation,
-            boolean blockExternal) {
-        webRuleSet = new WebRuleSet(false);
-        webDigester = DigesterFactory.newDigester(validation,
-                namespaceAware, webRuleSet, blockExternal);
+    /**
+     * Constructs a new WebXmlParser.
+     *
+     * @param namespaceAware                   Whether the parser is namespace aware
+     * @param validation                       Whether validation is enabled
+     * @param blockExternal                    Whether external entities are blocked
+     * @param urlPatternsProvidedInDecodedForm Whether URL and URL patterns will be provided in decoded form
+     *
+     * @deprecated This constructor will be removed in Tomcat 12
+     */
+    @Deprecated
+    public WebXmlParser(boolean namespaceAware, boolean validation, boolean blockExternal,
+            boolean urlPatternsProvidedInDecodedForm) {
+
+        webRuleSet = new WebRuleSet("",  false, urlPatternsProvidedInDecodedForm);
+        webDigester = DigesterFactory.newDigester(validation, namespaceAware, webRuleSet, blockExternal);
         webDigester.getParser();
 
-        webFragmentRuleSet = new WebRuleSet(true);
-        webFragmentDigester = DigesterFactory.newDigester(validation,
-                namespaceAware, webFragmentRuleSet, blockExternal);
+        webFragmentRuleSet = new WebRuleSet("", true, urlPatternsProvidedInDecodedForm);
+        webFragmentDigester =
+                DigesterFactory.newDigester(validation, namespaceAware, webFragmentRuleSet, blockExternal);
         webFragmentDigester.getParser();
+        this.urlPatternsProvidedInDecodedForm = urlPatternsProvidedInDecodedForm;
     }
 
     /**
      * Parse a web descriptor at a location.
      *
-     * @param url the location; if null no load will be attempted
-     * @param dest the instance to be populated by the parse operation
+     * @param url      the location; if null no load will be attempted
+     * @param dest     the instance to be populated by the parse operation
      * @param fragment indicate if the descriptor is a web-app or web-fragment
+     *
      * @return true if the descriptor was successfully parsed
+     *
      * @throws IOException if there was a problem reading from the URL
      */
     public boolean parseWebXml(URL url, WebXml dest, boolean fragment) throws IOException {
@@ -86,13 +112,19 @@ public class WebXmlParser {
     }
 
 
-    public boolean parseWebXml(InputSource source, WebXml dest,
-            boolean fragment) {
-
-        boolean ok = true;
+    /**
+     * Parses a web descriptor from an InputSource.
+     *
+     * @param source   The input source
+     * @param dest     The WebXml instance to populate
+     * @param fragment Whether this is a web-fragment
+     *
+     * @return {@code true} if parsing was successful
+     */
+    public boolean parseWebXml(InputSource source, WebXml dest, boolean fragment) {
 
         if (source == null) {
-            return ok;
+            return true;
         }
 
         XmlErrorHandler handler = new XmlErrorHandler();
@@ -110,29 +142,26 @@ public class WebXmlParser {
         digester.push(dest);
         digester.setErrorHandler(handler);
 
-        if(log.isDebugEnabled()) {
-            log.debug(sm.getString("webXmlParser.applicationStart",
-                    source.getSystemId()));
+        if (log.isDebugEnabled()) {
+            log.debug(sm.getString("webXmlParser.applicationStart", source.getSystemId()));
         }
+
+        boolean ok = true;
 
         try {
             digester.parse(source);
 
-            if (handler.getWarnings().size() > 0 ||
-                    handler.getErrors().size() > 0) {
+            if (!handler.getWarnings().isEmpty() || !handler.getErrors().isEmpty()) {
                 ok = false;
                 handler.logFindings(log, source.getSystemId());
             }
         } catch (SAXParseException e) {
-            log.error(sm.getString("webXmlParser.applicationParse",
-                    source.getSystemId()), e);
-            log.error(sm.getString("webXmlParser.applicationPosition",
-                             "" + e.getLineNumber(),
-                             "" + e.getColumnNumber()));
+            log.error(sm.getString("webXmlParser.applicationParse", source.getSystemId()), e);
+            log.error(
+                    sm.getString("webXmlParser.applicationPosition", "" + e.getLineNumber(), "" + e.getColumnNumber()));
             ok = false;
         } catch (Exception e) {
-            log.error(sm.getString("webXmlParser.applicationParse",
-                    source.getSystemId()), e);
+            log.error(sm.getString("webXmlParser.applicationParse", source.getSystemId()), e);
             ok = false;
         } finally {
             InputSourceUtil.close(source);
@@ -146,10 +175,25 @@ public class WebXmlParser {
 
     /**
      * Sets the ClassLoader to be used for creating descriptor objects.
+     *
      * @param classLoader the ClassLoader to be used for creating descriptor objects
      */
     public void setClassLoader(ClassLoader classLoader) {
         webDigester.setClassLoader(classLoader);
         webFragmentDigester.setClassLoader(classLoader);
+    }
+
+
+    /**
+     * Does this parser expect URLs and URL patterns provided in web.xml, annotations and their programmatic
+     * equivalents to be in URL-decoded form?
+     *
+     * @return {@code true} if URLs and URL patterns are expected in URL-decoded form, otherwise {@code false}
+     *
+     * @deprecated This method will be removed in Tomcat 12 where it will effectively be hard-coded to {@code true}
+     */
+    @Deprecated
+    public boolean getUrlPatternsProvidedInDecodedForm() {
+        return urlPatternsProvidedInDecodedForm;
     }
 }

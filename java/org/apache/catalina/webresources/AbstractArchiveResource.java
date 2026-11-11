@@ -19,12 +19,20 @@ package org.apache.catalina.webresources;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.MalformedURLException;
+import java.net.URI;
+import java.net.URISyntaxException;
 import java.net.URL;
+import java.nio.charset.StandardCharsets;
 import java.security.cert.Certificate;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.jar.JarEntry;
 import java.util.jar.Manifest;
 
+import org.apache.catalina.util.URLEncoder;
+
+/**
+ * Abstract resource implementation for archive-based resources.
+ */
 public abstract class AbstractArchiveResource extends AbstractResource {
 
     private final AbstractArchiveResourceSet archiveResourceSet;
@@ -35,8 +43,20 @@ public abstract class AbstractArchiveResource extends AbstractResource {
     private boolean readCerts = false;
     private Certificate[] certificates;
 
-    protected AbstractArchiveResource(AbstractArchiveResourceSet archiveResourceSet,
-            String webAppPath, String baseUrl, JarEntry jarEntry, String codeBaseUrl) {
+    /**
+     * The expectation is that this will be deprecated and then removed once the SecurityManager has been fully removed
+     * from the JRE and it has been confirmed that the JRE no longer depends on code base.
+     *
+     * See https://bz.apache.org/bugzilla/show_bug.cgi?id=69426
+     *
+     * @param archiveResourceSet The archive resource set
+     * @param webAppPath         The web application path
+     * @param baseUrl            The base URL
+     * @param jarEntry           The JAR entry
+     * @param codeBaseUrl        The code base URL
+     */
+    protected AbstractArchiveResource(AbstractArchiveResourceSet archiveResourceSet, String webAppPath, String baseUrl,
+            JarEntry jarEntry, String codeBaseUrl) {
         super(archiveResourceSet.getRoot(), webAppPath);
         this.archiveResourceSet = archiveResourceSet;
         this.baseUrl = baseUrl;
@@ -48,8 +68,7 @@ public abstract class AbstractArchiveResource extends AbstractResource {
             resourceName = resourceName.substring(0, resourceName.length() - 1);
         }
         String internalPath = archiveResourceSet.getInternalPath();
-        if (internalPath.length() > 0 && resourceName.equals(
-                internalPath.subSequence(1, internalPath.length()))) {
+        if (!internalPath.isEmpty() && resourceName.contentEquals(internalPath.subSequence(1, internalPath.length()))) {
             name = "";
         } else {
             int index = resourceName.lastIndexOf('/');
@@ -61,18 +80,38 @@ public abstract class AbstractArchiveResource extends AbstractResource {
         }
     }
 
+    /**
+     * Returns the archive resource set.
+     *
+     * @return the archive resource set
+     */
     protected AbstractArchiveResourceSet getArchiveResourceSet() {
         return archiveResourceSet;
     }
 
+    /**
+     * Returns the base.
+     *
+     * @return the base
+     */
     protected final String getBase() {
         return archiveResourceSet.getBase();
     }
 
+    /**
+     * Returns the base URL.
+     *
+     * @return the base URL
+     */
     protected final String getBaseUrl() {
         return baseUrl;
     }
 
+    /**
+     * Returns the resource.
+     *
+     * @return the resource
+     */
     protected final JarEntry getResource() {
         return resource;
     }
@@ -137,10 +176,10 @@ public abstract class AbstractArchiveResource extends AbstractResource {
 
     @Override
     public URL getURL() {
-        String url = baseUrl + resource.getName();
+        String url = baseUrl + URLEncoder.DEFAULT.encode(resource.getName(), StandardCharsets.UTF_8);
         try {
-            return new URL(url);
-        } catch (MalformedURLException e) {
+            return new URI(url).toURL();
+        } catch (MalformedURLException | URISyntaxException | IllegalArgumentException e) {
             if (getLog().isDebugEnabled()) {
                 getLog().debug(sm.getString("fileResource.getUrlFail", url), e);
             }
@@ -151,8 +190,8 @@ public abstract class AbstractArchiveResource extends AbstractResource {
     @Override
     public URL getCodeBase() {
         try {
-            return new URL(codeBaseUrl);
-        } catch (MalformedURLException e) {
+            return new URI(codeBaseUrl).toURL();
+        } catch (MalformedURLException | URISyntaxException | NullPointerException e) {
             if (getLog().isDebugEnabled()) {
                 getLog().debug(sm.getString("fileResource.getUrlFail", codeBaseUrl), e);
             }
@@ -166,9 +205,10 @@ public abstract class AbstractArchiveResource extends AbstractResource {
 
         if (len > Integer.MAX_VALUE) {
             // Can't create an array that big
-            throw new ArrayIndexOutOfBoundsException(sm.getString(
-                    "abstractResource.getContentTooLarge", getWebappPath(),
-                    Long.valueOf(len)));
+            if (getLog().isDebugEnabled()) {
+                getLog().debug(sm.getString("abstractResource.getContentTooLarge", getWebappPath(), Long.valueOf(len)));
+            }
+            return null;
         }
 
         if (len < 0) {
@@ -192,13 +232,16 @@ public abstract class AbstractArchiveResource extends AbstractResource {
                 }
                 pos += n;
             }
+            if (pos < size) {
+                // Stream ended before expected size — return null to avoid partial data
+                return null;
+            }
             // Once the stream has been read, read the certs
             certificates = jisw.getCertificates();
             readCerts = true;
         } catch (IOException ioe) {
             if (getLog().isDebugEnabled()) {
-                getLog().debug(sm.getString("abstractResource.getContentFail",
-                        getWebappPath()), ioe);
+                getLog().debug(sm.getString("abstractResource.getContentFail", getWebappPath()), ioe);
             }
             // Don't return corrupted content
             return null;
@@ -211,8 +254,7 @@ public abstract class AbstractArchiveResource extends AbstractResource {
     @Override
     public Certificate[] getCertificates() {
         if (!readCerts) {
-            // TODO - get content first
-            throw new IllegalStateException();
+            throw new IllegalStateException(sm.getString("abstractResource.getContentFirst"));
         }
         return certificates;
     }
@@ -230,13 +272,17 @@ public abstract class AbstractArchiveResource extends AbstractResource {
         return getJarInputStreamWrapper();
     }
 
+    /**
+     * Returns a wrapper for the input stream of this resource.
+     *
+     * @return a wrapper for the input stream of this resource
+     */
     protected abstract JarInputStreamWrapper getJarInputStreamWrapper();
 
     /**
-     * This wrapper assumes that the InputStream was created from a JarFile
-     * obtained from a call to getArchiveResourceSet().openJarFile(). If this is
-     * not the case then the usage counting in AbstractArchiveResourceSet will
-     * break and the JarFile may be unexpectedly closed.
+     * This wrapper assumes that the InputStream was created from a JarFile obtained from a call to
+     * getArchiveResourceSet().openJarFile(). If this is not the case then the usage counting in
+     * AbstractArchiveResourceSet will break and the JarFile may be unexpectedly closed.
      */
     protected class JarInputStreamWrapper extends InputStream {
 
@@ -245,6 +291,12 @@ public abstract class AbstractArchiveResource extends AbstractResource {
         private final AtomicBoolean closed = new AtomicBoolean(false);
 
 
+        /**
+         * Creates a new JarInputStreamWrapper.
+         *
+         * @param jarEntry The JAR entry
+         * @param is       The input stream
+         */
         public JarInputStreamWrapper(JarEntry jarEntry, InputStream is) {
             this.jarEntry = jarEntry;
             this.is = is;
@@ -308,6 +360,11 @@ public abstract class AbstractArchiveResource extends AbstractResource {
             return is.markSupported();
         }
 
+        /**
+         * Returns the certificates.
+         *
+         * @return the certificates
+         */
         public Certificate[] getCertificates() {
             return jarEntry.getCertificates();
         }

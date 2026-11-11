@@ -14,14 +14,16 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  */
-
 package org.apache.tomcat.util.net.jsse;
 
 import java.security.KeyManagementException;
 import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
 import java.security.cert.X509Certificate;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 
 import javax.net.ssl.KeyManager;
@@ -34,10 +36,11 @@ import javax.net.ssl.X509KeyManager;
 import javax.net.ssl.X509TrustManager;
 
 import org.apache.tomcat.util.net.SSLContext;
+import org.apache.tomcat.util.net.SSLHostConfigCertificate;
 
 class JSSESSLContext implements SSLContext {
 
-    private javax.net.ssl.SSLContext context;
+    private final javax.net.ssl.SSLContext context;
     private KeyManager[] kms;
     private TrustManager[] tms;
 
@@ -46,8 +49,7 @@ class JSSESSLContext implements SSLContext {
     }
 
     @Override
-    public void init(KeyManager[] kms, TrustManager[] tms, SecureRandom sr)
-            throws KeyManagementException {
+    public void init(KeyManager[] kms, TrustManager[] tms, SecureRandom sr) throws KeyManagementException {
         this.kms = kms;
         this.tms = tms;
         context.init(kms, tms, sr);
@@ -90,6 +92,21 @@ class JSSESSLContext implements SSLContext {
         return result;
     }
 
+
+    @Override
+    public X509KeyManager[] getServerKeyManagers(SSLHostConfigCertificate certificate) {
+        if (kms == null) {
+            return new X509KeyManager[0];
+        }
+        List<X509KeyManager> x509KeyManagers = new ArrayList<>();
+        for (KeyManager km : kms) {
+            if (km instanceof X509KeyManager) {
+                x509KeyManagers.add((X509KeyManager) km);
+            }
+        }
+        return x509KeyManagers.toArray(new X509KeyManager[0]);
+    }
+
     @Override
     public X509Certificate[] getAcceptedIssuers() {
         Set<X509Certificate> certs = new HashSet<>();
@@ -97,14 +114,10 @@ class JSSESSLContext implements SSLContext {
             for (TrustManager tm : tms) {
                 if (tm instanceof X509TrustManager) {
                     X509Certificate[] accepted = ((X509TrustManager) tm).getAcceptedIssuers();
-                    if (accepted != null) {
-                        for (X509Certificate c : accepted) {
-                            certs.add(c);
-                        }
-                    }
+                    certs.addAll(Arrays.asList(accepted));
                 }
             }
         }
-        return certs.toArray(new X509Certificate[certs.size()]);
+        return certs.toArray(new X509Certificate[0]);
     }
 }

@@ -39,8 +39,17 @@ public class TestCipher {
         StringBuilder errors = new StringBuilder();
 
         for (String openSSLCipherSuite : openSSLCipherSuites) {
+            // The protocol suffix identifies the version OpenSSL reports as
+            // the minimum protocol for the cipher suite. SSLv3 is no longer a
+            // supported alias in cipher configuration strings (removed from
+            // OpenSSL and from this parser) so strip that suffix before
+            // parsing. The suffix is not used to determine the mapping.
+            String specification = openSSLCipherSuite;
+            if (specification.endsWith("+SSLv3")) {
+                specification = specification.substring(0, specification.length() - "+SSLv3".length());
+            }
             List<String> jsseCipherSuites =
-                    OpenSSLCipherConfigurationParser.parseExpression(openSSLCipherSuite);
+                    OpenSSLCipherConfigurationParser.parseExpression(specification);
 
             for (JsseImpl jsseImpl : JSSE_IMPLS) {
                 boolean found = false;
@@ -87,8 +96,7 @@ public class TestCipher {
                     cipher.getProtocol().getOpenSSLName());
         }
 
-        Set<String> unavailableCipherSuites = new HashSet<>();
-        unavailableCipherSuites.addAll(expectedCipherSuites);
+        Set<String> unavailableCipherSuites = new HashSet<>(expectedCipherSuites);
         unavailableCipherSuites.removeAll(availableCipherSuites);
         StringBuilder unavailableList = new StringBuilder("Unavailable cipher suites: ");
         for (String cipher : unavailableCipherSuites) {
@@ -97,8 +105,7 @@ public class TestCipher {
         }
         Assert.assertEquals(unavailableList.toString(), 0,  unavailableCipherSuites.size());
 
-        Set<String> unexpectedCipherSuites = new HashSet<>();
-        unexpectedCipherSuites.addAll(availableCipherSuites);
+        Set<String> unexpectedCipherSuites = new HashSet<>(availableCipherSuites);
         unexpectedCipherSuites.removeAll(expectedCipherSuites);
         StringBuilder unexpectedList = new StringBuilder("Unexpected cipher suites: ");
         for (String cipher : unexpectedCipherSuites) {
@@ -106,6 +113,33 @@ public class TestCipher {
             unexpectedList.append(' ');
         }
         Assert.assertEquals(unexpectedList.toString(), 0,  unexpectedCipherSuites.size());
+    }
+
+
+    /**
+     * Check that OpenSSL aliases that are shared with unimplemented SSLv2
+     * ciphers resolve to the JSSE name of the modern cipher, while genuinely
+     * ambiguous aliases, aliases that only match SSLv2 ciphers and unknown
+     * names resolve to null.
+     */
+    @Test
+    public void testOpenSSLToJsseAmbiguousNames() {
+        Assert.assertEquals("SSL_RSA_WITH_RC4_128_MD5",
+                OpenSSLCipherConfigurationParser.openSSLToJsse("RC4-MD5"));
+        Assert.assertEquals("SSL_RSA_EXPORT_WITH_RC4_40_MD5",
+                OpenSSLCipherConfigurationParser.openSSLToJsse("EXP-RC4-MD5"));
+        Assert.assertEquals("SSL_RSA_EXPORT_WITH_RC2_CBC_40_MD5",
+                OpenSSLCipherConfigurationParser.openSSLToJsse("EXP-RC2-CBC-MD5"));
+        // Unambiguous name
+        Assert.assertEquals("TLS_RSA_WITH_AES_128_CBC_SHA",
+                OpenSSLCipherConfigurationParser.openSSLToJsse("AES128-SHA"));
+        // Unknown name
+        Assert.assertNull(OpenSSLCipherConfigurationParser.openSSLToJsse("Nonsense"));
+        // Alias shared by more than one modern cipher
+        Assert.assertNull(OpenSSLCipherConfigurationParser.openSSLToJsse("SHA1"));
+        // Aliases that only match an unimplemented SSLv2 cipher
+        Assert.assertNull(OpenSSLCipherConfigurationParser.openSSLToJsse("RC2-CBC-MD5"));
+        Assert.assertNull(OpenSSLCipherConfigurationParser.openSSLToJsse("SSL_CK_RC4_128_WITH_MD5"));
     }
 
 
@@ -364,8 +398,6 @@ public class TestCipher {
                     "AES256-CCM8+TLSv1.2",
                     "ARIA128-GCM-SHA256+TLSv1.2",
                     "ARIA256-GCM-SHA384+TLSv1.2",
-                    "DES-CBC-MD5+SSLv2",
-                    "DES-CBC3-MD5+SSLv2",
                     "DHE-DSS-ARIA128-GCM-SHA256+TLSv1.2",
                     "DHE-DSS-ARIA256-GCM-SHA384+TLSv1.2",
                     "DHE-PSK-AES128-CCM+TLSv1.2",
@@ -405,9 +437,6 @@ public class TestCipher {
                     "ECDHE-RSA-CAMELLIA128-SHA256+TLSv1.2",
                     "ECDHE-RSA-CAMELLIA256-SHA384+TLSv1.2",
                     "ECDHE-RSA-CHACHA20-POLY1305+TLSv1.2",
-                    "EXP-RC2-CBC-MD5+SSLv2",
-                    "EXP-RC4-MD5+SSLv2",
-                    "IDEA-CBC-MD5+SSLv2",
                     "PSK-AES128-CCM+TLSv1.2",
                     "PSK-AES128-CCM8+TLSv1.2",
                     "PSK-AES256-CCM+TLSv1.2",
@@ -417,8 +446,6 @@ public class TestCipher {
                     "PSK-CAMELLIA128-SHA256+TLSv1",
                     "PSK-CAMELLIA256-SHA384+TLSv1",
                     "PSK-CHACHA20-POLY1305+TLSv1.2",
-                    "RC2-CBC-MD5+SSLv2",
-                    "RC4-MD5+SSLv2",
                     "RSA-PSK-ARIA128-GCM-SHA256+TLSv1.2",
                     "RSA-PSK-ARIA256-GCM-SHA384+TLSv1.2",
                     "RSA-PSK-CAMELLIA128-SHA256+TLSv1",
@@ -547,9 +574,7 @@ public class TestCipher {
                 "SSL_KRB5_EXPORT_WITH_DES_CBC_40_MD5",
                 "SSL_RSA_EXPORT_WITH_RC2_CBC_40_MD5"));
 
-        Set<String> allNames = new HashSet<>();
-
-        allNames.addAll(sslNames);
+        Set<String> allNames = new HashSet<>(sslNames);
 
         for (String sslName : sslNames) {
             allNames.add("TLS" + sslName.substring(3));
@@ -580,8 +605,6 @@ public class TestCipher {
                     "CAMELLIA256-SHA+SSLv3",
                     "CAMELLIA128-SHA256+TLSv1.2",
                     "CAMELLIA256-SHA256+TLSv1.2",
-                    "DES-CBC-MD5+SSLv2",
-                    "DES-CBC3-MD5+SSLv2",
                     "DH-DSS-AES128-GCM-SHA256+TLSv1.2",
                     "DH-DSS-AES256-GCM-SHA384+TLSv1.2",
                     "DH-DSS-AES128-SHA+SSLv3",
@@ -679,9 +702,6 @@ public class TestCipher {
                     "ECDHE-RSA-CHACHA20-POLY1305+TLSv1.2",
                     "EXP-DH-DSS-DES-CBC-SHA+SSLv3",
                     "EXP-DH-RSA-DES-CBC-SHA+SSLv3",
-                    "EXP-RC2-CBC-MD5+SSLv2",
-                    "EXP-RC4-MD5+SSLv2",
-                    "IDEA-CBC-MD5+SSLv2",
                     "IDEA-CBC-SHA+SSLv3",
                     "PSK-3DES-EDE-CBC-SHA+SSLv3",
                     "PSK-AES128-CBC-SHA+SSLv3",
@@ -703,8 +723,6 @@ public class TestCipher {
                     "PSK-NULL-SHA256+TLSv1",
                     "PSK-NULL-SHA384+TLSv1",
                     "PSK-RC4-SHA+SSLv3",
-                    "RC2-CBC-MD5+SSLv2",
-                    "RC4-MD5+SSLv2",
                     "RSA-PSK-3DES-EDE-CBC-SHA+SSLv3",
                     "RSA-PSK-AES128-CBC-SHA+SSLv3",
                     "RSA-PSK-AES128-CBC-SHA256+TLSv1",
@@ -755,7 +773,7 @@ public class TestCipher {
         private final Set<String> standardNames;
         private final Set<String> openSslUnmapped;
 
-        public JsseImpl(String vendor,  Set<String> standardNames,
+        JsseImpl(String vendor,  Set<String> standardNames,
                 Set<String> openSslUnmapped) {
             this.vendor = vendor;
             this.standardNames = standardNames;

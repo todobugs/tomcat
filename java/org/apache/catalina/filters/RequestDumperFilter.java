@@ -36,34 +36,32 @@ import org.apache.juli.logging.LogFactory;
 
 
 /**
- * <p>Implementation of a Filter that logs interesting contents from the
- * specified Request (before processing) and the corresponding Response
- * (after processing).  It is especially useful in debugging problems
- * related to headers and cookies.</p>
- *
- * <p>When using this Filter, it is strongly recommended that the
- * <code>org.apache.catalina.filter.RequestDumperFilter</code> logger is
- * directed to a dedicated file and that the
- * <code>org.apache.juli.VerbatimFormatter</code> is used.</p>
- *
- * @author Craig R. McClanahan
+ * <p>
+ * Implementation of a Filter that logs interesting contents from the specified Request (before processing) and the
+ * corresponding Response (after processing). It is especially useful in debugging problems related to headers and
+ * cookies.
+ * </p>
+ * <p>
+ * When using this Filter, it is strongly recommended that the
+ * <code>org.apache.catalina.filters.RequestDumperFilter</code> logger is directed to a dedicated file and that the
+ * <code>org.apache.juli.VerbatimFormatter</code> is used.
+ * </p>
  */
 public class RequestDumperFilter extends GenericFilter {
 
+    /**
+     * Default constructor.
+     */
+    public RequestDumperFilter() {
+        super();
+    }
+
     private static final long serialVersionUID = 1L;
 
-    private static final String NON_HTTP_REQ_MSG =
-        "Not available. Non-http request.";
-    private static final String NON_HTTP_RES_MSG =
-        "Not available. Non-http response.";
+    private static final String NON_HTTP_REQ_MSG = "Not available. Non-http request.";
+    private static final String NON_HTTP_RES_MSG = "Not available. Non-http response.";
 
-    private static final ThreadLocal<Timestamp> timestamp =
-            new ThreadLocal<Timestamp>() {
-        @Override
-        protected Timestamp initialValue() {
-            return new Timestamp();
-        }
-    };
+    private static final ThreadLocal<Timestamp> timestamp = ThreadLocal.withInitial(Timestamp::new);
 
     // Log must be non-static as loggers are created per class-loader and this
     // Filter may be used in multiple class loaders
@@ -71,20 +69,19 @@ public class RequestDumperFilter extends GenericFilter {
 
 
     /**
-     * Log the interesting request parameters, invoke the next Filter in the
-     * sequence, and log the interesting response parameters.
+     * Log the interesting request parameters, invoke the next Filter in the sequence, and log the interesting response
+     * parameters.
      *
      * @param request  The servlet request to be processed
      * @param response The servlet response to be created
      * @param chain    The filter chain being processed
      *
-     * @exception IOException if an input/output error occurs
+     * @exception IOException      if an input/output error occurs
      * @exception ServletException if a servlet error occurs
      */
     @Override
-    public void doFilter(ServletRequest request, ServletResponse response,
-            FilterChain chain)
-        throws IOException, ServletException {
+    public void doFilter(ServletRequest request, ServletResponse response, FilterChain chain)
+            throws IOException, ServletException {
 
         HttpServletRequest hRequest = null;
         HttpServletResponse hResponse = null;
@@ -108,8 +105,7 @@ public class RequestDumperFilter extends GenericFilter {
         }
 
         doLog(" characterEncoding", request.getCharacterEncoding());
-        doLog("     contentLength",
-                Long.toString(request.getContentLengthLong()));
+        doLog("     contentLength", Long.toString(request.getContentLengthLong()));
         doLog("       contentType", request.getContentType());
 
         if (hRequest == null) {
@@ -118,11 +114,10 @@ public class RequestDumperFilter extends GenericFilter {
             doLog("            header", NON_HTTP_REQ_MSG);
         } else {
             doLog("       contextPath", hRequest.getContextPath());
-            Cookie cookies[] = hRequest.getCookies();
+            Cookie[] cookies = hRequest.getCookies();
             if (cookies != null) {
-                for (int i = 0; i < cookies.length; i++) {
-                    doLog("            cookie", cookies[i].getName() +
-                            "=" + cookies[i].getValue());
+                for (Cookie cookie : cookies) {
+                    doLog("            cookie", cookie.getName() + "=" + cookie.getValue());
                 }
             }
             Enumeration<String> hnames = hRequest.getHeaderNames();
@@ -186,8 +181,7 @@ public class RequestDumperFilter extends GenericFilter {
 
         doLog("            scheme", request.getScheme());
         doLog("        serverName", request.getServerName());
-        doLog("        serverPort",
-                Integer.toString(request.getServerPort()));
+        doLog("        serverPort", Integer.toString(request.getServerPort()));
 
         if (hRequest == null) {
             doLog("       servletPath", NON_HTTP_REQ_MSG);
@@ -195,17 +189,14 @@ public class RequestDumperFilter extends GenericFilter {
             doLog("       servletPath", hRequest.getServletPath());
         }
 
-        doLog("          isSecure",
-                Boolean.valueOf(request.isSecure()).toString());
-        doLog("------------------",
-                "--------------------------------------------");
+        doLog("          isSecure", Boolean.valueOf(request.isSecure()).toString());
+        doLog("------------------", "--------------------------------------------");
 
         // Perform the request
         chain.doFilter(request, response);
 
         // Log post-service information
-        doLog("------------------",
-                "--------------------------------------------");
+        doLog("------------------", "--------------------------------------------");
         if (hRequest == null) {
             doLog("          authType", NON_HTTP_REQ_MSG);
         } else {
@@ -235,23 +226,16 @@ public class RequestDumperFilter extends GenericFilter {
         if (hResponse == null) {
             doLog("            status", NON_HTTP_RES_MSG);
         } else {
-            doLog("            status",
-                    Integer.toString(hResponse.getStatus()));
+            doLog("            status", Integer.toString(hResponse.getStatus()));
         }
 
         doLog("END TIME          ", getTimestamp());
-        doLog("==================",
-                "============================================");
+        doLog("==================", "============================================");
     }
 
     private void doLog(String attribute, String value) {
-        StringBuilder sb = new StringBuilder(80);
-        sb.append(Thread.currentThread().getName());
-        sb.append(' ');
-        sb.append(attribute);
-        sb.append('=');
-        sb.append(value);
-        log.info(sb.toString());
+        String sb = Thread.currentThread().getName() + " " + attribute + "=" + value;
+        log.info(sb);
     }
 
     private String getTimestamp() {
@@ -266,10 +250,14 @@ public class RequestDumperFilter extends GenericFilter {
     }
 
 
-    /*
-     * Log objects are not Serializable but this Filter is because it extends
-     * GenericFilter. Tomcat won't serialize a Filter but in case something else
-     * does...
+    /**
+     * Restores the log after deserialization.
+     * Log objects are not Serializable but this Filter is because it extends GenericFilter. Tomcat won't serialize a
+     * Filter but in case something else does...
+     *
+     * @param ois the object input stream
+     * @throws ClassNotFoundException if the class is not found
+     * @throws IOException if an I/O error occurs
      */
     private void readObject(ObjectInputStream ois) throws ClassNotFoundException, IOException {
         ois.defaultReadObject();
@@ -279,9 +267,9 @@ public class RequestDumperFilter extends GenericFilter {
 
     private static final class Timestamp {
         private final Date date = new Date(0);
-        private final SimpleDateFormat format =
-            new SimpleDateFormat("dd-MMM-yyyy HH:mm:ss");
+        private final SimpleDateFormat format = new SimpleDateFormat("dd-MMM-yyyy HH:mm:ss");
         private String dateString = format.format(date);
+
         private void update() {
             dateString = format.format(date);
         }

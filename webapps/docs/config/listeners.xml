@@ -83,8 +83,8 @@
   <subsection name="APR Lifecycle Listener - org.apache.catalina.core.AprLifecycleListener">
 
     <p>The <strong>APR Lifecycle Listener</strong> checks for the presence of
-    the APR/native library and loads the library if it is present. For more
-    information see the <a href="../apr.html">APR/native guide</a>.</p>
+    the Apache Tomcat Native library and loads the library if it is present.
+    For more information see the <a href="../apr.html">APR/native guide</a>.</p>
 
     <p>This listener must only be nested within <a href="server.html">Server</a>
     elements.</p>
@@ -103,6 +103,9 @@
         <p>See the <a href="http://www.openssl.org/">Official OpenSSL website</a>
         for more details on supported SSL hardware engines and manufacturers.
         </p>
+        <p>Tomcat Native 2.x onwards requires SSL so if SSLEngine is set to
+        <code>off</code> when using Tomcat Native 2.x onwards, the APR/native
+        library will be disabled.</p>
       </attribute>
 
       <attribute name="SSLRandomSeed" required="false">
@@ -112,17 +115,23 @@
       </attribute>
 
       <attribute name="FIPSMode" required="false">
-        <p>Set to <code>on</code> to request that OpenSSL be in FIPS mode
-        (if OpenSSL is already in FIPS mode, it will remain in FIPS mode).
-        Set to <code>enter</code> to force OpenSSL to enter FIPS mode (an error
-        will occur if OpenSSL is already in FIPS mode).
+        <p>The behaviour of this attribute depends on whether Tomcat Native has
+        been compiled against OpenSSL 1.x or OpenSSL 3.x.</p>
+        <p>For OpenSSL 1.x: Set to <code>on</code> to request that OpenSSL be in
+        FIPS mode (if OpenSSL is already in FIPS mode, it will remain in FIPS
+        mode).
+        Set to <code>enter</code> to force OpenSSL to enter FIPS mode (an
+        error will occur if OpenSSL is already in FIPS mode).
         Set to <code>require</code> to require that OpenSSL <i>already</i> be
         in FIPS mode (an error will occur if OpenSSL is not already in FIPS
         mode).</p>
-        <p>FIPS mode <em>requires you to have a FIPS-capable OpenSSL library which
-        you must build yourself</em>.
-        If this attribute is set to any of the above values, the <b>SSLEngine</b>
-        must be enabled as well.</p>
+        <p>For OpenSSL 3.x: <code>on</code>, <code>enter</code> and
+        <code>require</code> all behave the same way. If the FIPS provider is
+        the default provider, it will be used. If the FIPS provider is not the
+        default provider, an error will occur.</p>
+        <p>FIPS mode <em>requires you to have a FIPS-capable OpenSSL library</em>.
+        If this attribute is set to anything other than <code>off</code>, the
+        <b>SSLEngine</b> must be enabled as well.</p>
         <p>The default value is <code>off</code>.</p>
       </attribute>
 
@@ -140,6 +149,33 @@
         if the native library is available and a NIO or NIO2 connector is used.</p>
       </attribute>
 
+    </attributes>
+
+  </subsection>
+
+  <subsection name="Context Naming Info Listener - org.apache.catalina.core.ContextNamingInfoListener">
+
+    <p>The <strong>Context Naming Info Listener</strong> adds the following
+    environment entries (<code>java:comp/env</code> implied) from the
+    <a href="context.html">Context</a>: <code>context/path</code>,
+    <code>context/encodedPath</code>, <code>context/webappVersion</code>,
+    <code>context/name</code>, <code>context/baseName</code>,
+    <code>context/displayName</code>.</p>
+
+    <p>This listener must only be nested within
+    <a href="context.html">Context</a> elements.</p>
+
+    <p>The following additional attributes are supported by the
+    <strong>Context Naming Info Listener</strong>:</p>
+
+    <attributes>
+      <attribute name="emptyOnRoot" required="false">
+        <p>Whether for the root context <code>context/path</code> and
+        <code>context/encodedPath</code> will contain <code>"/"</code> and
+        <code>context/name</code> will contain <code>"ROOT"</code> with a version,
+        if any.</p>
+        <p>The default value is <code>true</code>.</p>
+      </attribute>
     </attributes>
 
   </subsection>
@@ -260,6 +296,16 @@
         been fixed for Java 9 onwards.</p>
       </attribute>
 
+      <attribute name="initSeedGenerator" required="false">
+        <p>The first use of <code>SeedGenerator</code>, an internal class of
+        the default security spi implementation, might create a thread on some
+        platforms. Depending on the timing of the first use of a secure random
+        this thread might become associated with a webapp classloader, causing
+        a memory leak. Setting this to <code>true</code> will initialize the
+        seed. The default is <code>false</code> to avoid consuming random if
+        not needed.</p>
+      </attribute>
+
       <attribute name="ldapPoolProtection" required="false">
         <p>Enables protection so that the PoolCleaner thread started by
         <code>com.sun.jndi.ldap.LdapPoolManager</code> does not result in a
@@ -326,6 +372,98 @@
 
   </subsection>
 
+  <subsection name="OpenSSL Lifecycle Listener - org.apache.catalina.core.OpenSSLLifecycleListener">
+
+    <p>The <strong>OpenSSL Lifecycle Listener</strong> checks for the presence
+    of the OpenSSL library and loads the library if it is present. This
+    uses the FFM API from Java 25 instead of additional native code. When
+    enabled and successfully loaded, NIO and NIO2 connector will then make use
+    of OpenSSL for TLS functionality. This is a functional replacement to the
+    <strong>APR Lifecycle Listener</strong> described above.</p>
+
+    <p>This listener must only be nested within <a href="server.html">Server</a>
+    elements.</p>
+
+    <p>The following additional attributes are supported by the <strong>OpenSSL
+    Lifecycle Listener</strong>:</p>
+
+    <attributes>
+
+      <attribute name="SSLEngine" required="false">
+        <p>Name of the SSLEngine to use, for OpenSSL 1.x.</p>
+        <p>See the <a href="http://www.openssl.org/">Official OpenSSL website</a>
+        for more details on supported SSL hardware engines and manufacturers.
+        </p>
+      </attribute>
+
+      <attribute name="SSLRandomSeed" required="false">
+        <p>Entropy source used to seed the SSLEngine's PRNG. The default value
+        is <code>builtin</code>. On development systems, you may want to set
+        this to <code>/dev/urandom</code> to allow quicker start times.</p>
+      </attribute>
+
+      <attribute name="FIPSMode" required="false">
+        <p>The behaviour of this attribute depends on whether Tomcat Native has
+        been compiled against OpenSSL 1.x or OpenSSL 3.x.</p>
+        <p>For OpenSSL 1.x: Set to <code>on</code> to request that OpenSSL be in
+        FIPS mode (if OpenSSL is already in FIPS mode, it will remain in FIPS
+        mode).
+        Set to <code>enter</code> to force OpenSSL to enter FIPS mode (an
+        error will occur if OpenSSL is already in FIPS mode).
+        Set to <code>require</code> to require that OpenSSL <i>already</i> be
+        in FIPS mode (an error will occur if OpenSSL is not already in FIPS
+        mode).</p>
+        <p>For OpenSSL 3.x: <code>on</code>, <code>enter</code> and
+        <code>require</code> all behave the same way. If the FIPS provider is
+        the default provider, it will be used. If the FIPS provider is not the
+        default provider, an error will occur.</p>
+        <p>FIPS mode <em>requires you to have a FIPS-capable OpenSSL library</em>.
+        If this attribute is set to anything other than <code>off</code>, the
+        <b>SSLEngine</b> must be enabled as well.</p>
+        <p>The default value is <code>off</code>.</p>
+      </attribute>
+
+      <attribute name="useOpenSSL" required="false">
+        <p>This attribute controls the auto-selection of the OpenSSL JSSE
+        implementation. The default is <code>true</code> which will use OpenSSL
+        if the FFM API is available.</p>
+      </attribute>
+
+    </attributes>
+
+  </subsection>
+
+  <subsection name="Properties Role Mapping Listener - org.apache.catalina.core.PropertiesRoleMappingListener">
+
+    <p>The <strong>Properties Role Mapping Listener</strong> populates the context's role mapping
+    from a properties file. The keys represent application roles (e.g., admin, user, uservisor,
+    etc.) while the values represent technical roles (e.g., DNs, SIDs, UUIDs, etc.). A key can
+    also be prefixed if, e.g., the properties file contains generic application configuration
+    as well: <code>app-roles.</code>.</p>
+
+    <p>This listener must only be nested within
+    <a href="context.html">Context</a> elements.</p>
+
+    <p>The following additional attributes are supported by the
+    <strong>Properties Role Mapping Listener</strong>:</p>
+
+    <attributes>
+
+      <attribute name="roleMappingFile" required="false">
+        <p>The path to the role mapping properties file. You can use protocol <code>webapp:</code>
+        and whatever <code>ConfigFileLoader</code> supports.</p>
+        <p>The default value is <code>webapp:/WEB-INF/role-mapping.properties</code>.</p>
+      </attribute>
+
+      <attribute name="keyPrefix" required="false">
+        <p>The prefix to filter from property keys. All other keys will be ignored which do
+        not have the prefix.</p>
+      </attribute>
+
+    </attributes>
+
+  </subsection>
+
   <subsection name="Security Lifecycle Listener - org.apache.catalina.security.SecurityListener">
 
     <p>The <strong>Security Lifecycle Listener</strong> performs a number of
@@ -359,16 +497,43 @@
         is not performed on Windows platforms.</p>
       </attribute>
 
+      <attribute name="buildDateWarningAgeDays" required="false">
+        <p>The maximum number of days between the build-date of this instance
+        of Tomcat and its startup date can be before warnings will be logged.
+        Set to anything less than 0 (e.g. -1) to disable this check.
+        If not specified, the default value of <b>-1</b> is used.</p>
+      </attribute>
     </attributes>
 
   </subsection>
 
   <subsection name="StoreConfig Lifecycle Listener - org.apache.catalina.storeconfig.StoreConfigLifecycleListener">
 
-    <p>The <strong>StoreConfig Lifecycle Listener</strong> configures a
-    StoreConfig MBean that may be used to save the current server configuration
-    in server.xml or the current configuration for a web application in a
-    context.xml file.</p>
+    <p>The <strong>StoreConfig Lifecycle Listener</strong> enables persisting
+      runtime configuration changes. When Tomcat's configuration is
+      modified at runtime, for example, adding or removing a virtual host
+      through the Host Manager, those changes only exist in memory and are lost
+      on restart. This listener provides the ability to write the current
+      in-memory configuration to <code>server.xml</code> (or an individual web
+      application's <code>context.xml</code>), so that runtime changes are
+      preserved across restarts.</p>
+
+    <p>When this listener is enabled, configuration persistence can be
+      triggered through the
+      <a href="../host-manager-howto.html#Persist_command">Host Manager</a> and
+      <a href="../manager-howto.html#Save_Configuration">Manager</a> applications.
+      The listener compares the current configuration against
+      default values and only writes attributes that differ from the defaults.
+      Before overwriting <code>server.xml</code>, a backup of the existing file
+      is created.</p>
+
+    <p>When an existing configuration file is re-written, the generated
+      configuration is reformatted on a best effort basis to preserve the
+      layout of the existing file, including comments, blank lines and the
+      order of attributes. Layout information that cannot be matched to the
+      stored content, for example comments attached to elements that no longer
+      exist, is not preserved. If the layout of the existing file cannot be
+      preserved, the file is written without layout information.</p>
 
     <p>This listener must only be nested within <a href="server.html">Server</a>
     elements.</p>
@@ -379,16 +544,18 @@
     <attributes>
 
       <attribute name="storeConfigClass" required="false">
-        <p>The name of the <code>IStoreConfig</code> implementation to use. If
+        <p>The name of the <code>IStoreConfig</code> implementation to use.
+        This is an extension point for custom implementations. If
         not specified the default of
         <code>org.apache.catalina.storeconfig.StoreConfig</code> will be
         used.</p>
       </attribute>
 
       <attribute name="storeRegistry" required="false">
-        <p>The URL of the configuration file that configures how the
-        <code>IStoreConfig</code> is to save the configuration. If not specified
-        the built in resource
+        <p>The URL of the configuration file that defines how each server
+          component type (connectors, hosts, realms, valves, etc.) should be
+          serialized to XML. This is an extension point for custom serialization
+          rules. If not specified the built in resource
         <code>/org/apache/catalina/storeconfig/server-registry.xml</code> will
         be used.</p>
       </attribute>
@@ -412,6 +579,43 @@
 
     <p>No additional attributes are supported by the <strong>ThreadLocal Leak
     Prevention Listener</strong>.</p>
+
+  </subsection>
+
+  <subsection name="TLS configuration reload listener - org.apache.catalina.security.TLSCertificateReloadListener">
+
+    <p>This listener may be used to monitor the expiration dates of TLS
+    certificates and trigger automatic reloading of the TLS configuration a set
+    number of days before the TLS certificate expires.</p>
+
+    <p>This listener assumes there is some other process (certbot, cloud
+    infrastructure, etc) that renews the certificate on a regular basis and
+    replaces the current certificate with the new one.</p>
+
+    <p>This listener does <b>NOT</b> re-read the Tomcat configuration from
+    server.xml. If you make changes to server.xml you must restart the Tomcat
+    process to pick up those changes.</p>
+
+    <p>This listener must only be nested within <a href="server.html">Server</a>
+    elements.</p>
+
+    <attributes>
+
+      <attribute name="checkPeriod" required="false">
+        <p>The time, in seconds, between reloading checks. The periodic process
+        for <code>LifecycleListener</code> typically runs much more frequently
+        than this listener requires. This attribute controls the period between
+        checks. If not specified, a default of 86,400 seconds (24 hours) is
+        used.</p>
+      </attribute>
+
+      <attribute name="daysBefore" required="false">
+        <p>The number of days before the expiry of a TLS certificate that it is
+        expected that the new certificate will be in place and the reloading can
+        be triggered. If not specified, a default of 14 days is used.</p>
+      </attribute>
+
+    </attributes>
 
   </subsection>
 
@@ -514,7 +718,8 @@
 
     <attributes>
       <attribute name="Port" required="false">
-        <p>Port the connector that will received proxied traffic from HTTPD, default the first connector will be used</p>
+        <p>Port of the connector that will receive proxied traffic from HTTPD, default 8009.
+        Set to 0 to match any port (the first connector will be used)</p>
       </attribute>
 
       <attribute name="Host" required="false">
@@ -522,8 +727,8 @@
         default empty the <strong>Port</strong> will be used</p>
       </attribute>
 
-      <attribute name="proxyURL" required="false">
-        <p>proxyURL is the URL corresponding to the <strong>Location</strong> in httpd configuration of the heartbeat Handler,
+      <attribute name="proxyURLString" required="false">
+        <p>proxyURLString is the URL corresponding to the <strong>Location</strong> in httpd configuration of the heartbeat Handler,
         default /HeartbeatListener</p>
       </attribute>
 
@@ -534,182 +739,19 @@
       </attribute>
 
       <attribute name="Group" required="false">
-        <p>Group is the Multicast IP to boardcast messages to HTTPD, default 224.0.1.105</p>
+        <p>Group is the Multicast IP to broadcast messages to HTTPD, default 224.0.1.105</p>
       </attribute>
 
       <attribute name="Multiport" required="false">
-        <p>Multiport is the Multicast port to boardcast messages to HTTPD, default 23364</p>
+        <p>Multiport is the Multicast port to broadcast messages to HTTPD, default 23364</p>
       </attribute>
 
       <attribute name="Ttl" required="false">
-        <p>Ttl is the TTL for the boardcast messages, default 16</p>
+        <p>Ttl is the TTL for the broadcast messages, default 16</p>
       </attribute>
 
     </attributes>
   </subsection>
-</section>
-
-<section name="Deprecated Implementations">
-
-  <subsection name="JMX Remote Lifecycle Listener - org.apache.catalina.mbeans.JmxRemoteLifecycleListener">
-
-    <p><strong>This listener is now deprecated as the features it provides are
-    now available in the remote JMX capability included with the JRE. This
-    listener will be removed in Tomcat 10 and may be removed from Tomcat 9 some
-    time after 2020-12-31.</strong></p>
-
-    <p>The <strong>JMX Remote Lifecycle Listener</strong> fixes the ports used by
-    the JMX/RMI Server making things much simpler if you need to connect
-    visualvm or a similar tool to a remote Tomcat instance that is running
-    behind a firewall.</p>
-
-    <p>The remainder of the configuration can be done via the standard system
-    properties for configuring JMX. For further information on configuring JMX
-    see
-    <a href="http://docs.oracle.com/javase/6/docs/technotes/guides/management/agent.html">
-    Monitoring and Management Using JMX</a> included with the Java SDK
-    documentation.</p>
-
-    <p>This listener must only be nested within a <a href="server.html">Server</a>
-    element.</p>
-
-    <p>The following additional attributes are supported by the <strong>JMX Remote
-    Lifecycle Listener</strong>, in addition to the SSL related attributes noted below
-    in the "SSL Configurations" section:</p>
-
-    <attributes>
-
-      <attribute name="accessFile" required="false">
-        <p>Defines the access file used. The attribute will be set to the
-        value of the <code>com.sun.management.jmxremote.access.file</code>
-        system property if it is defined.</p>
-      </attribute>
-
-      <attribute name="authenticate" required="false">
-        <p>Defines if authentication is used. Defaults to
-        <code>true</code>. The attribute will be set to the value of the
-        <code>com.sun.management.jmxremote.authenticate</code> system property
-        if it is defined.</p>
-      </attribute>
-
-      <attribute name="loginModuleName" required="false">
-        <p>Defines the login module used. The attribute will be set to the
-        value of the <code>com.sun.management.jmxremote.login.config</code>
-        system property if it is defined.</p>
-      </attribute>
-
-      <attribute name="passwordFile" required="false">
-        <p>Defines the password file used. The attribute will be set to the
-        value of the  <code>com.sun.management.jmxremote.password.file</code>
-        system property if it is defined.</p>
-      </attribute>
-
-      <attribute name="rmiBindAddress" required="false">
-        <p>The address of the interface to be used by JMX/RMI server.</p>
-      </attribute>
-
-      <attribute name="rmiRegistryPortPlatform" required="true">
-        <p>The port to be used by the JMX/RMI registry for the Platform MBeans.
-        This replaces the use of the
-        <code>com.sun.management.jmxremote.port</code> system property that
-        should not be set when using this listener.</p>
-      </attribute>
-
-      <attribute name="rmiRegistrySSL" required="false">
-        <p>Defines if the RMI registry will use SSL. Defaults to
-        <code>true</code>. The attribute will be set to the value of the
-        <code>com.sun.management.jmxremote.registry.ssl</code> system property
-        if it is defined.</p>
-      </attribute>
-
-      <attribute name="rmiServerPortPlatform" required="true">
-        <p>The port to be used by the Platform JMX/RMI server.</p>
-      </attribute>
-
-      <attribute name="rmiServerSSL" required="false">
-        <p>Defines if the JMX remote server will use SSL. Defaults to
-        <code>true</code>. The attribute will be set to the value of the
-        <code>com.sun.management.jmxremote.ssl</code> system property
-        if it is defined.</p>
-      </attribute>
-
-      <attribute name="useLocalPorts" required="false">
-        <p>Should any clients using these ports be forced to use local ports to
-        connect to the JMX/RMI server. This is useful when tunnelling
-        connections over SSH or similar. Defaults to <code>false</code>.</p>
-      </attribute>
-
-    </attributes>
-
-    <h3>Using file-based Authentication and Authorisation</h3>
-
-    <p>If this listener was configured in server.xml as:</p>
-  <source><![CDATA[  <Listener className="org.apache.catalina.mbeans.JmxRemoteLifecycleListener"
-          rmiRegistryPortPlatform="10001" rmiServerPortPlatform="10002" />]]></source>
-    <p>with the following system properties set (e.g. in setenv.sh):</p>
-  <source>  -Dcom.sun.management.jmxremote.password.file=$CATALINA_BASE/conf/jmxremote.password
-  -Dcom.sun.management.jmxremote.access.file=$CATALINA_BASE/conf/jmxremote.access
-  -Dcom.sun.management.jmxremote.ssl=false
-  -Dcom.sun.management.jmxremote.registry.ssl=false</source>
-    <p>$CATALINA_BASE/conf/jmxremote.password containing:</p>
-  <source>admin letmein</source>
-    <p>$CATALINA_BASE/conf/jmxremote.access containing:</p>
-  <source>admin readwrite</source>
-    <p>then opening ports 10001 (RMI Registry) and 10002 (JMX/RMI Server) in your
-    firewall would enable jconsole to connect to a Tomcat instance running
-    behind a firewall using a connection string of the form:</p>
-  <source>service:jmx:rmi://&lt;hostname&gt;:10002/jndi/rmi://&lt;hostname&gt;:10001/jmxrmi</source>
-    <p>
-    with a user name of <code>admin</code> and a password of
-    <code>letmein</code>.
-    </p>
-
-    <h3>SSL Configurations</h3>
-
-    <p>Note: SSL configuration can be done with attributes identical to those
-    of <a href="http.html#SSL_Support_-_SSLHostConfig">SSLHostConfig</a> and the
-    properties of the default certificate as defined for
-    <a href="http.html#SSL_Support_-_Certificate">SSLHostConfigCertificate</a>.
-    This will create a JSSE SSLContext which will be given to the JMX/RMI registry
-    when creating the server socket. OpenSSL specific attributes <strong>cannot
-    </strong> be used in the configuration as JMX remote can only use a regular
-    SSLContext.</p>
-
-    <p>A certificate can be defined for the server using a keystore:</p>
-  <source><![CDATA[  <Listener className="org.apache.catalina.mbeans.JmxRemoteLifecycleListener"
-               rmiRegistryPortPlatform="10001" rmiServerPortPlatform="10002"
-               certificateKeystoreFile="${catalina.home}/conf/mykeystore.jks" />]]></source>
-
-    <h3>Using JAAS</h3>
-
-    <p>If we use the following system properties instead:</p>
-  <source>  -Dcom.sun.management.jmxremote.login.config=Tomcat
-  -Djava.security.auth.login.config=$CATALINA_BASE/conf/login.config
-  -Dcom.sun.management.jmxremote.access.file=$CATALINA_BASE/conf/jmxremote.access
-  -Dcom.sun.management.jmxremote.ssl=false
-  -Dcom.sun.management.jmxremote.registry.ssl=false</source>
-    <p>$CATALINA_BASE/conf/login.config containing your choice of JAAS LoginModule implementation, for example:</p>
-  <source>  Tomcat { /* should match to the com.sun.management.jmxremote.login.config property */
-
-    /* for illustration purposes only */
-    com.sun.security.auth.module.LdapLoginModule REQUIRED
-      userProvider="ldap://ldap-svr/ou=people,dc=example,dc=com"
-      userFilter="(&amp;(uid={USERNAME})(objectClass=inetOrgPerson))"
-      authzIdentity="admin"
-      debug=true;
-  };</source>
-    <p>$CATALINA_BASE/conf/jmxremote.access containing:</p>
-  <source>admin readwrite</source>
-    <p>
-    then we would need to provide LDAP credentials instead.
-    </p>
-
-    <p><strong>Note that the examples above do not use SSL. JMX access should
-    be considered equivalent to administrative access and secured accordingly.
-    </strong></p>
-
-  </subsection>
-
 </section>
 
 </body>

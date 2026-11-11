@@ -34,6 +34,7 @@ import java.nio.charset.StandardCharsets;
 import java.security.KeyStore;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Base64;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -41,7 +42,6 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Map.Entry;
-import java.util.Random;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
@@ -68,23 +68,32 @@ import javax.websocket.WebSocketContainer;
 import org.apache.juli.logging.Log;
 import org.apache.juli.logging.LogFactory;
 import org.apache.tomcat.InstanceManager;
+import org.apache.tomcat.InstanceManagerBindings;
+import org.apache.tomcat.util.ExceptionUtils;
 import org.apache.tomcat.util.buf.StringUtils;
-import org.apache.tomcat.util.codec.binary.Base64;
 import org.apache.tomcat.util.collections.CaseInsensitiveKeyMap;
+import org.apache.tomcat.util.http.Method;
 import org.apache.tomcat.util.res.StringManager;
+import org.apache.tomcat.util.security.ConcurrentMessageDigest;
 import org.apache.tomcat.util.security.KeyStoreUtil;
-import org.apache.tomcat.websocket.pojo.PojoEndpointClient;
 
+/**
+ * Client-side WebSocket container implementation.
+ */
 public class WsWebSocketContainer implements WebSocketContainer, BackgroundProcess {
 
+    /**
+     * Default constructor.
+     */
+    public WsWebSocketContainer() {
+    }
+
     private static final StringManager sm = StringManager.getManager(WsWebSocketContainer.class);
-    private static final Random RANDOM = new Random();
     private static final byte[] CRLF = new byte[] { 13, 10 };
 
     private static final byte[] GET_BYTES = "GET ".getBytes(StandardCharsets.ISO_8859_1);
     private static final byte[] ROOT_URI_BYTES = "/".getBytes(StandardCharsets.ISO_8859_1);
-    private static final byte[] HTTP_VERSION_BYTES =
-            " HTTP/1.1\r\n".getBytes(StandardCharsets.ISO_8859_1);
+    private static final byte[] HTTP_VERSION_BYTES = " HTTP/1.1\r\n".getBytes(StandardCharsets.ISO_8859_1);
 
     private volatile AsynchronousChannelGroup asynchronousChannelGroup = null;
     private final Object asynchronousChannelGroupLock = new Object();
@@ -92,7 +101,7 @@ public class WsWebSocketContainer implements WebSocketContainer, BackgroundProce
     private final Log log = LogFactory.getLog(WsWebSocketContainer.class); // must not be static
     // Server side uses the endpoint path as the key
     // Client side uses the client endpoint instance
-    private final Map<Object, Set<WsSession>> endpointSessionMap = new HashMap<>();
+    private final Map<Object,Set<WsSession>> endpointSessionMap = new HashMap<>();
     private final Map<WsSession,WsSession> sessions = new ConcurrentHashMap<>();
     private final Object endPointSessionMapLock = new Object();
 
@@ -105,39 +114,59 @@ public class WsWebSocketContainer implements WebSocketContainer, BackgroundProce
 
     private InstanceManager instanceManager;
 
-    InstanceManager getInstanceManager() {
-        return instanceManager;
+    /**
+     * Returns the instance manager for the given class loader.
+     * @param classLoader the class loader
+     * @return the instance manager
+     */
+    protected InstanceManager getInstanceManager(ClassLoader classLoader) {
+        if (instanceManager != null) {
+            return instanceManager;
+        }
+        return InstanceManagerBindings.get(classLoader);
     }
 
+    /**
+     * Sets the instance manager for this container.
+     *
+     * @param instanceManager the instance manager
+     */
     protected void setInstanceManager(InstanceManager instanceManager) {
         this.instanceManager = instanceManager;
     }
 
     @Override
-    public Session connectToServer(Object pojo, URI path)
-            throws DeploymentException {
+    public Session connectToServer(Object pojo, URI path) throws DeploymentException {
+        ClientEndpointConfig config = createClientEndpointConfig(pojo.getClass());
+        ClientEndpointHolder holder = new PojoHolder(pojo, config);
+        return connectToServerRecursive(holder, config, path, new HashSet<>());
+    }
 
-        ClientEndpoint annotation =
-                pojo.getClass().getAnnotation(ClientEndpoint.class);
+
+    @Override
+    public Session connectToServer(Class<?> annotatedEndpointClass, URI path) throws DeploymentException {
+        ClientEndpointConfig config = createClientEndpointConfig(annotatedEndpointClass);
+        ClientEndpointHolder holder = new PojoClassHolder(annotatedEndpointClass, config);
+        return connectToServerRecursive(holder, config, path, new HashSet<>());
+    }
+
+
+    private ClientEndpointConfig createClientEndpointConfig(Class<?> annotatedEndpointClass)
+            throws DeploymentException {
+        ClientEndpoint annotation = annotatedEndpointClass.getAnnotation(ClientEndpoint.class);
         if (annotation == null) {
             throw new DeploymentException(
-                    sm.getString("wsWebSocketContainer.missingAnnotation",
-                            pojo.getClass().getName()));
+                    sm.getString("wsWebSocketContainer.missingAnnotation", annotatedEndpointClass.getName()));
         }
 
-        Endpoint ep = new PojoEndpointClient(pojo, Arrays.asList(annotation.decoders()));
-
-        Class<? extends ClientEndpointConfig.Configurator> configuratorClazz =
-                annotation.configurator();
+        Class<? extends ClientEndpointConfig.Configurator> configuratorClazz = annotation.configurator();
 
         ClientEndpointConfig.Configurator configurator = null;
-        if (!ClientEndpointConfig.Configurator.class.equals(
-                configuratorClazz)) {
+        if (!ClientEndpointConfig.Configurator.class.equals(configuratorClazz)) {
             try {
                 configurator = configuratorClazz.getConstructor().newInstance();
             } catch (ReflectiveOperationException e) {
-                throw new DeploymentException(sm.getString(
-                        "wsWebSocketContainer.defaultConfiguratorFail"), e);
+                throw new DeploymentException(sm.getString("wsWebSocketContainer.defaultConfiguratorFail"), e);
             }
         }
 
@@ -146,91 +175,63 @@ public class WsWebSocketContainer implements WebSocketContainer, BackgroundProce
         if (configurator != null) {
             builder.configurator(configurator);
         }
-        ClientEndpointConfig config = builder.
-                decoders(Arrays.asList(annotation.decoders())).
-                encoders(Arrays.asList(annotation.encoders())).
-                preferredSubprotocols(Arrays.asList(annotation.subprotocols())).
-                build();
-        return connectToServer(ep, config, path);
+        return builder.decoders(Arrays.asList(annotation.decoders())).encoders(Arrays.asList(annotation.encoders()))
+                .preferredSubprotocols(Arrays.asList(annotation.subprotocols())).build();
     }
 
 
     @Override
-    public Session connectToServer(Class<?> annotatedEndpointClass, URI path)
+    public Session connectToServer(Class<? extends Endpoint> clazz, ClientEndpointConfig clientEndpointConfiguration,
+            URI path) throws DeploymentException {
+        ClientEndpointHolder holder = new EndpointClassHolder(clazz);
+        return connectToServerRecursive(holder, clientEndpointConfiguration, path, new HashSet<>());
+    }
+
+
+    @Override
+    public Session connectToServer(Endpoint endpoint, ClientEndpointConfig clientEndpointConfiguration, URI path)
+            throws DeploymentException {
+        ClientEndpointHolder holder = new EndpointHolder(endpoint);
+        return connectToServerRecursive(holder, clientEndpointConfiguration, path, new HashSet<>());
+    }
+
+
+    private Session connectToServerRecursive(ClientEndpointHolder clientEndpointHolder,
+            ClientEndpointConfig clientEndpointConfiguration, URI serverEndpointUri, Set<URI> redirectSet)
             throws DeploymentException {
 
-        Object pojo;
-        try {
-            pojo = annotatedEndpointClass.getConstructor().newInstance();
-        } catch (ReflectiveOperationException e) {
-            throw new DeploymentException(sm.getString(
-                    "wsWebSocketContainer.endpointCreateFail",
-                    annotatedEndpointClass.getName()), e);
+        if (log.isTraceEnabled()) {
+            log.trace(sm.getString("wsWebSocketContainer.connect.entry", clientEndpointHolder.getClassName(),
+                    serverEndpointUri));
         }
-
-        return connectToServer(pojo, path);
-    }
-
-
-    @Override
-    public Session connectToServer(Class<? extends Endpoint> clazz,
-            ClientEndpointConfig clientEndpointConfiguration, URI path)
-            throws DeploymentException {
-
-        Endpoint endpoint;
-        try {
-            endpoint = clazz.getConstructor().newInstance();
-        } catch (ReflectiveOperationException e) {
-            throw new DeploymentException(sm.getString(
-                    "wsWebSocketContainer.endpointCreateFail", clazz.getName()),
-                    e);
-        }
-
-        return connectToServer(endpoint, clientEndpointConfiguration, path);
-    }
-
-
-    @Override
-    public Session connectToServer(Endpoint endpoint,
-            ClientEndpointConfig clientEndpointConfiguration, URI path)
-            throws DeploymentException {
-        return connectToServerRecursive(endpoint, clientEndpointConfiguration, path, new HashSet<>());
-    }
-
-    private Session connectToServerRecursive(Endpoint endpoint,
-            ClientEndpointConfig clientEndpointConfiguration, URI path,
-            Set<URI> redirectSet)
-            throws DeploymentException {
 
         boolean secure = false;
         ByteBuffer proxyConnect = null;
-        URI proxyPath;
+        URI proxyUri;
 
         // Validate scheme (and build proxyPath)
-        String scheme = path.getScheme();
+        String scheme = serverEndpointUri.getScheme();
         if ("ws".equalsIgnoreCase(scheme)) {
-            proxyPath = URI.create("http" + path.toString().substring(2));
+            proxyUri = URI.create("http" + serverEndpointUri.toString().substring(2));
         } else if ("wss".equalsIgnoreCase(scheme)) {
-            proxyPath = URI.create("https" + path.toString().substring(3));
+            proxyUri = URI.create("https" + serverEndpointUri.toString().substring(3));
             secure = true;
         } else {
-            throw new DeploymentException(sm.getString(
-                    "wsWebSocketContainer.pathWrongScheme", scheme));
+            throw new DeploymentException(sm.getString("wsWebSocketContainer.pathWrongScheme", scheme));
         }
 
-        // Validate host
-        String host = path.getHost();
-        if (host == null) {
-            throw new DeploymentException(
-                    sm.getString("wsWebSocketContainer.pathNoHost"));
+        // Validate server endpoint host
+        String serverEndpointHost = serverEndpointUri.getHost();
+        if (serverEndpointHost == null) {
+            throw new DeploymentException(sm.getString("wsWebSocketContainer.pathNoHost"));
         }
-        int port = path.getPort();
+        int serverEndpointPort = serverEndpointUri.getPort();
 
         SocketAddress sa = null;
 
         // Check to see if a proxy is configured. Javadoc indicates return value
         // will never be null
-        List<Proxy> proxies = ProxySelector.getDefault().select(proxyPath);
+        List<Proxy> proxies = ProxySelector.getDefault().select(proxyUri);
         Proxy selectedProxy = null;
         for (Proxy proxy : proxies) {
             if (proxy.type().equals(Proxy.Type.HTTP)) {
@@ -248,49 +249,49 @@ public class WsWebSocketContainer implements WebSocketContainer, BackgroundProce
 
         // If the port is not explicitly specified, compute it based on the
         // scheme
-        if (port == -1) {
+        if (serverEndpointPort == -1) {
             if ("ws".equalsIgnoreCase(scheme)) {
-                port = 80;
+                serverEndpointPort = 80;
             } else {
                 // Must be wss due to scheme validation above
-                port = 443;
+                serverEndpointPort = 443;
             }
         }
 
+        Map<String,Object> userProperties = clientEndpointConfiguration.getUserProperties();
+
         // If sa is null, no proxy is configured so need to create sa
         if (sa == null) {
-            sa = new InetSocketAddress(host, port);
+            sa = new InetSocketAddress(serverEndpointHost, serverEndpointPort);
         } else {
-            proxyConnect = createProxyRequest(host, port);
+            proxyConnect = createProxyRequest(serverEndpointHost, serverEndpointPort,
+                    (String) userProperties.get(Constants.PROXY_AUTHORIZATION_HEADER_NAME));
         }
 
         // Create the initial HTTP request to open the WebSocket connection
-        Map<String, List<String>> reqHeaders = createRequestHeaders(host, port, secure,
-                clientEndpointConfiguration);
-        clientEndpointConfiguration.getConfigurator().beforeRequest(reqHeaders);
-        if (Constants.DEFAULT_ORIGIN_HEADER_VALUE != null
-                && !reqHeaders.containsKey(Constants.ORIGIN_HEADER_NAME)) {
+        Map<String,List<String>> upgradeRequestHeaders =
+                createRequestHeaders(serverEndpointHost, serverEndpointPort, secure, clientEndpointConfiguration);
+        clientEndpointConfiguration.getConfigurator().beforeRequest(upgradeRequestHeaders);
+        if (Constants.DEFAULT_ORIGIN_HEADER_VALUE != null &&
+                !upgradeRequestHeaders.containsKey(Constants.ORIGIN_HEADER_NAME)) {
             List<String> originValues = new ArrayList<>(1);
             originValues.add(Constants.DEFAULT_ORIGIN_HEADER_VALUE);
-            reqHeaders.put(Constants.ORIGIN_HEADER_NAME, originValues);
+            upgradeRequestHeaders.put(Constants.ORIGIN_HEADER_NAME, originValues);
         }
-        ByteBuffer request = createRequest(path, reqHeaders);
-
-        AsynchronousSocketChannel socketChannel;
-        try {
-            socketChannel = AsynchronousSocketChannel.open(getAsynchronousChannelGroup());
-        } catch (IOException ioe) {
-            throw new DeploymentException(sm.getString(
-                    "wsWebSocketContainer.asynchronousSocketChannelFail"), ioe);
-        }
-
-        Map<String,Object> userProperties = clientEndpointConfiguration.getUserProperties();
+        ByteBuffer upgradeRequest = createRequest(serverEndpointUri, upgradeRequestHeaders);
 
         // Get the connection timeout
         long timeout = Constants.IO_TIMEOUT_MS_DEFAULT;
         String timeoutValue = (String) userProperties.get(Constants.IO_TIMEOUT_MS_PROPERTY);
         if (timeoutValue != null) {
-            timeout = Long.valueOf(timeoutValue).intValue();
+            timeout = Long.parseLong(timeoutValue);
+        }
+
+        AsynchronousSocketChannel socketChannel;
+        try {
+            socketChannel = AsynchronousSocketChannel.open(getAsynchronousChannelGroup());
+        } catch (IOException ioe) {
+            throw new DeploymentException(sm.getString("wsWebSocketContainer.asynchronousSocketChannelFail"), ioe);
         }
 
         // Set-up
@@ -300,179 +301,178 @@ public class WsWebSocketContainer implements WebSocketContainer, BackgroundProce
         boolean success = false;
         List<Extension> extensionsAgreed = new ArrayList<>();
         Transformation transformation = null;
-
-        // Open the connection
-        Future<Void> fConnect = socketChannel.connect(sa);
         AsyncChannelWrapper channel = null;
 
-        if (proxyConnect != null) {
-            try {
+        long maxHttpResponseHeaderBytes = Constants.MAX_HTTP_RESPONSE_HEADER_BYTES_DEFAULT;
+        String maxHttpResponseHeaderBytesValue =
+                (String) userProperties.get(Constants.MAX_HTTP_RESPONSE_HEADER_BYTES_PROPERTY);
+        if (maxHttpResponseHeaderBytesValue != null) {
+            maxHttpResponseHeaderBytes = Long.parseLong(maxHttpResponseHeaderBytesValue);
+        }
+
+        try {
+            // Open the connection
+            Future<Void> fConnect = socketChannel.connect(sa);
+
+            if (proxyConnect != null) {
                 fConnect.get(timeout, TimeUnit.MILLISECONDS);
                 // Proxy CONNECT is clear text
                 channel = new AsyncChannelWrapperNonSecure(socketChannel);
                 writeRequest(channel, proxyConnect, timeout);
-                HttpResponse httpResponse = processResponse(response, channel, timeout);
-                if (httpResponse.getStatus() != 200) {
-                    throw new DeploymentException(sm.getString(
-                            "wsWebSocketContainer.proxyConnectFail", selectedProxy,
+                HttpResponse httpResponse = processResponse(response, channel, timeout, maxHttpResponseHeaderBytes);
+                if (httpResponse.status == Constants.PROXY_AUTHENTICATION_REQUIRED) {
+                    return processAuthenticationChallenge(clientEndpointHolder, clientEndpointConfiguration,
+                            serverEndpointUri, redirectSet, userProperties, Method.CONNECT,
+                            serverEndpointHost + ":" + serverEndpointPort, httpResponse, AuthenticationType.PROXY);
+                } else if (httpResponse.getStatus() != 200) {
+                    throw new DeploymentException(sm.getString("wsWebSocketContainer.proxyConnectFail", selectedProxy,
                             Integer.toString(httpResponse.getStatus())));
                 }
-            } catch (TimeoutException | InterruptedException | ExecutionException |
-                    EOFException e) {
-                if (channel != null) {
-                    channel.close();
-                }
-                throw new DeploymentException(
-                        sm.getString("wsWebSocketContainer.httpRequestFailed"), e);
+                // Proxy authentication either successful or not required.
+                userProperties.remove(Constants.PROXY_AUTHORIZATION_HEADER_NAME);
             }
-        }
 
-        if (secure) {
-            // Regardless of whether a non-secure wrapper was created for a
-            // proxy CONNECT, need to use TLS from this point on so wrap the
-            // original AsynchronousSocketChannel
-            SSLEngine sslEngine = createSSLEngine(userProperties, host, port);
-            channel = new AsyncChannelWrapperSecure(socketChannel, sslEngine);
-        } else if (channel == null) {
-            // Only need to wrap as this point if it wasn't wrapped to process a
-            // proxy CONNECT
-            channel = new AsyncChannelWrapperNonSecure(socketChannel);
-        }
+            if (secure) {
+                // Regardless of whether a non-secure wrapper was created for a
+                // proxy CONNECT, need to use TLS from this point on so wrap the
+                // original AsynchronousSocketChannel
+                SSLEngine sslEngine =
+                        createSSLEngine(clientEndpointConfiguration, serverEndpointHost, serverEndpointPort);
+                channel = new AsyncChannelWrapperSecure(socketChannel, sslEngine);
+            } else if (channel == null) {
+                // Only need to wrap as this point if it wasn't wrapped to process a
+                // proxy CONNECT
+                channel = new AsyncChannelWrapperNonSecure(socketChannel);
+            }
 
-        try {
             fConnect.get(timeout, TimeUnit.MILLISECONDS);
 
             Future<Void> fHandshake = channel.handshake();
             fHandshake.get(timeout, TimeUnit.MILLISECONDS);
 
-            writeRequest(channel, request, timeout);
+            if (log.isTraceEnabled()) {
+                SocketAddress localAddress = null;
+                try {
+                    localAddress = channel.getLocalAddress();
+                } catch (IOException ioe) {
+                    // Ignore
+                }
+                log.trace(sm.getString("wsWebSocketContainer.connect.write", Integer.valueOf(upgradeRequest.position()),
+                        Integer.valueOf(upgradeRequest.limit()), localAddress));
+            }
+            writeRequest(channel, upgradeRequest, timeout);
 
-            HttpResponse httpResponse = processResponse(response, channel, timeout);
+            HttpResponse httpResponse = processResponse(response, channel, timeout, maxHttpResponseHeaderBytes);
 
             // Check maximum permitted redirects
             int maxRedirects = Constants.MAX_REDIRECTIONS_DEFAULT;
-            String maxRedirectsValue =
-                    (String) userProperties.get(Constants.MAX_REDIRECTIONS_PROPERTY);
+            String maxRedirectsValue = (String) userProperties.get(Constants.MAX_REDIRECTIONS_PROPERTY);
             if (maxRedirectsValue != null) {
                 maxRedirects = Integer.parseInt(maxRedirectsValue);
             }
 
             if (httpResponse.status != 101) {
-                if(isRedirectStatus(httpResponse.status)){
-                    List<String> locationHeader =
-                            httpResponse.getHandshakeResponse().getHeaders().get(
-                                    Constants.LOCATION_HEADER_NAME);
+                if (isRedirectStatus(httpResponse.status)) {
+                    // HTTP redirect. Authentication either successful or not required.
+                    userProperties.remove(Constants.AUTHORIZATION_HEADER_NAME);
 
-                    if (locationHeader == null || locationHeader.isEmpty() ||
-                            locationHeader.get(0) == null || locationHeader.get(0).isEmpty()) {
-                        throw new DeploymentException(sm.getString(
-                                "wsWebSocketContainer.missingLocationHeader",
+                    List<String> locationHeader =
+                            httpResponse.getHandshakeResponse().getHeaders().get(Constants.LOCATION_HEADER_NAME);
+
+                    if (locationHeader == null || locationHeader.isEmpty() || locationHeader.get(0) == null ||
+                            locationHeader.get(0).isEmpty()) {
+                        throw new DeploymentException(sm.getString("wsWebSocketContainer.missingLocationHeader",
                                 Integer.toString(httpResponse.status)));
                     }
 
                     URI redirectLocation = URI.create(locationHeader.get(0)).normalize();
 
                     if (!redirectLocation.isAbsolute()) {
-                        redirectLocation = path.resolve(redirectLocation);
+                        redirectLocation = serverEndpointUri.resolve(redirectLocation);
                     }
 
-                    String redirectScheme = redirectLocation.getScheme().toLowerCase();
+                    String redirectScheme = redirectLocation.getScheme().toLowerCase(Locale.ENGLISH);
 
                     if (redirectScheme.startsWith("http")) {
-                        redirectLocation = new URI(redirectScheme.replace("http", "ws"),
-                                redirectLocation.getUserInfo(), redirectLocation.getHost(),
-                                redirectLocation.getPort(), redirectLocation.getPath(),
+                        redirectLocation = new URI(redirectScheme.replace("http", "ws"), redirectLocation.getUserInfo(),
+                                redirectLocation.getHost(), redirectLocation.getPort(), redirectLocation.getPath(),
                                 redirectLocation.getQuery(), redirectLocation.getFragment());
                     }
 
                     if (!redirectSet.add(redirectLocation) || redirectSet.size() > maxRedirects) {
-                        throw new DeploymentException(sm.getString(
-                                "wsWebSocketContainer.redirectThreshold", redirectLocation,
-                                Integer.toString(redirectSet.size()),
-                                Integer.toString(maxRedirects)));
-                    }
-
-                    return connectToServerRecursive(endpoint, clientEndpointConfiguration, redirectLocation, redirectSet);
-
-                }
-
-                else if (httpResponse.status == 401) {
-
-                    if (userProperties.get(Constants.AUTHORIZATION_HEADER_NAME) != null) {
-                        throw new DeploymentException(sm.getString(
-                                "wsWebSocketContainer.failedAuthentication",
-                                Integer.valueOf(httpResponse.status)));
-                    }
-
-                    List<String> wwwAuthenticateHeaders = httpResponse.getHandshakeResponse()
-                            .getHeaders().get(Constants.WWW_AUTHENTICATE_HEADER_NAME);
-
-                    if (wwwAuthenticateHeaders == null || wwwAuthenticateHeaders.isEmpty() ||
-                            wwwAuthenticateHeaders.get(0) == null || wwwAuthenticateHeaders.get(0).isEmpty()) {
-                        throw new DeploymentException(sm.getString(
-                                "wsWebSocketContainer.missingWWWAuthenticateHeader",
-                                Integer.toString(httpResponse.status)));
-                    }
-
-                    String authScheme = wwwAuthenticateHeaders.get(0).split("\\s+", 2)[0];
-                    String requestUri = new String(request.array(), StandardCharsets.ISO_8859_1)
-                            .split("\\s", 3)[1];
-
-                    Authenticator auth = AuthenticatorFactory.getAuthenticator(authScheme);
-
-                    if (auth == null) {
                         throw new DeploymentException(
-                                sm.getString("wsWebSocketContainer.unsupportedAuthScheme",
-                                        Integer.valueOf(httpResponse.status), authScheme));
+                                sm.getString("wsWebSocketContainer.redirectThreshold", redirectLocation,
+                                        Integer.toString(redirectSet.size()), Integer.toString(maxRedirects)));
                     }
 
-                    userProperties.put(Constants.AUTHORIZATION_HEADER_NAME, auth.getAuthorization(
-                            requestUri, wwwAuthenticateHeaders.get(0), userProperties));
+                    return connectToServerRecursive(clientEndpointHolder, clientEndpointConfiguration, redirectLocation,
+                            redirectSet);
 
-                    return connectToServerRecursive(endpoint, clientEndpointConfiguration, path, redirectSet);
+                } else if (httpResponse.status == Constants.UNAUTHORIZED) {
+                    String authenticationUri =
+                            new String(upgradeRequest.array(), StandardCharsets.ISO_8859_1).split("\\s", 3)[1];
+                    return processAuthenticationChallenge(clientEndpointHolder, clientEndpointConfiguration,
+                            serverEndpointUri, redirectSet, userProperties, Method.GET, authenticationUri, httpResponse,
+                            AuthenticationType.WWW);
 
-                }
-
-                else {
-                    throw new DeploymentException(sm.getString("wsWebSocketContainer.invalidStatus",
-                            Integer.toString(httpResponse.status)));
+                } else {
+                    throw new DeploymentException(
+                            sm.getString("wsWebSocketContainer.invalidStatus", Integer.toString(httpResponse.status)));
                 }
             }
+            // HTTP upgrade successful. Authentication either successful or not required.
+            userProperties.remove(Constants.AUTHORIZATION_HEADER_NAME);
+
             HandshakeResponse handshakeResponse = httpResponse.getHandshakeResponse();
             clientEndpointConfiguration.getConfigurator().afterResponse(handshakeResponse);
 
+            // RFC 6455, section 4.1: the client must validate the response
+            validateUpgradeResponse(upgradeRequestHeaders, handshakeResponse.getHeaders());
+
             // Sub-protocol
-            List<String> protocolHeaders = handshakeResponse.getHeaders().get(
-                    Constants.WS_PROTOCOL_HEADER_NAME);
-            if (protocolHeaders == null || protocolHeaders.size() == 0) {
+            List<String> protocolHeaders = handshakeResponse.getHeaders().get(Constants.WS_PROTOCOL_HEADER_NAME);
+            if (protocolHeaders == null || protocolHeaders.isEmpty()) {
                 subProtocol = null;
             } else if (protocolHeaders.size() == 1) {
                 subProtocol = protocolHeaders.get(0);
+                List<String> requestedSubProtocols = upgradeRequestHeaders.get(Constants.WS_PROTOCOL_HEADER_NAME);
+                if (requestedSubProtocols == null || requestedSubProtocols.stream()
+                        .flatMap(v -> Arrays.stream(v.split(","))).noneMatch(v -> v.trim().equals(subProtocol))) {
+                    throw new DeploymentException(
+                            sm.getString("wsWebSocketContainer.unrequestedSubProtocol", subProtocol));
+                }
             } else {
-                throw new DeploymentException(
-                        sm.getString("wsWebSocketContainer.invalidSubProtocol"));
+                throw new DeploymentException(sm.getString("wsWebSocketContainer.invalidSubProtocol"));
             }
 
             // Extensions
             // Should normally only be one header but handle the case of
             // multiple headers
-            List<String> extHeaders = handshakeResponse.getHeaders().get(
-                    Constants.WS_EXTENSIONS_HEADER_NAME);
+            List<String> extHeaders = handshakeResponse.getHeaders().get(Constants.WS_EXTENSIONS_HEADER_NAME);
             if (extHeaders != null) {
                 for (String extHeader : extHeaders) {
-                    Util.parseExtensionHeader(extensionsAgreed, extHeader);
+                    try {
+                        Util.parseExtensionHeader(extensionsAgreed, extHeader);
+                    } catch (IllegalArgumentException iae) {
+                        throw new DeploymentException(
+                                sm.getString("wsWebSocketContainer.invalidExtensionsHeader"), iae);
+                    }
                 }
             }
 
             // Build the transformations
             TransformationFactory factory = TransformationFactory.getInstance();
+            Set<String> requestedExtensions = getRequestedExtensionNames(upgradeRequestHeaders);
             for (Extension extension : extensionsAgreed) {
+                if (!requestedExtensions.contains(extension.getName())) {
+                    throw new DeploymentException(
+                            sm.getString("wsWebSocketContainer.unrequestedExtension", extension.getName()));
+                }
                 List<List<Extension.Parameter>> wrapper = new ArrayList<>(1);
                 wrapper.add(extension.getParameters());
                 Transformation t = factory.create(extension.getName(), wrapper, false);
                 if (t == null) {
-                    throw new DeploymentException(sm.getString(
-                            "wsWebSocketContainer.invalidExtensionParameters"));
+                    throw new DeploymentException(sm.getString("wsWebSocketContainer.invalidExtensionParameters"));
                 }
                 if (transformation == null) {
                     transformation = t;
@@ -482,42 +482,71 @@ public class WsWebSocketContainer implements WebSocketContainer, BackgroundProce
             }
 
             success = true;
-        } catch (ExecutionException | InterruptedException | SSLException |
-                EOFException | TimeoutException | URISyntaxException | AuthenticationException e) {
-            throw new DeploymentException(
-                    sm.getString("wsWebSocketContainer.httpRequestFailed"), e);
+        } catch (ExecutionException | InterruptedException | SSLException | EOFException | TimeoutException |
+                URISyntaxException | AuthenticationException e) {
+            throw new DeploymentException(sm.getString("wsWebSocketContainer.httpRequestFailed", serverEndpointUri), e);
         } finally {
             if (!success) {
-                channel.close();
+                if (channel != null) {
+                    channel.close();
+                } else {
+                    try {
+                        socketChannel.close();
+                    } catch (IOException ioe) {
+                        // Ignore
+                    }
+                }
             }
         }
 
         // Switch to WebSocket
         WsRemoteEndpointImplClient wsRemoteEndpointClient = new WsRemoteEndpointImplClient(channel);
 
-        WsSession wsSession = new WsSession(endpoint, wsRemoteEndpointClient,
-                this, null, null, null, null, null, extensionsAgreed,
-                subProtocol, Collections.<String,String>emptyMap(), secure,
-                clientEndpointConfiguration);
+        WsSession wsSession = new WsSession(clientEndpointHolder, wsRemoteEndpointClient, this, extensionsAgreed,
+                subProtocol, Collections.emptyMap(), secure, clientEndpointConfiguration);
 
-        WsFrameClient wsFrameClient = new WsFrameClient(response, channel,
-                wsSession, transformation);
+        WsFrameClient wsFrameClient;
+        try {
+            wsFrameClient = new WsFrameClient(response, channel, wsSession, transformation);
+        } catch (RuntimeException e) {
+            /*
+             * The session has been created, including the end point instance obtained from the instance manager, but
+             * the connection can not be used. The session is not registered with the container, so the session close
+             * timeout processing will never see it. Close the session here, so that the instance manager releases the
+             * end point instance and the encoders.
+             */
+            closeSessionAfterError(wsSession,
+                    new CloseReason(CloseCodes.CLOSED_ABNORMALLY, sm.getString("wsWebSocketContainer.connectAborted")));
+            throw e;
+        }
         // WsFrame adds the necessary final transformations. Copy the
         // completed transformation chain to the remote end point.
         wsRemoteEndpointClient.setTransformation(wsFrameClient.getTransformation());
 
-        endpoint.onOpen(wsSession, clientEndpointConfiguration);
-        registerSession(endpoint, wsSession);
+        try {
+            wsSession.getLocal().onOpen(wsSession, clientEndpointConfiguration);
+        } catch (Throwable t) {
+            ExceptionUtils.handleThrowable(t);
+            wsSession.getLocal().onError(wsSession, t);
+            try {
+                CloseReason cr = new CloseReason(CloseCodes.CLOSED_ABNORMALLY, t.getMessage());
+                wsSession.close(cr);
+            } catch (IOException ioe) {
+                log.warn(sm.getString("wsWebSocketContainer.closeSessionFail"), ioe);
+            }
+            throw new IllegalArgumentException(t);
+        } finally {
+            // Always register the session to ensure the connection is closed in both normal and error cases.
+            registerSession(wsSession.getLocal(), wsSession);
+        }
 
-        /* It is possible that the server sent one or more messages as soon as
-         * the WebSocket connection was established. Depending on the exact
-         * timing of when those messages were sent they could be sat in the
-         * input buffer waiting to be read and will not trigger a "data
-         * available to read" event. Therefore, it is necessary to process the
-         * input buffer here. Note that this happens on the current thread which
-         * means that this thread will be used for any onMessage notifications.
-         * This is a special case. Subsequent "data available to read" events
-         * will be handled by threads from the AsyncChannelGroup's executor.
+        /*
+         * It is possible that the server sent one or more messages as soon as the WebSocket connection was established.
+         * Depending on the exact timing of when those messages were sent they could be sat in the input buffer waiting
+         * to be read and will not trigger a "data available to read" event. Therefore, it is necessary to process the
+         * input buffer here. Note that this happens on the current thread which means that this thread will be used for
+         * any onMessage notifications. This is a special case. Subsequent "data available to read" events will be
+         * handled by threads from the AsyncChannelGroup's executor.
          */
         wsFrameClient.startInputProcessing();
 
@@ -525,8 +554,62 @@ public class WsWebSocketContainer implements WebSocketContainer, BackgroundProce
     }
 
 
-    private static void writeRequest(AsyncChannelWrapper channel, ByteBuffer request,
-            long timeout) throws TimeoutException, InterruptedException, ExecutionException {
+    /*
+     * Closes the session when the connection could not be established. Failures during the close are logged rather than
+     * propagated since they must not replace the exception that is being propagated.
+     */
+    private void closeSessionAfterError(WsSession wsSession, CloseReason closeReason) {
+        try {
+            wsSession.closeImmediately(closeReason);
+        } catch (Throwable t) {
+            ExceptionUtils.handleThrowable(t);
+            log.warn(sm.getString("wsWebSocketContainer.closeSessionFail"), t);
+        }
+    }
+
+
+    private Session processAuthenticationChallenge(ClientEndpointHolder clientEndpointHolder,
+            ClientEndpointConfig clientEndpointConfiguration, URI serverEndpointUri, Set<URI> redirectSet,
+            Map<String,Object> userProperties, String authenticationMethod, String authenticationUri,
+            HttpResponse httpResponse, AuthenticationType authenticationType)
+            throws DeploymentException, AuthenticationException {
+
+        if (userProperties.get(authenticationType.getAuthorizationHeaderName()) != null) {
+            throw new DeploymentException(sm.getString("wsWebSocketContainer.failedAuthentication",
+                    Integer.valueOf(httpResponse.status), authenticationType.getAuthorizationHeaderName()));
+        }
+
+        List<String> authenticateHeaders =
+                httpResponse.getHandshakeResponse().getHeaders().get(authenticationType.getAuthenticateHeaderName());
+
+        if (authenticateHeaders == null || authenticateHeaders.isEmpty() || authenticateHeaders.get(0) == null ||
+                authenticateHeaders.get(0).isEmpty()) {
+            throw new DeploymentException(sm.getString("wsWebSocketContainer.missingAuthenticateHeader",
+                    Integer.toString(httpResponse.status), authenticationType.getAuthenticateHeaderName()));
+        }
+
+        String authScheme = authenticateHeaders.get(0).split("\\s+", 2)[0];
+
+        Authenticator auth = AuthenticatorFactory.getAuthenticator(authScheme);
+
+        if (auth == null) {
+            throw new DeploymentException(sm.getString("wsWebSocketContainer.unsupportedAuthScheme",
+                    Integer.valueOf(httpResponse.status), authScheme));
+        }
+
+        userProperties.put(authenticationType.getAuthorizationHeaderName(),
+                auth.getAuthorization(authenticationMethod, authenticationUri, authenticateHeaders.get(0),
+                        (String) userProperties.get(authenticationType.getUserNameProperty()),
+                        (String) userProperties.get(authenticationType.getUserPasswordProperty()),
+                        (String) userProperties.get(authenticationType.getUserRealmProperty())));
+
+        return connectToServerRecursive(clientEndpointHolder, clientEndpointConfiguration, serverEndpointUri,
+                redirectSet);
+    }
+
+
+    private static void writeRequest(AsyncChannelWrapper channel, ByteBuffer request, long timeout)
+            throws TimeoutException, InterruptedException, ExecutionException {
         int toWrite = request.limit();
 
         Future<Integer> fWrite = channel.write(request);
@@ -546,23 +629,23 @@ public class WsWebSocketContainer implements WebSocketContainer, BackgroundProce
         boolean isRedirect = false;
 
         switch (httpResponseCode) {
-        case Constants.MULTIPLE_CHOICES:
-        case Constants.MOVED_PERMANENTLY:
-        case Constants.FOUND:
-        case Constants.SEE_OTHER:
-        case Constants.USE_PROXY:
-        case Constants.TEMPORARY_REDIRECT:
-            isRedirect = true;
-            break;
-        default:
-            break;
+            case Constants.MULTIPLE_CHOICES:
+            case Constants.MOVED_PERMANENTLY:
+            case Constants.FOUND:
+            case Constants.SEE_OTHER:
+            case Constants.USE_PROXY:
+            case Constants.TEMPORARY_REDIRECT:
+                isRedirect = true;
+                break;
+            default:
+                break;
         }
 
         return isRedirect;
     }
 
 
-    private static ByteBuffer createProxyRequest(String host, int port) {
+    private static ByteBuffer createProxyRequest(String host, int port, String authorizationHeader) {
         StringBuilder request = new StringBuilder();
         request.append("CONNECT ");
         request.append(host);
@@ -574,44 +657,61 @@ public class WsWebSocketContainer implements WebSocketContainer, BackgroundProce
         request.append(':');
         request.append(port);
 
+        if (authorizationHeader != null) {
+            request.append("\r\n");
+            request.append(Constants.PROXY_AUTHORIZATION_HEADER_NAME);
+            request.append(':');
+            request.append(authorizationHeader);
+        }
+
         request.append("\r\n\r\n");
 
         byte[] bytes = request.toString().getBytes(StandardCharsets.ISO_8859_1);
         return ByteBuffer.wrap(bytes);
     }
 
+    /**
+     * Registers a WebSocket session.
+     * @param key the session key
+     * @param wsSession the session to register
+     */
     protected void registerSession(Object key, WsSession wsSession) {
 
-        if (!wsSession.isOpen()) {
-            // The session was closed during onOpen. No need to register it.
+        if (wsSession.isClosed()) {
+            /*
+             * The session was fully closed during onOpen. No need to register it. For all other states, including the
+             * partially closed ones, register the session to ensure that the connection is closed if the other endpoint
+             * doesn't complete the closing handshake in a timely manner.
+             */
+
             return;
         }
         synchronized (endPointSessionMapLock) {
-            if (endpointSessionMap.size() == 0) {
+            if (endpointSessionMap.isEmpty()) {
                 BackgroundProcessManager.getInstance().register(this);
             }
-            Set<WsSession> wsSessions = endpointSessionMap.get(key);
-            if (wsSessions == null) {
-                wsSessions = new HashSet<>();
-                endpointSessionMap.put(key, wsSessions);
-            }
-            wsSessions.add(wsSession);
+            endpointSessionMap.computeIfAbsent(key, k -> new HashSet<>()).add(wsSession);
         }
         sessions.put(wsSession, wsSession);
     }
 
 
+    /**
+     * Unregisters a WebSocket session.
+     * @param key the session key
+     * @param wsSession the session to unregister
+     */
     protected void unregisterSession(Object key, WsSession wsSession) {
 
         synchronized (endPointSessionMapLock) {
             Set<WsSession> wsSessions = endpointSessionMap.get(key);
             if (wsSessions != null) {
                 wsSessions.remove(wsSession);
-                if (wsSessions.size() == 0) {
+                if (wsSessions.isEmpty()) {
                     endpointSessionMap.remove(key);
                 }
             }
-            if (endpointSessionMap.size() == 0) {
+            if (endpointSessionMap.isEmpty()) {
                 BackgroundProcessManager.getInstance().unregister(this);
             }
         }
@@ -624,19 +724,26 @@ public class WsWebSocketContainer implements WebSocketContainer, BackgroundProce
         synchronized (endPointSessionMapLock) {
             Set<WsSession> sessions = endpointSessionMap.get(key);
             if (sessions != null) {
-                result.addAll(sessions);
+                // Some sessions may be in the process of closing
+                for (WsSession session : sessions) {
+                    if (session.isOpen()) {
+                        result.add(session);
+                    }
+                }
             }
         }
         return result;
     }
 
-    private static Map<String, List<String>> createRequestHeaders(String host, int port,
-            boolean secure, ClientEndpointConfig clientEndpointConfiguration) {
+    private static Map<String,List<String>> createRequestHeaders(String host, int port, boolean secure,
+            ClientEndpointConfig clientEndpointConfiguration) {
 
-        Map<String, List<String>> headers = new HashMap<>();
+        // HTTP header names are case-insensitive. A Configurator may modify these headers in beforeRequest() so the
+        // lookups used to validate the response must not depend on the case it uses.
+        Map<String,List<String>> headers = new CaseInsensitiveKeyMap<>();
         List<Extension> extensions = clientEndpointConfiguration.getExtensions();
         List<String> subProtocols = clientEndpointConfiguration.getPreferredSubprotocols();
-        Map<String, Object> userProperties = clientEndpointConfiguration.getUserProperties();
+        Map<String,Object> userProperties = clientEndpointConfiguration.getUserProperties();
 
         if (userProperties.get(Constants.AUTHORIZATION_HEADER_NAME) != null) {
             List<String> authValues = new ArrayList<>(1);
@@ -676,14 +783,13 @@ public class WsWebSocketContainer implements WebSocketContainer, BackgroundProce
         headers.put(Constants.WS_KEY_HEADER_NAME, wsKeyValues);
 
         // WebSocket sub-protocols
-        if (subProtocols != null && subProtocols.size() > 0) {
+        if (subProtocols != null && !subProtocols.isEmpty()) {
             headers.put(Constants.WS_PROTOCOL_HEADER_NAME, subProtocols);
         }
 
         // WebSocket extensions
-        if (extensions != null && extensions.size() > 0) {
-            headers.put(Constants.WS_EXTENSIONS_HEADER_NAME,
-                    generateExtensionHeaders(extensions));
+        if (extensions != null && !extensions.isEmpty()) {
+            headers.put(Constants.WS_EXTENSIONS_HEADER_NAME, generateExtensionHeaders(extensions));
         }
 
         return headers;
@@ -699,7 +805,7 @@ public class WsWebSocketContainer implements WebSocketContainer, BackgroundProce
                 header.append(';');
                 header.append(param.getName());
                 String value = param.getValue();
-                if (value != null && value.length() > 0) {
+                if (value != null && !value.isEmpty()) {
                     header.append('=');
                     header.append(value);
                 }
@@ -711,9 +817,8 @@ public class WsWebSocketContainer implements WebSocketContainer, BackgroundProce
 
 
     private static String generateWsKeyValue() {
-        byte[] keyBytes = new byte[16];
-        RANDOM.nextBytes(keyBytes);
-        return Base64.encodeBase64String(keyBytes);
+        byte[] keyBytes = Util.generateRandomBytes(16);
+        return Base64.getEncoder().encodeToString(keyBytes);
     }
 
 
@@ -722,7 +827,8 @@ public class WsWebSocketContainer implements WebSocketContainer, BackgroundProce
 
         // Request line
         result.put(GET_BYTES);
-        if (null == uri.getPath() || "".equals(uri.getPath())) {
+        final String path = uri.getPath();
+        if (null == path || path.isEmpty()) {
             result.put(ROOT_URI_BYTES);
         } else {
             result.put(uri.getRawPath().getBytes(StandardCharsets.ISO_8859_1));
@@ -735,7 +841,7 @@ public class WsWebSocketContainer implements WebSocketContainer, BackgroundProce
         result.put(HTTP_VERSION_BYTES);
 
         // Headers
-        for (Entry<String, List<String>> entry : reqHeaders.entrySet()) {
+        for (Entry<String,List<String>> entry : reqHeaders.entrySet()) {
             result = addHeader(result, entry.getKey(), entry.getValue());
         }
 
@@ -781,42 +887,53 @@ public class WsWebSocketContainer implements WebSocketContainer, BackgroundProce
 
     /**
      * Process response, blocking until HTTP response has been fully received.
-     * @throws ExecutionException
-     * @throws InterruptedException
-     * @throws DeploymentException
-     * @throws TimeoutException
+     *
+     * @throws ExecutionException   if there is an exception reading the response
+     * @throws InterruptedException if the thread is interrupted while reading the response
+     * @throws DeploymentException  if the response status line is not correctly formatted
+     * @throws TimeoutException     if the response was not read within the expected timeout
      */
-    private HttpResponse processResponse(ByteBuffer response,
-            AsyncChannelWrapper channel, long timeout) throws InterruptedException,
-            ExecutionException, DeploymentException, EOFException,
-            TimeoutException {
+    private HttpResponse processResponse(ByteBuffer response, AsyncChannelWrapper channel, long timeout,
+            long maxHttpResponseHeaderBytes) throws InterruptedException, ExecutionException, DeploymentException,
+            EOFException, TimeoutException {
 
         Map<String,List<String>> headers = new CaseInsensitiveKeyMap<>();
 
         int status = 0;
         boolean readStatus = false;
         boolean readHeaders = false;
+        StringBuilder lineBuffer = new StringBuilder();
         String line = null;
+        long headerByteCount = 0;
         while (!readHeaders) {
             // On entering loop buffer will be empty and at the start of a new
             // loop the buffer will have been fully read.
             response.clear();
             // Blocking read
             Future<Integer> read = channel.read(response);
-            Integer bytesRead = read.get(timeout, TimeUnit.MILLISECONDS);
-            if (bytesRead.intValue() == -1) {
-                throw new EOFException();
+            Integer bytesRead;
+            try {
+                bytesRead = read.get(timeout, TimeUnit.MILLISECONDS);
+            } catch (TimeoutException e) {
+                TimeoutException te = new TimeoutException(
+                        sm.getString("wsWebSocketContainer.responseFail", Integer.toString(status), headers));
+                te.initCause(e);
+                throw te;
             }
+            if (bytesRead.intValue() == -1) {
+                throw new EOFException(
+                        sm.getString("wsWebSocketContainer.responseFail", Integer.toString(status), headers));
+            }
+            headerByteCount += bytesRead.intValue();
             response.flip();
             while (response.hasRemaining() && !readHeaders) {
-                if (line == null) {
-                    line = readLine(response);
-                } else {
-                    line += readLine(response);
+                if (readLine(response, lineBuffer)) {
+                    line = lineBuffer.toString();
+                    lineBuffer = new StringBuilder();
                 }
                 if ("\r\n".equals(line)) {
                     readHeaders = true;
-                } else if (line.endsWith("\r\n")) {
+                } else if (line != null && line.endsWith("\r\n")) {
                     if (readStatus) {
                         parseHeaders(line, headers);
                     } else {
@@ -826,9 +943,65 @@ public class WsWebSocketContainer implements WebSocketContainer, BackgroundProce
                     line = null;
                 }
             }
+            if (readHeaders) {
+                headerByteCount -= response.remaining();
+            }
+            if (headerByteCount > maxHttpResponseHeaderBytes) {
+                throw new DeploymentException(sm.getString("wsWebSocketContainer.responseHeadersLimit"));
+            }
         }
 
         return new HttpResponse(status, new WsHandshakeResponse(headers));
+    }
+
+
+    /*
+     * RFC 6455, section 4.1. The sub-protocol and the extensions are validated once they have been parsed.
+     */
+    private static void validateUpgradeResponse(Map<String,List<String>> requestHeaders,
+            Map<String,List<String>> responseHeaders) throws DeploymentException {
+
+        List<String> upgrade = responseHeaders.get(Constants.UPGRADE_HEADER_NAME);
+        if (upgrade == null || upgrade.isEmpty() ||
+                !upgrade.stream().allMatch(v -> Constants.UPGRADE_HEADER_VALUE.equalsIgnoreCase(v.trim()))) {
+            throw new DeploymentException(sm.getString("wsWebSocketContainer.invalidUpgradeHeader"));
+        }
+
+        List<String> connection = responseHeaders.get(Constants.CONNECTION_HEADER_NAME);
+        if (connection == null || connection.stream().flatMap(v -> Arrays.stream(v.split(",")))
+                .noneMatch(v -> Constants.CONNECTION_HEADER_VALUE.equalsIgnoreCase(v.trim()))) {
+            throw new DeploymentException(sm.getString("wsWebSocketContainer.invalidConnectionHeader"));
+        }
+
+        List<String> accept = responseHeaders.get(Constants.WS_ACCEPT_HEADER_NAME);
+        List<String> key = requestHeaders.get(Constants.WS_KEY_HEADER_NAME);
+        if (accept == null || accept.size() != 1 || key == null || key.isEmpty() ||
+                !generateWsAcceptValue(key.get(0)).equals(accept.get(0).trim())) {
+            throw new DeploymentException(sm.getString("wsWebSocketContainer.invalidAcceptHeader"));
+        }
+    }
+
+
+    private static String generateWsAcceptValue(String key) {
+        byte[] digest = ConcurrentMessageDigest.digestSHA1(key.getBytes(StandardCharsets.ISO_8859_1),
+                Constants.WS_ACCEPT_GUID.getBytes(StandardCharsets.ISO_8859_1));
+        return Base64.getEncoder().encodeToString(digest);
+    }
+
+
+    private static Set<String> getRequestedExtensionNames(Map<String,List<String>> requestHeaders) {
+        Set<String> result = new HashSet<>();
+        List<String> headers = requestHeaders.get(Constants.WS_EXTENSIONS_HEADER_NAME);
+        if (headers != null) {
+            List<Extension> extensions = new ArrayList<>();
+            for (String header : headers) {
+                Util.parseExtensionHeader(extensions, header);
+            }
+            for (Extension extension : extensions) {
+                result.add(extension.getName());
+            }
+        }
+        return result;
     }
 
 
@@ -838,14 +1011,12 @@ public class WsWebSocketContainer implements WebSocketContainer, BackgroundProce
         String[] parts = line.trim().split(" ");
         // CONNECT for proxy may return a 1.0 response
         if (parts.length < 2 || !("HTTP/1.0".equals(parts[0]) || "HTTP/1.1".equals(parts[0]))) {
-            throw new DeploymentException(sm.getString(
-                    "wsWebSocketContainer.invalidStatus", line));
+            throw new DeploymentException(sm.getString("wsWebSocketContainer.invalidStatus", line));
         }
         try {
             return Integer.parseInt(parts[1]);
         } catch (NumberFormatException nfe) {
-            throw new DeploymentException(sm.getString(
-                    "wsWebSocketContainer.invalidStatus", line));
+            throw new DeploymentException(sm.getString("wsWebSocketContainer.invalidStatus", line));
         }
     }
 
@@ -858,55 +1029,47 @@ public class WsWebSocketContainer implements WebSocketContainer, BackgroundProce
             log.warn(sm.getString("wsWebSocketContainer.invalidHeader", line));
             return;
         }
-        // Header names are case insensitive so always use lower case
+        // Header names are case-insensitive so always use lower case
         String headerName = line.substring(0, index).trim().toLowerCase(Locale.ENGLISH);
         // Multi-value headers are stored as a single header and the client is
         // expected to handle splitting into individual values
         String headerValue = line.substring(index + 1).trim();
 
-        List<String> values = headers.get(headerName);
-        if (values == null) {
-            values = new ArrayList<>(1);
-            headers.put(headerName, values);
-        }
+        List<String> values = headers.computeIfAbsent(headerName, k -> new ArrayList<>(1));
         values.add(headerValue);
     }
 
-    private String readLine(ByteBuffer response) {
+    private boolean readLine(ByteBuffer response, StringBuilder sb) {
         // All ISO-8859-1
-        StringBuilder sb = new StringBuilder();
-
-        char c = 0;
+        char c;
         while (response.hasRemaining()) {
             c = (char) response.get();
             sb.append(c);
             if (c == 10) {
-                break;
+                return true;
             }
         }
 
-        return sb.toString();
+        return false;
     }
 
 
-    private SSLEngine createSSLEngine(Map<String,Object> userProperties, String host, int port)
+    private SSLEngine createSSLEngine(ClientEndpointConfig clientEndpointConfig, String host, int port)
             throws DeploymentException {
 
+        Map<String,Object> userProperties = clientEndpointConfig.getUserProperties();
         try {
             // See if a custom SSLContext has been provided
-            SSLContext sslContext =
-                    (SSLContext) userProperties.get(Constants.SSL_CONTEXT_PROPERTY);
+            SSLContext sslContext = (SSLContext) userProperties.get(Constants.SSL_CONTEXT_PROPERTY);
 
             if (sslContext == null) {
                 // Create the SSL Context
                 sslContext = SSLContext.getInstance("TLS");
 
                 // Trust store
-                String sslTrustStoreValue =
-                        (String) userProperties.get(Constants.SSL_TRUSTSTORE_PROPERTY);
+                String sslTrustStoreValue = (String) userProperties.get(Constants.SSL_TRUSTSTORE_PROPERTY);
                 if (sslTrustStoreValue != null) {
-                    String sslTrustStorePwdValue = (String) userProperties.get(
-                            Constants.SSL_TRUSTSTORE_PWD_PROPERTY);
+                    String sslTrustStorePwdValue = (String) userProperties.get(Constants.SSL_TRUSTSTORE_PWD_PROPERTY);
                     if (sslTrustStorePwdValue == null) {
                         sslTrustStorePwdValue = Constants.SSL_TRUSTSTORE_PWD_DEFAULT;
                     }
@@ -917,8 +1080,8 @@ public class WsWebSocketContainer implements WebSocketContainer, BackgroundProce
                         KeyStoreUtil.load(ks, is, sslTrustStorePwdValue.toCharArray());
                     }
 
-                    TrustManagerFactory tmf = TrustManagerFactory.getInstance(
-                            TrustManagerFactory.getDefaultAlgorithm());
+                    TrustManagerFactory tmf =
+                            TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm());
                     tmf.init(ks);
 
                     sslContext.init(null, tmf.getTrustManagers(), null);
@@ -929,8 +1092,7 @@ public class WsWebSocketContainer implements WebSocketContainer, BackgroundProce
 
             SSLEngine engine = sslContext.createSSLEngine(host, port);
 
-            String sslProtocolsValue =
-                    (String) userProperties.get(Constants.SSL_PROTOCOLS_PROPERTY);
+            String sslProtocolsValue = (String) userProperties.get(Constants.SSL_PROTOCOLS_PROPERTY);
             if (sslProtocolsValue != null) {
                 engine.setEnabledProtocols(sslProtocolsValue.split(","));
             }
@@ -947,8 +1109,7 @@ public class WsWebSocketContainer implements WebSocketContainer, BackgroundProce
 
             return engine;
         } catch (Exception e) {
-            throw new DeploymentException(sm.getString(
-                    "wsWebSocketContainer.sslEngineFail"), e);
+            throw new DeploymentException(sm.getString("wsWebSocketContainer.sslEngineFail"), e);
         }
     }
 
@@ -973,6 +1134,10 @@ public class WsWebSocketContainer implements WebSocketContainer, BackgroundProce
 
     @Override
     public void setDefaultMaxBinaryMessageBufferSize(int max) {
+        if (max < 1) {
+            throw new IllegalArgumentException(
+                    sm.getString("wsWebSocketContainer.illegalBufferSize", Integer.valueOf(max)));
+        }
         maxBinaryMessageBufferSize = max;
     }
 
@@ -985,14 +1150,16 @@ public class WsWebSocketContainer implements WebSocketContainer, BackgroundProce
 
     @Override
     public void setDefaultMaxTextMessageBufferSize(int max) {
+        if (max < 1) {
+            throw new IllegalArgumentException(
+                    sm.getString("wsWebSocketContainer.illegalBufferSize", Integer.valueOf(max)));
+        }
         maxTextMessageBufferSize = max;
     }
 
 
     /**
-     * {@inheritDoc}
-     *
-     * Currently, this implementation does not support any extensions.
+     * {@inheritDoc} Currently, this implementation supports the permessage-deflate extension.
      */
     @Override
     public Set<Extension> getInstalledExtensions() {
@@ -1001,9 +1168,7 @@ public class WsWebSocketContainer implements WebSocketContainer, BackgroundProce
 
 
     /**
-     * {@inheritDoc}
-     *
-     * The default value for this implementation is -1.
+     * {@inheritDoc} The default value for this implementation is -1.
      */
     @Override
     public long getDefaultAsyncSendTimeout() {
@@ -1012,9 +1177,7 @@ public class WsWebSocketContainer implements WebSocketContainer, BackgroundProce
 
 
     /**
-     * {@inheritDoc}
-     *
-     * The default value for this implementation is -1.
+     * {@inheritDoc} The default value for this implementation is -1.
      */
     @Override
     public void setAsyncSendTimeout(long timeout) {
@@ -1023,20 +1186,19 @@ public class WsWebSocketContainer implements WebSocketContainer, BackgroundProce
 
 
     /**
-     * Cleans up the resources still in use by WebSocket sessions created from
-     * this container. This includes closing sessions and cancelling
-     * {@link Future}s associated with blocking read/writes.
+     * Cleans up the resources still in use by WebSocket sessions created from this container. This includes closing
+     * sessions and cancelling {@link Future}s associated with blocking read/writes.
      */
     public void destroy() {
-        CloseReason cr = new CloseReason(
-                CloseCodes.GOING_AWAY, sm.getString("wsWebSocketContainer.shutdown"));
+        CloseReason cr = new CloseReason(CloseCodes.GOING_AWAY, sm.getString("wsWebSocketContainer.shutdown"));
 
         for (WsSession session : sessions.keySet()) {
             try {
                 session.close(cr);
             } catch (IOException ioe) {
-                log.debug(sm.getString(
-                        "wsWebSocketContainer.sessionCloseFail", session.getId()), ioe);
+                if (log.isDebugEnabled()) {
+                    log.debug(sm.getString("wsWebSocketContainer.sessionCloseFail", session.getId()), ioe);
+                }
             }
         }
 
@@ -1074,12 +1236,14 @@ public class WsWebSocketContainer implements WebSocketContainer, BackgroundProce
     @Override
     public void backgroundProcess() {
         // This method gets called once a second.
-        backgroundProcessCount ++;
+        backgroundProcessCount++;
         if (backgroundProcessCount >= processPeriod) {
             backgroundProcessCount = 0;
 
+            // Check all registered sessions.
             for (WsSession wsSession : sessions.keySet()) {
                 wsSession.checkExpiration();
+                wsSession.checkCloseTimeout();
             }
         }
 
@@ -1093,10 +1257,7 @@ public class WsWebSocketContainer implements WebSocketContainer, BackgroundProce
 
 
     /**
-     * {@inheritDoc}
-     *
-     * The default value is 10 which means session expirations are processed
-     * every 10 seconds.
+     * {@inheritDoc} The default value is 10 which means session expirations are processed every 10 seconds.
      */
     @Override
     public int getProcessPeriod() {
@@ -1108,7 +1269,7 @@ public class WsWebSocketContainer implements WebSocketContainer, BackgroundProce
         private final int status;
         private final HandshakeResponse handshakeResponse;
 
-        public HttpResponse(int status, HandshakeResponse handshakeResponse) {
+        HttpResponse(int status, HandshakeResponse handshakeResponse) {
             this.status = status;
             this.handshakeResponse = handshakeResponse;
         }

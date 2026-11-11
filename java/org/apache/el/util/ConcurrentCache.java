@@ -20,7 +20,15 @@ import java.util.Map;
 import java.util.WeakHashMap;
 import java.util.concurrent.ConcurrentHashMap;
 
-public final class ConcurrentCache<K,V> {
+/**
+ * A thread-safe cache that uses an eden space backed by a {@link ConcurrentHashMap}
+ * and a long-term space backed by a {@link WeakHashMap}. When the eden space reaches
+ * the configured size, its contents are promoted to the long-term space.
+ *
+ * @param <K> the key type
+ * @param <V> the value type
+ */
+public final class ConcurrentCache<K, V> {
 
     private final int size;
 
@@ -28,12 +36,27 @@ public final class ConcurrentCache<K,V> {
 
     private final Map<K,V> longterm;
 
+    /**
+     * Creates a new cache with the specified eden space size.
+     *
+     * @param size the maximum size of the eden space before promotion to long-term storage
+     */
     public ConcurrentCache(int size) {
         this.size = size;
         this.eden = new ConcurrentHashMap<>(size);
         this.longterm = new WeakHashMap<>(size);
     }
 
+    /**
+     * Retrieves a value from the cache. If found in the long-term store, it is
+     * promoted to the eden space for faster subsequent access. As for
+     * {@link #put(Object, Object)}, if the eden space is full, its contents are
+     * first moved to the long-term store so that the eden space never grows
+     * beyond the configured size.
+     *
+     * @param k the key to look up
+     * @return the cached value, or {@code null} if not found
+     */
     public V get(K k) {
         V v = this.eden.get(k);
         if (v == null) {
@@ -41,12 +64,32 @@ public final class ConcurrentCache<K,V> {
                 v = this.longterm.get(k);
             }
             if (v != null) {
+                // Handle a full eden in the same way as put(). Otherwise, a
+                // workload dominated by cache hits could grow eden far beyond
+                // the configured size. Not promoting when eden is full is not
+                // an option either as, without any calls to put(), eden would
+                // then be stuck with its current content and every other hot
+                // entry would be read from the long-term store, which
+                // requires a lock, for ever.
+                if (this.eden.size() >= size) {
+                    synchronized (longterm) {
+                        this.longterm.putAll(this.eden);
+                    }
+                    this.eden.clear();
+                }
                 this.eden.put(k, v);
             }
         }
         return v;
     }
 
+    /**
+     * Stores a value in the cache. If the eden space is full, all eden entries
+     * are promoted to the long-term store before adding the new entry.
+     *
+     * @param k the key
+     * @param v the value to cache
+     */
     public void put(K k, V v) {
         if (this.eden.size() >= size) {
             synchronized (longterm) {

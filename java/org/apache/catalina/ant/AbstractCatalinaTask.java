@@ -16,6 +16,7 @@
  */
 package org.apache.catalina.ant;
 
+import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
@@ -23,29 +24,28 @@ import java.io.OutputStream;
 import java.net.Authenticator;
 import java.net.HttpURLConnection;
 import java.net.PasswordAuthentication;
-import java.net.URL;
+import java.net.URI;
+import java.net.URISyntaxException;
 import java.net.URLConnection;
+import java.nio.charset.StandardCharsets;
+import java.util.concurrent.TimeUnit;
 
 import org.apache.catalina.util.IOTools;
+import org.apache.tomcat.util.http.Method;
 import org.apache.tools.ant.BuildException;
 import org.apache.tools.ant.Project;
 
 /**
- * Abstract base class for Ant tasks that interact with the <em>Manager</em> web
- * application for dynamically deploying and undeploying applications. These
- * tasks require Ant 1.4 or later.
- *
- * @author Craig R. McClanahan
- * @since 4.1
+ * Abstract base class for Ant tasks that interact with the <em>Manager</em> web application for dynamically deploying
+ * and undeploying applications. These tasks require Ant 1.5 or later.
  */
 public abstract class AbstractCatalinaTask extends BaseRedirectorHelperTask {
 
-    // ----------------------------------------------------- Instance Variables
-
     /**
-     * manager webapp's encoding.
+     * Construct a new instance of this task.
      */
-    private static final String CHARSET = "utf-8";
+    protected AbstractCatalinaTask() {
+    }
 
 
     // ------------------------------------------------------------- Properties
@@ -53,12 +53,22 @@ public abstract class AbstractCatalinaTask extends BaseRedirectorHelperTask {
     /**
      * The charset used during URL encoding.
      */
-    protected String charset = "ISO-8859-1";
+    protected String charset = "UTF-8";
 
+    /**
+     * Returns the charset used during URL encoding.
+     *
+     * @return the charset
+     */
     public String getCharset() {
         return charset;
     }
 
+    /**
+     * Sets the charset used during URL encoding.
+     *
+     * @param charset the charset to set
+     */
     public void setCharset(String charset) {
         this.charset = charset;
     }
@@ -69,12 +79,51 @@ public abstract class AbstractCatalinaTask extends BaseRedirectorHelperTask {
      */
     protected String password = null;
 
+    /**
+     * Returns the login password for the Manager application.
+     *
+     * @return the password
+     */
     public String getPassword() {
         return this.password;
     }
 
+    /**
+     * Sets the login password for the Manager application.
+     *
+     * @param password the password to set
+     */
     public void setPassword(String password) {
         this.password = password;
+    }
+
+
+    /**
+     * The timeout, in seconds, used when establishing a connection to the server and when reading data from it. The
+     * default value of zero means no timeout, in which case an unresponsive server may cause the build to block
+     * indefinitely.
+     */
+    protected int timeout = 0;
+
+    /**
+     * Returns the connection and read timeout, in seconds.
+     *
+     * @return the timeout in seconds; zero means no timeout
+     */
+    public int getTimeout() {
+        return this.timeout;
+    }
+
+    /**
+     * Sets the connection and read timeout, in seconds.
+     *
+     * @param timeout the timeout in seconds; zero (the default) means no timeout
+     */
+    public void setTimeout(int timeout) {
+        if (timeout < 0) {
+            throw new IllegalArgumentException("timeout may not be negative");
+        }
+        this.timeout = timeout;
     }
 
 
@@ -83,10 +132,20 @@ public abstract class AbstractCatalinaTask extends BaseRedirectorHelperTask {
      */
     protected String url = "http://localhost:8080/manager/text";
 
+    /**
+     * Returns the URL of the Manager application to be used.
+     *
+     * @return the url
+     */
     public String getUrl() {
         return this.url;
     }
 
+    /**
+     * Sets the URL of the Manager application to be used.
+     *
+     * @param url the url to set
+     */
     public void setUrl(String url) {
         this.url = url;
     }
@@ -97,32 +156,50 @@ public abstract class AbstractCatalinaTask extends BaseRedirectorHelperTask {
      */
     protected String username = null;
 
+    /**
+     * Returns the login username for the Manager application.
+     *
+     * @return the username
+     */
     public String getUsername() {
         return this.username;
     }
 
+    /**
+     * Sets the login username for the Manager application.
+     *
+     * @param username the username to set
+     */
     public void setUsername(String username) {
         this.username = username;
     }
 
     /**
-     * If set to true - ignore the constraint of the first line of the response
-     * message that must be "OK -".
+     * If set to true - ignore the constraint of the first line of the response message that must be "OK -".
      * <p>
-     * When this attribute is set to {@code false} (the default), the first line
-     * of server response is expected to start with "OK -". If it does not then
-     * the task is considered as failed and the first line is treated as an
-     * error message.
+     * When this attribute is set to {@code false} (the default), the first line of server response is expected to start
+     * with "OK -". If it does not then the task is considered as failed and the first line is treated as an error
+     * message.
      * <p>
-     * When this attribute is set to {@code true}, the first line of the
-     * response is treated like any other, regardless of its text.
+     * When this attribute is set to {@code true}, the first line of the response is treated like any other, regardless
+     * of its text.
      */
     protected boolean ignoreResponseConstraint = false;
 
+    /**
+     * Returns whether the constraint on the first line of the response message is ignored.
+     *
+     * @return true if the constraint is ignored
+     */
     public boolean isIgnoreResponseConstraint() {
         return ignoreResponseConstraint;
     }
 
+    /**
+     * Sets whether the constraint on the first line of the response message is ignored.
+     *
+     * @param ignoreResponseConstraint true to ignore the constraint
+     */
     public void setIgnoreResponseConstraint(boolean ignoreResponseConstraint) {
         this.ignoreResponseConstraint = ignoreResponseConstraint;
     }
@@ -131,9 +208,8 @@ public abstract class AbstractCatalinaTask extends BaseRedirectorHelperTask {
     // --------------------------------------------------------- Public Methods
 
     /**
-     * Execute the specified command. This logic only performs the common
-     * attribute validation required by all subclasses; it does not perform any
-     * functional logic directly.
+     * Execute the specified command. This logic only performs the common attribute validation required by all
+     * subclasses; it does not perform any functional logic directly.
      *
      * @exception BuildException if a validation error occurs
      */
@@ -158,39 +234,40 @@ public abstract class AbstractCatalinaTask extends BaseRedirectorHelperTask {
 
 
     /**
-     * Execute the specified command, based on the configured properties. The
-     * input stream will be closed upon completion of this task, whether it was
-     * executed successfully or not.
+     * Execute the specified command, based on the configured properties. The input stream will be closed upon
+     * completion of this task, whether it was executed successfully or not.
      *
-     * @param command Command to be executed
-     * @param istream InputStream to include in an HTTP PUT, if any
-     * @param contentType Content type to specify for the input, if any
+     * @param command       Command to be executed
+     * @param istream       InputStream to include in an HTTP PUT, if any
+     * @param contentType   Content type to specify for the input, if any
      * @param contentLength Content length to specify for the input, if any
      *
      * @exception BuildException if an error occurs
      */
     public void execute(String command, InputStream istream, String contentType, long contentLength)
-                    throws BuildException {
+            throws BuildException {
 
-        URLConnection conn = null;
         InputStreamReader reader = null;
         try {
             // Set up authorization with our credentials
             Authenticator.setDefault(new TaskAuthenticator(username, password));
 
             // Create a connection for this command
-            conn = (new URL(url + command)).openConnection();
+            URI uri = new URI(url + command);
+            URLConnection conn = uri.parseServerAuthority().toURL().openConnection();
             HttpURLConnection hconn = (HttpURLConnection) conn;
 
             // Set up standard connection characteristics
             hconn.setAllowUserInteraction(false);
             hconn.setDoInput(true);
             hconn.setUseCaches(false);
+            configureTimeout(hconn, timeout);
+
             if (istream != null) {
                 preAuthenticate();
 
                 hconn.setDoOutput(true);
-                hconn.setRequestMethod("PUT");
+                hconn.setRequestMethod(Method.PUT);
                 if (contentType != null) {
                     hconn.setRequestProperty("Content-Type", contentType);
                 }
@@ -198,10 +275,15 @@ public abstract class AbstractCatalinaTask extends BaseRedirectorHelperTask {
                     hconn.setRequestProperty("Content-Length", "" + contentLength);
 
                     hconn.setFixedLengthStreamingMode(contentLength);
+                } else {
+                    // The length is unknown. Use chunked streaming to avoid the
+                    // default HttpURLConnection behaviour of buffering the
+                    // entire request body in memory.
+                    hconn.setChunkedStreamingMode(0);
                 }
             } else {
                 hconn.setDoOutput(false);
-                hconn.setRequestMethod("GET");
+                hconn.setRequestMethod(Method.GET);
             }
             hconn.setRequestProperty("User-Agent", "Catalina-Ant-Task/1.0");
 
@@ -220,8 +302,13 @@ public abstract class AbstractCatalinaTask extends BaseRedirectorHelperTask {
                 }
             }
 
+            // For error responses, getInputStream() below would throw and
+            // the response body - which typically explains the error -
+            // would be discarded. Include its first line in the message.
+            reportErrorResponse(hconn, command);
+
             // Process the response message
-            reader = new InputStreamReader(hconn.getInputStream(), CHARSET);
+            reader = new InputStreamReader(hconn.getInputStream(), StandardCharsets.UTF_8);
             StringBuilder buff = new StringBuilder();
             String error = null;
             int msgPriority = Project.MSG_INFO;
@@ -230,7 +317,7 @@ public abstract class AbstractCatalinaTask extends BaseRedirectorHelperTask {
                 int ch = reader.read();
                 if (ch < 0) {
                     break;
-                } else if ((ch == '\r') || (ch == '\n')) {
+                } else if (ch == '\r' || ch == '\n') {
                     // in Win \r\n would cause handleOutput() to be called
                     // twice, the second time with an empty string,
                     // producing blank lines
@@ -265,6 +352,11 @@ public abstract class AbstractCatalinaTask extends BaseRedirectorHelperTask {
                 handleErrorOutput(e.getMessage());
             }
         } finally {
+            try {
+                Authenticator.setDefault(null);
+            } catch (Exception e) {
+                // Ignore
+            }
             closeRedirector();
             if (reader != null) {
                 try {
@@ -272,7 +364,6 @@ public abstract class AbstractCatalinaTask extends BaseRedirectorHelperTask {
                 } catch (IOException ioe) {
                     // Ignore
                 }
-                reader = null;
             }
             if (istream != null) {
                 try {
@@ -285,41 +376,98 @@ public abstract class AbstractCatalinaTask extends BaseRedirectorHelperTask {
     }
 
 
-    /*
-     * This is a hack.
-     * We need to use streaming to avoid OOME on large uploads.
-     * We'd like to use Authenticator.setDefault() for authentication as the JRE
-     * then provides the DIGEST client implementation.
-     * However, the above two are not compatible. When the request is made, the
-     * resulting 401 triggers an exception because, when using streams, the
-     * InputStream is no longer available to send with the repeated request that
-     * now includes the appropriate Authorization header.
-     * The hack is to make a simple OPTIONS request- i.e. without a request
-     * body.
-     * This triggers authentication and the requirement to authenticate for this
-     * host is cached and used to provide an appropriate Authorization when the
-     * next request is made (that includes a request body).
+    /**
+     * Configures the given connection with the given timeout.
+     *
+     * @param urlConn The connection for which the timeout should be configured
+     * @param seconds Timeout to configure in seconds
      */
-    private void preAuthenticate() throws IOException {
-        URLConnection conn = null;
+    protected void configureTimeout(URLConnection urlConn, int seconds) {
+        if (seconds > 0) {
+            // timeout is in seconds.
+            long millis = TimeUnit.SECONDS.toMillis(seconds);
+            // This is about 24 days so is unlikely to happen but limit it to avoid an IAE in setConnectTimeout()
+            if (millis > Integer.MAX_VALUE) {
+                millis = Integer.MAX_VALUE;
+            }
+            urlConn.setConnectTimeout((int) millis);
+            urlConn.setReadTimeout((int) millis);
+        }
+    }
+
+
+    /**
+     * Checks the response status code and throws an IOException with the response body in the message if the status
+     * code is 400 or above.
+     *
+     * @param hconn   The HTTP connection to be checked
+     * @param command The command associated with the request
+     *
+     * @throws IOException if the response has a status code of 400 or above
+     */
+    protected void reportErrorResponse(HttpURLConnection hconn, String command) throws IOException {
+        int responseCode = hconn.getResponseCode();
+        if (responseCode >= HttpURLConnection.HTTP_BAD_REQUEST) {
+            String errorBody = null;
+            try (InputStream errorStream = hconn.getErrorStream()) {
+                if (errorStream != null) {
+                    BufferedReader errorReader = new BufferedReader(
+                            new InputStreamReader(errorStream, StandardCharsets.UTF_8));
+                    errorBody = errorReader.readLine();
+                }
+            }
+            StringBuilder message = new StringBuilder();
+            message.append("Server returned HTTP response code: ");
+            message.append(responseCode);
+            message.append(" for URL: ");
+            message.append(url);
+            message.append(command);
+            if (errorBody != null && !errorBody.isEmpty()) {
+                message.append(" - ");
+                message.append(errorBody);
+            }
+            throw new IOException(message.toString());
+        }
+    }
+
+    /*
+     * This is a hack. We need to use streaming to avoid OOME on large uploads. We'd like to use
+     * Authenticator.setDefault() for authentication as the JRE then provides the DIGEST client implementation. However,
+     * the above two are not compatible. When the request is made, the resulting 401 triggers an exception because, when
+     * using streams, the InputStream is no longer available to send with the repeated request that now includes the
+     * appropriate Authorization header. The hack is to make a simple OPTIONS request- i.e. without a request body. This
+     * triggers authentication and the requirement to authenticate for this host is cached in the JDK's HTTP
+     * authentication cache and used to provide an appropriate Authorization when the next request is made (that
+     * includes a request body).
+     */
+    private void preAuthenticate() throws IOException, URISyntaxException {
 
         // Create a connection for this command
-        conn = (new URL(url)).openConnection();
+        URI uri = new URI(url);
+        URLConnection conn = uri.parseServerAuthority().toURL().openConnection();
         HttpURLConnection hconn = (HttpURLConnection) conn;
 
         // Set up standard connection characteristics
         hconn.setAllowUserInteraction(false);
         hconn.setDoInput(true);
         hconn.setUseCaches(false);
+        configureTimeout(hconn, timeout);
         hconn.setDoOutput(false);
-        hconn.setRequestMethod("OPTIONS");
+        hconn.setRequestMethod(Method.OPTIONS);
         hconn.setRequestProperty("User-Agent", "Catalina-Ant-Task/1.0");
 
         // Establish the connection with the server
         hconn.connect();
 
+        // For error responses, getInputStream() below would throw and
+        // the response body - which typically explains the error -
+        // would be discarded. Include its first line in the message.
+        reportErrorResponse(hconn, " pre-authentication");
+
         // Swallow response message
-        IOTools.flow(hconn.getInputStream(), null);
+        try (InputStream is = hconn.getInputStream()) {
+            IOTools.flow(is, null);
+        }
     }
 
 

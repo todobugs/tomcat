@@ -16,14 +16,38 @@
  */
 package org.apache.catalina.tribes.group.interceptors;
 
+/**
+ * MBean interface for managing the fragmentation interceptor.
+ */
 public interface FragmentationInterceptorMBean {
 
     // Attributes
-    public int getMaxSize();
 
-    public long getExpire();
+    /**
+     * Returns the maximum size of a fragment in bytes.
+     *
+     * @return The maximum fragment size
+     */
+    int getMaxSize();
 
-    public void setMaxSize(int maxSize);
+    /**
+     * Returns the expiration time for fragments in milliseconds.
+     *
+     * @return The fragment expiration time
+     */
+    long getExpire();
 
-    public void setExpire(long expire);
+    /**
+     * Sets the maximum size of a fragment in bytes.
+     *
+     * @param maxSize The maximum fragment size
+     */
+    void setMaxSize(int maxSize);
+
+    /**
+     * Sets the expiration time for fragments in milliseconds.
+     *
+     * @param expire The fragment expiration time
+     */
+    void setExpire(long expire);
 }

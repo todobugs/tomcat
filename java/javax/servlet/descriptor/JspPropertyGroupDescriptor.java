@@ -19,20 +19,94 @@ package javax.servlet.descriptor;
 import java.util.Collection;
 
 /**
+ * Represents the JSP property groups in the deployment descriptors.
+ *
  * @since Servlet 3.0
- * TODO SERVLET3 - Add comments
  */
 public interface JspPropertyGroupDescriptor {
-    public Collection<String> getUrlPatterns();
-    public String getElIgnored();
-    public String getPageEncoding();
-    public String getScriptingInvalid();
-    public String getIsXml();
-    public Collection<String> getIncludePreludes();
-    public Collection<String> getIncludeCodas();
-    public String getDeferredSyntaxAllowedAsLiteral();
-    public String getTrimDirectiveWhitespaces();
-    public String getDefaultContentType();
-    public String getBuffer();
-    public String getErrorOnUndeclaredNamespace();
+
+    /**
+     * Obtain the patterns to which this group applies.
+     *
+     * @return the patterns to which this group applies
+     */
+    Collection<String> getUrlPatterns();
+
+    /**
+     * Is Expression Language ignored for this group?
+     *
+     * @return {@code true} if EL is ignored, otherwise {@code false}
+     */
+    String getElIgnored();
+
+    /**
+     * Obtain the page encoding for this group.
+     *
+     * @return the page encoding for this group
+     */
+    String getPageEncoding();
+
+    /**
+     * Is scripting disabled for this group?
+     *
+     * @return {@code true} if scripting is disabled, otherwise {@code false}
+     */
+    String getScriptingInvalid();
+
+    /**
+     * Should the JSPs in this group be treated as JSP documents?
+     *
+     * @return {@code true} if the JSPs should be treated as JSP documents, otherwise {@code false}
+     */
+    String getIsXml();
+
+    /**
+     * Obtain the preludes to include for this group.
+     *
+     * @return the preludes to include for this group
+     */
+    Collection<String> getIncludePreludes();
+
+    /**
+     * Obtain the codas to include for this group.
+     *
+     * @return the codas to include for this group.
+     */
+    Collection<String> getIncludeCodas();
+
+    /**
+     * Is the deferred El syntax <code>#{...}</code> allowed to be used as a literal in this group?
+     *
+     * @return {@code true} if the deferred EL syntax is allowed to be used as a literal, otherwise {@code false}
+     */
+    String getDeferredSyntaxAllowedAsLiteral();
+
+    /**
+     * Should the JSPs in this group have template text that only contains whitespace removed?
+     *
+     * @return {@code true} if the whitespace be removed, otherwise {@code false}
+     */
+    String getTrimDirectiveWhitespaces();
+
+    /**
+     * Obtain the default content type this group of JSP pages.#
+     *
+     * @return the default content type this group of JSP pages
+     */
+    String getDefaultContentType();
+
+    /**
+     * Obtain the per-page buffer configuration for this group of JSP pages.
+     *
+     * @return the per-page buffer configuration for this group of JSP pages
+     */
+    String getBuffer();
+
+    /**
+     * Should an error be raised at translation time for a page in this group if the page contains a reference (e.g. a
+     * tag) to a undeclared namespace.
+     *
+     * @return {@code true} if an error should be raised, otherwise {@code false}
+     */
+    String getErrorOnUndeclaredNamespace();
 }

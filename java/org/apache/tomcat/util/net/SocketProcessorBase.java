@@ -17,17 +17,40 @@
 package org.apache.tomcat.util.net;
 
 import java.util.Objects;
+import java.util.concurrent.locks.Lock;
 
+/**
+ * Base class for socket processors that handle I/O events on a wrapped socket.
+ * Subclasses implement {@link #doRun()} to define the processing logic.
+ * @param <S> the type of the socket associated with the wrapper
+ */
 public abstract class SocketProcessorBase<S> implements Runnable {
 
+    /**
+     * The socket wrapper that provides access to the underlying socket and its state.
+     */
     protected SocketWrapperBase<S> socketWrapper;
+
+    /**
+     * The event that triggered this processor (e.g., READ, WRITE).
+     */
     protected SocketEvent event;
 
+    /**
+     * Creates a new socket processor for the given wrapper and event.
+     * @param socketWrapper the socket wrapper
+     * @param event the socket event to process
+     */
     public SocketProcessorBase(SocketWrapperBase<S> socketWrapper, SocketEvent event) {
         reset(socketWrapper, event);
     }
 
 
+    /**
+     * Resets this processor with a new socket wrapper and event, allowing reuse.
+     * @param socketWrapper the socket wrapper
+     * @param event the socket event to process
+     */
     public void reset(SocketWrapperBase<S> socketWrapper, SocketEvent event) {
         Objects.requireNonNull(event);
         this.socketWrapper = socketWrapper;
@@ -37,7 +60,9 @@ public abstract class SocketProcessorBase<S> implements Runnable {
 
     @Override
     public final void run() {
-        synchronized (socketWrapper) {
+        Lock lock = socketWrapper.getLock();
+        lock.lock();
+        try {
             // It is possible that processing may be triggered for read and
             // write at the same time. The sync above makes sure that processing
             // does not occur in parallel. The test below ensures that if the
@@ -47,9 +72,15 @@ public abstract class SocketProcessorBase<S> implements Runnable {
                 return;
             }
             doRun();
+        } finally {
+            lock.unlock();
         }
     }
 
 
+    /**
+     * Performs the actual socket processing work. Subclasses implement this method to define
+     * the specific processing logic for each endpoint type.
+     */
     protected abstract void doRun();
 }

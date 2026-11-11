@@ -1,4 +1,4 @@
-/**
+/*
  *  Licensed to the Apache Software Foundation (ASF) under one or more
  *  contributor license agreements.  See the NOTICE file distributed with
  *  this work for additional information regarding copyright ownership.
@@ -31,20 +31,22 @@ import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 
+import javax.xml.parsers.ParserConfigurationException;
+
 import org.apache.juli.logging.Log;
 import org.apache.juli.logging.LogFactory;
 import org.apache.tomcat.util.digester.Digester;
 import org.apache.tomcat.util.res.StringManager;
+import org.apache.tomcat.util.security.Escape;
 import org.xml.sax.SAXException;
 
 /**
- * Utility class for the loading and saving of JASPIC persistent provider
- * registrations.
+ * Utility class for the loading and saving of JASPIC persistent provider registrations.
  */
-final class PersistentProviderRegistrations {
+public final class PersistentProviderRegistrations {
 
-    private static final StringManager sm =
-            StringManager.getManager(PersistentProviderRegistrations.class);
+    private static final Log log = LogFactory.getLog(PersistentProviderRegistrations.class);
+    private static final StringManager sm = StringManager.getManager(PersistentProviderRegistrations.class);
 
 
     private PersistentProviderRegistrations() {
@@ -59,11 +61,12 @@ final class PersistentProviderRegistrations {
 
             try {
                 digester.setFeature("http://apache.org/xml/features/allow-java-encodings", true);
-                digester.setValidating(true);
-                digester.setNamespaceAware(true);
-            } catch (Exception e) {
-                throw new SecurityException(e);
+            } catch (SAXException se) {
+                log.warn(sm.getString("persistentProviderRegistrations.xmlFeatureEncoding"), se);
             }
+
+            digester.setValidating(true);
+            digester.setNamespaceAware(true);
 
             // Create an object to hold the parse results and put it on the top
             // of the digester's stack
@@ -83,7 +86,7 @@ final class PersistentProviderRegistrations {
             digester.parse(is);
 
             return result;
-        } catch (IOException | SAXException e) {
+        } catch (IOException | ParserConfigurationException | SAXException e) {
             throw new SecurityException(e);
         }
     }
@@ -92,29 +95,32 @@ final class PersistentProviderRegistrations {
     static void writeProviders(Providers providers, File configFile) {
         File configFileOld = new File(configFile.getAbsolutePath() + ".old");
         File configFileNew = new File(configFile.getAbsolutePath() + ".new");
+        File configParent = configFileNew.getParentFile();
 
         // Remove left over temporary files if present
         if (configFileOld.exists()) {
-            if (configFileOld.delete()) {
-                throw new SecurityException(sm.getString(
-                        "persistentProviderRegistrations.existsDeleteFail",
+            if (!configFileOld.delete()) {
+                throw new SecurityException(sm.getString("persistentProviderRegistrations.existsDeleteFail",
                         configFileOld.getAbsolutePath()));
             }
         }
         if (configFileNew.exists()) {
-            if (configFileNew.delete()) {
-                throw new SecurityException(sm.getString(
-                        "persistentProviderRegistrations.existsDeleteFail",
+            if (!configFileNew.delete()) {
+                throw new SecurityException(sm.getString("persistentProviderRegistrations.existsDeleteFail",
                         configFileNew.getAbsolutePath()));
+            }
+        }
+        if (!configParent.exists()) {
+            if (!configParent.mkdirs()) {
+                throw new SecurityException(
+                        sm.getString("persistentProviderRegistrations.mkdirsFail", configParent.getAbsolutePath()));
             }
         }
 
         // Write out the providers to the temporary new file
         try (OutputStream fos = new FileOutputStream(configFileNew);
                 Writer writer = new OutputStreamWriter(fos, StandardCharsets.UTF_8)) {
-            writer.write(
-                    "<?xml version='1.0' encoding='utf-8'?>\n" +
-                    "<jaspic-providers\n" +
+            writer.write("<?xml version='1.0' encoding='utf-8'?>\n" + "<jaspic-providers\n" +
                     "    xmlns=\"http://tomcat.apache.org/xml\"\n" +
                     "    xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\"\n" +
                     "    xsi:schemaLocation=\"http://tomcat.apache.org/xml jaspic-providers.xsd\"\n" +
@@ -128,21 +134,20 @@ final class PersistentProviderRegistrations {
                 writer.write(">\n");
                 for (Entry<String,String> entry : provider.getProperties().entrySet()) {
                     writer.write("    <property name=\"");
-                    writer.write(entry.getKey());
+                    writer.write(Escape.xml(entry.getKey()));
                     writer.write("\" value=\"");
-                    writer.write(entry.getValue());
+                    writer.write(Escape.xml(entry.getValue()));
                     writer.write("\"/>\n");
                 }
                 writer.write("  </provider>\n");
             }
             writer.write("</jaspic-providers>\n");
-        } catch (IOException e) {
+        } catch (IOException ioe) {
             if (!configFileNew.delete()) {
                 Log log = LogFactory.getLog(PersistentProviderRegistrations.class);
-                log.warn(sm.getString("persistentProviderRegistrations.deleteFail",
-                        configFileNew.getAbsolutePath()));
+                log.warn(sm.getString("persistentProviderRegistrations.deleteFail", configFileNew.getAbsolutePath()));
             }
-            throw new SecurityException(e);
+            throw new SecurityException(ioe);
         }
 
         // Move the current file out of the way
@@ -162,8 +167,7 @@ final class PersistentProviderRegistrations {
         // Remove the old file
         if (configFileOld.exists() && !configFileOld.delete()) {
             Log log = LogFactory.getLog(PersistentProviderRegistrations.class);
-            log.warn(sm.getString("persistentProviderRegistrations.deleteFail",
-                    configFileOld.getAbsolutePath()));
+            log.warn(sm.getString("persistentProviderRegistrations.deleteFail", configFileOld.getAbsolutePath()));
         }
     }
 
@@ -171,25 +175,47 @@ final class PersistentProviderRegistrations {
     private static void writeOptional(String name, String value, Writer writer) throws IOException {
         if (value != null) {
             writer.write(" " + name + "=\"");
-            writer.write(value);
+            writer.write(Escape.xml(value));
             writer.write("\"");
         }
     }
 
 
+    /**
+     * Container for JASPIC provider registrations loaded from the configuration file.
+     */
     public static class Providers {
         private final List<Provider> providers = new ArrayList<>();
 
+        /**
+         * Constructs a new Providers instance.
+         */
+        public Providers() {
+        }
+
+        /**
+         * Adds a provider to the list of registered providers.
+         *
+         * @param provider the provider to add
+         */
         public void addProvider(Provider provider) {
             providers.add(provider);
         }
 
+        /**
+         * Returns the list of registered providers.
+         *
+         * @return the list of registered providers
+         */
         public List<Provider> getProviders() {
             return providers;
         }
     }
 
 
+    /**
+     * Represents a single JASPIC provider registration.
+     */
     public static class Provider {
         private String className;
         private String layer;
@@ -197,67 +223,165 @@ final class PersistentProviderRegistrations {
         private String description;
         private final Map<String,String> properties = new HashMap<>();
 
+        /**
+         * Constructs a new Provider instance.
+         */
+        public Provider() {
+        }
 
+        /**
+         * Returns the class name of the provider.
+         *
+         * @return the class name
+         */
         public String getClassName() {
             return className;
         }
+
+        /**
+         * Sets the class name of the provider.
+         *
+         * @param className the class name
+         */
         public void setClassName(String className) {
             this.className = className;
         }
 
-
+        /**
+         * Returns the layer of the provider.
+         *
+         * @return the layer
+         */
         public String getLayer() {
             return layer;
         }
+
+        /**
+         * Sets the layer of the provider.
+         *
+         * @param layer the layer
+         */
         public void setLayer(String layer) {
             this.layer = layer;
         }
 
-
+        /**
+         * Returns the application context of the provider.
+         *
+         * @return the application context
+         */
         public String getAppContext() {
             return appContext;
         }
+
+        /**
+         * Sets the application context of the provider.
+         *
+         * @param appContext the application context
+         */
         public void setAppContext(String appContext) {
             this.appContext = appContext;
         }
 
-
+        /**
+         * Returns the description of the provider.
+         *
+         * @return the description
+         */
         public String getDescription() {
             return description;
         }
+
+        /**
+         * Sets the description of the provider.
+         *
+         * @param description the description
+         */
         public void setDescription(String description) {
             this.description = description;
         }
 
-
+        /**
+         * Adds a property to the provider.
+         *
+         * @param property the property to add
+         */
         public void addProperty(Property property) {
             properties.put(property.getName(), property.getValue());
         }
+
+        /**
+         * Used by IntrospectionUtils via reflection.
+         *
+         * @param name  - the name of the property to set on this object
+         * @param value - the value to set
+         *
+         * @see #addProperty(String, String)
+         */
+        public void setProperty(String name, String value) {
+            addProperty(name, value);
+        }
+
         void addProperty(String name, String value) {
             properties.put(name, value);
         }
+
+        /**
+         * Returns the properties of the provider.
+         *
+         * @return the properties
+         */
         public Map<String,String> getProperties() {
             return properties;
         }
     }
 
 
+    /**
+     * Represents a name-value property within a JASPIC provider registration.
+     */
     public static class Property {
         private String name;
         private String value;
 
+        /**
+         * Constructs a new Property instance.
+         */
+        public Property() {
+        }
 
+        /**
+         * Returns the name of the property.
+         *
+         * @return the name
+         */
         public String getName() {
             return name;
         }
+
+        /**
+         * Sets the name of the property.
+         *
+         * @param name the name
+         */
         public void setName(String name) {
             this.name = name;
         }
 
-
+        /**
+         * Returns the value of the property.
+         *
+         * @return the value
+         */
         public String getValue() {
             return value;
         }
+
+        /**
+         * Sets the value of the property.
+         *
+         * @param value the value
+         */
         public void setValue(String value) {
             this.value = value;
         }

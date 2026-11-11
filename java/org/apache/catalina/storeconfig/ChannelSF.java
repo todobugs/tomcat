@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.catalina.storeconfig;
 
 import java.io.PrintWriter;
@@ -33,21 +32,19 @@ import org.apache.catalina.tribes.MembershipService;
 public class ChannelSF extends StoreFactoryBase {
 
     /**
+     * Creates a new ChannelSF.
+     */
+    public ChannelSF() {
+    }
+
+    /**
      * Store the specified Channel children.
-     *
-     * @param aWriter
-     *            PrintWriter to which we are storing
-     * @param indent
-     *            Number of spaces to indent this element
-     * @param aChannel
-     *            Channel whose properties are being stored
-     *
-     * @exception Exception
-     *                if an exception occurs while storing
+     * <p>
+     * {@inheritDoc}
      */
     @Override
-    public void storeChildren(PrintWriter aWriter, int indent, Object aChannel,
-            StoreDescription parentDesc) throws Exception {
+    public void storeChildren(PrintWriter aWriter, int indent, Object aChannel, StoreDescription parentDesc)
+            throws Exception {
         if (aChannel instanceof Channel) {
             Channel channel = (Channel) aChannel;
             if (channel instanceof ManagedChannel) {
@@ -73,6 +70,6 @@ public class ChannelSF extends StoreFactoryBase {
                     storeElement(aWriter, indent, interceptor);
                 }
             }
-       }
+        }
     }
 }

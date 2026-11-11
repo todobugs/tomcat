@@ -17,10 +17,23 @@
 package javax.servlet.descriptor;
 
 /**
+ * Represents a taglib descriptor definitions in the deployment descriptor.
+ *
  * @since Servlet 3.0
- * TODO SERVLET3 - Add comments
  */
 public interface TaglibDescriptor {
-    public String getTaglibURI();
-    public String getTaglibLocation();
+
+    /**
+     * Obtain the URI for the tag library.
+     *
+     * @return the URI for the tag library
+     */
+    String getTaglibURI();
+
+    /**
+     * Obtain the location of the tag library.
+     *
+     * @return the location of the tag library
+     */
+    String getTaglibLocation();
 }

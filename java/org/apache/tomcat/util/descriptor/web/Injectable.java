@@ -18,8 +18,29 @@ package org.apache.tomcat.util.descriptor.web;
 
 import java.util.List;
 
+/**
+ * Interface for objects that can be injected with dependencies.
+ */
 public interface Injectable {
-    public String getName();
-    public void addInjectionTarget(String injectionTargetName, String jndiName);
-    public List<InjectionTarget> getInjectionTargets();
+    /**
+     * Returns the name of this injectable.
+     *
+     * @return the name
+     */
+    String getName();
+
+    /**
+     * Adds an injection target to this injectable.
+     *
+     * @param injectionTargetName the class name of the injection target
+     * @param jndiName the name of the field or method the resource is injected into
+     */
+    void addInjectionTarget(String injectionTargetName, String jndiName);
+
+    /**
+     * Returns the list of injection targets.
+     *
+     * @return the list of injection targets
+     */
+    List<InjectionTarget> getInjectionTargets();
 }

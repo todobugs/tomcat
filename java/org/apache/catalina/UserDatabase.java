@@ -19,12 +19,10 @@ package org.apache.catalina;
 import java.util.Iterator;
 
 /**
- * Abstract representation of a database of {@link User}s and {@link Group}s
- * that can be maintained by an application, along with definitions of
- * corresponding {@link Role}s, and referenced by a {@link Realm} for
- * authentication and access control.
+ * Abstract representation of a database of {@link User}s and {@link Group}s that can be maintained by an application,
+ * along with definitions of corresponding {@link Role}s, and referenced by a {@link Realm} for authentication and
+ * access control.
  *
- * @author Craig R. McClanahan
  * @since 4.1
  */
 public interface UserDatabase {
@@ -32,27 +30,35 @@ public interface UserDatabase {
     // ------------------------------------------------------------- Properties
 
     /**
+     * Get the set of {@link Group}s defined in this user database.
+     *
      * @return the set of {@link Group}s defined in this user database.
      */
-    public Iterator<Group> getGroups();
+    Iterator<Group> getGroups();
 
 
     /**
+     * Get the unique global identifier of this user database.
+     *
      * @return the unique global identifier of this user database.
      */
-    public String getId();
+    String getId();
 
 
     /**
+     * Get the set of {@link Role}s defined in this user database.
+     *
      * @return the set of {@link Role}s defined in this user database.
      */
-    public Iterator<Role> getRoles();
+    Iterator<Role> getRoles();
 
 
     /**
+     * Get the set of {@link User}s defined in this user database.
+     *
      * @return the set of {@link User}s defined in this user database.
      */
-    public Iterator<User> getUsers();
+    Iterator<User> getUsers();
 
 
     // --------------------------------------------------------- Public Methods
@@ -62,27 +68,29 @@ public interface UserDatabase {
      *
      * @exception Exception if any exception is thrown during closing
      */
-    public void close() throws Exception;
+    void close() throws Exception;
 
 
     /**
      * Create and return a new {@link Group} defined in this user database.
      *
-     * @param groupname The group name of the new group (must be unique)
+     * @param groupname   The group name of the new group (must be unique)
      * @param description The description of this group
-     * @return The new group
+     *
+     * @return The new group, or {@code null} if there's a pre-existing group
      */
-    public Group createGroup(String groupname, String description);
+    Group createGroup(String groupname, String description);
 
 
     /**
      * Create and return a new {@link Role} defined in this user database.
      *
-     * @param rolename The role name of the new role (must be unique)
+     * @param rolename    The role name of the new role (must be unique)
      * @param description The description of this role
-     * @return The new role
+     *
+     * @return The new role, or {@code null} if there's a pre-existing role
      */
-    public Role createRole(String rolename, String description);
+    Role createRole(String rolename, String description);
 
 
     /**
@@ -91,36 +99,37 @@ public interface UserDatabase {
      * @param username The logon username of the new user (must be unique)
      * @param password The logon password of the new user
      * @param fullName The full name of the new user
-     * @return The new user
+     *
+     * @return The new user, or {@code null} if there's a pre-existing user
      */
-    public User createUser(String username, String password, String fullName);
+    User createUser(String username, String password, String fullName);
 
 
     /**
-     * @return the {@link Group} with the specified group name, if any;
-     *         otherwise return <code>null</code>.
+     * Find the {@link Group} with the specified group name.
      *
      * @param groupname Name of the group to return
+     * @return the {@link Group} with the specified group name, if any; otherwise return <code>null</code>.
      */
-    public Group findGroup(String groupname);
+    Group findGroup(String groupname);
 
 
     /**
-     * @return the {@link Role} with the specified role name, if any; otherwise
-     *         return <code>null</code>.
+     * Find the {@link Role} with the specified role name.
      *
      * @param rolename Name of the role to return
+     * @return the {@link Role} with the specified role name, if any; otherwise return <code>null</code>.
      */
-    public Role findRole(String rolename);
+    Role findRole(String rolename);
 
 
     /**
-     * @return the {@link User} with the specified user name, if any; otherwise
-     *         return <code>null</code>.
+     * Find the {@link User} with the specified username.
      *
      * @param username Name of the user to return
+     * @return the {@link User} with the specified username, if any; otherwise return <code>null</code>.
      */
-    public User findUser(String username);
+    User findUser(String username);
 
 
     /**
@@ -128,7 +137,7 @@ public interface UserDatabase {
      *
      * @exception Exception if any exception is thrown during opening
      */
-    public void open() throws Exception;
+    void open() throws Exception;
 
 
     /**
@@ -136,7 +145,7 @@ public interface UserDatabase {
      *
      * @param group The group to be removed
      */
-    public void removeGroup(Group group);
+    void removeGroup(Group group);
 
 
     /**
@@ -144,7 +153,7 @@ public interface UserDatabase {
      *
      * @param role The role to be removed
      */
-    public void removeRole(Role role);
+    void removeRole(Role role);
 
 
     /**
@@ -152,23 +161,70 @@ public interface UserDatabase {
      *
      * @param user The user to be removed
      */
-    public void removeUser(User user);
+    void removeUser(User user);
 
 
     /**
-     * Save any updated information to the persistent storage location for this
-     * user database.
+     * Signal the specified {@link Group} from this user database has been modified.
+     *
+     * @param group The group that has been modified
+     */
+    default void modifiedGroup(Group group) {
+    }
+
+
+    /**
+     * Signal the specified {@link Role} from this user database has been modified.
+     *
+     * @param role The role that has been modified
+     */
+    default void modifiedRole(Role role) {
+    }
+
+
+    /**
+     * Signal the specified {@link User} from this user database has been modified.
+     *
+     * @param user The user that has been modified
+     */
+    default void modifiedUser(User user) {
+    }
+
+
+    /**
+     * Save any updated information to the persistent storage location for this user database.
      *
      * @exception Exception if any exception is thrown during saving
      */
-    public void save() throws Exception;
+    void save() throws Exception;
 
 
     /**
-     * Perform any background processing (e.g. checking for changes in persisted
-     * storage) required for the user database.
+     * Perform any background processing (e.g. checking for changes in persisted storage) required for the user
+     * database.
      */
-    public default void backgroundProcess() {
+    default void backgroundProcess() {
         // NO-OP by default
+    }
+
+
+    /**
+     * Is the database available.
+     *
+     * @return <code>true</code> if the database is available, <code>false</code> otherwise
+     */
+    default boolean isAvailable() {
+        return true;
+    }
+
+
+    /**
+     * Is the database data loaded on demand. This is used to avoid eager loading of the full database data, for example
+     * for JMX registration of all objects.
+     *
+     * @return false
+     */
+    default boolean isSparse() {
+        return false;
     }
 }

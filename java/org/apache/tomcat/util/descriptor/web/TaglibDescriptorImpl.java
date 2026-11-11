@@ -14,16 +14,31 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.tomcat.util.descriptor.web;
 
 import javax.servlet.descriptor.TaglibDescriptor;
 
+/**
+ * Implementation of TaglibDescriptor that holds the location and URI of a tag library.
+ */
 public class TaglibDescriptorImpl implements TaglibDescriptor {
 
+    /**
+     * The location of the tag library descriptor file.
+     */
     private final String location;
+
+    /**
+     * The URI that identifies this tag library.
+     */
     private final String uri;
 
+    /**
+     * Constructs a new TaglibDescriptorImpl.
+     *
+     * @param location the location of the tag library descriptor
+     * @param uri the URI identifying the tag library
+     */
     public TaglibDescriptorImpl(String location, String uri) {
         this.location = location;
         this.uri = uri;
@@ -43,8 +58,7 @@ public class TaglibDescriptorImpl implements TaglibDescriptor {
     public int hashCode() {
         final int prime = 31;
         int result = 1;
-        result = prime * result
-                + ((location == null) ? 0 : location.hashCode());
+        result = prime * result + ((location == null) ? 0 : location.hashCode());
         result = prime * result + ((uri == null) ? 0 : uri.hashCode());
         return result;
     }
@@ -66,13 +80,10 @@ public class TaglibDescriptorImpl implements TaglibDescriptor {
             return false;
         }
         if (uri == null) {
-            if (other.uri != null) {
-                return false;
-            }
-        } else if (!uri.equals(other.uri)) {
-            return false;
+            return other.uri == null;
+        } else {
+            return uri.equals(other.uri);
         }
-        return true;
     }
 
 }

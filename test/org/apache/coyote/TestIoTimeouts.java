@@ -81,7 +81,7 @@ public class TestIoTimeouts extends TomcatBaseTest {
         private final boolean sendEndChunk;
 
 
-        public ChunkedClient(boolean sendEndChunk) {
+        ChunkedClient(boolean sendEndChunk) {
             this.sendEndChunk = sendEndChunk;
         }
 
@@ -93,7 +93,7 @@ public class TestIoTimeouts extends TomcatBaseTest {
             Context root = tomcat.addContext("", TEMP_DIR);
             Wrapper w = Tomcat.addServlet(root, "Test", new NonBlockingEchoServlet());
             w.setAsyncSupported(true);
-            root.addServletMappingDecoded("/test", "Test");
+            root.addServletMapping("/test", "Test");
 
             try {
                 tomcat.start();
@@ -108,12 +108,13 @@ public class TestIoTimeouts extends TomcatBaseTest {
                 }
 
                 String[] request = new String[packetCount];
+                // @formatter:off
                 request[0] =
-                    "POST /test HTTP/1.1" + CRLF +
-                    "Host: localhost:8080" + CRLF +
-                    "Transfer-Encoding: chunked" + CRLF +
-                    "Connection: close" + CRLF +
-                    CRLF;
+                        "POST /test HTTP/1.1" + CRLF +
+                        "Host: localhost:8080" + CRLF +
+                        "Transfer-Encoding: chunked" + CRLF +
+                        "Connection: close" + CRLF +
+                        CRLF;
                 request[1] =
                         "b8" + CRLF +
                         "{" + CRLF +
@@ -124,6 +125,7 @@ public class TestIoTimeouts extends TomcatBaseTest {
                         "  \"assetStoreId\": \"5051\", "  + CRLF +
                         "  \"zipCode\": \"98109\"" + CRLF +
                         "}" + CRLF;
+                // @formatter:on
                 if (sendEndChunk) {
                     request[2] =
                             "0" + CRLF +
@@ -193,7 +195,7 @@ public class TestIoTimeouts extends TomcatBaseTest {
         private final ServletOutputStream sos;
         private final byte[] buffer = new byte[8192];
 
-        public EchoListener(AsyncContext ac, ServletInputStream sis, ServletOutputStream sos) {
+        EchoListener(AsyncContext ac, ServletInputStream sis, ServletOutputStream sos) {
             t = null;
             this.ac = ac;
             this.sis = sis;

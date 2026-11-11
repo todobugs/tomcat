@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.catalina.core;
 
 import java.nio.charset.StandardCharsets;
@@ -35,21 +34,27 @@ import org.apache.catalina.util.ParameterMap;
 import org.apache.tomcat.util.buf.UDecoder;
 import org.apache.tomcat.util.res.StringManager;
 
-public class ApplicationServletRegistration
-        implements ServletRegistration.Dynamic {
+/**
+ * Dynamic servlet registration implementation.
+ */
+public class ApplicationServletRegistration implements ServletRegistration.Dynamic {
 
     /**
      * The string manager for this package.
      */
-    private static final StringManager sm =
-      StringManager.getManager(Constants.Package);
+    private static final StringManager sm = StringManager.getManager(ApplicationServletRegistration.class);
 
     private final Wrapper wrapper;
     private final Context context;
     private ServletSecurityElement constraint;
 
-    public ApplicationServletRegistration(Wrapper wrapper,
-            Context context) {
+    /**
+     * Constructs a new ApplicationServletRegistration.
+     *
+     * @param wrapper the servlet wrapper
+     * @param context the servlet context
+     */
+    public ApplicationServletRegistration(Wrapper wrapper, Context context) {
         this.wrapper = wrapper;
         this.context = context;
 
@@ -66,7 +71,7 @@ public class ApplicationServletRegistration
     }
 
     @Override
-    public Map<String, String> getInitParameters() {
+    public Map<String,String> getInitParameters() {
         ParameterMap<String,String> result = new ParameterMap<>();
 
         String[] parameterNames = wrapper.findInitParameters();
@@ -88,9 +93,9 @@ public class ApplicationServletRegistration
     public boolean setInitParameter(String name, String value) {
         if (name == null || value == null) {
             throw new IllegalArgumentException(
-                    sm.getString("applicationFilterRegistration.nullInitParam",
-                            name, value));
+                    sm.getString("applicationServletRegistration.nullInitParam", name, value));
         }
+        checkState();
         if (getInitParameter(name) != null) {
             return false;
         }
@@ -101,25 +106,26 @@ public class ApplicationServletRegistration
     }
 
     @Override
-    public Set<String> setInitParameters(Map<String, String> initParameters) {
+    public Set<String> setInitParameters(Map<String,String> initParameters) {
 
         Set<String> conflicts = new HashSet<>();
 
-        for (Map.Entry<String, String> entry : initParameters.entrySet()) {
+        for (Map.Entry<String,String> entry : initParameters.entrySet()) {
             if (entry.getKey() == null || entry.getValue() == null) {
-                throw new IllegalArgumentException(sm.getString(
-                        "applicationFilterRegistration.nullInitParams",
-                                entry.getKey(), entry.getValue()));
+                throw new IllegalArgumentException(
+                        sm.getString("applicationServletRegistration.nullInitParams", entry.getKey(), entry.getValue()));
             }
             if (getInitParameter(entry.getKey()) != null) {
                 conflicts.add(entry.getKey());
             }
         }
 
+        checkState();
+
         // Have to add in a separate loop since spec requires no updates at all
         // if there is an issue
         if (conflicts.isEmpty()) {
-            for (Map.Entry<String, String> entry : initParameters.entrySet()) {
+            for (Map.Entry<String,String> entry : initParameters.entrySet()) {
                 setInitParameter(entry.getKey(), entry.getValue());
             }
         }
@@ -129,6 +135,7 @@ public class ApplicationServletRegistration
 
     @Override
     public void setAsyncSupported(boolean asyncSupported) {
+        checkState();
         wrapper.setAsyncSupported(asyncSupported);
     }
 
@@ -150,14 +157,12 @@ public class ApplicationServletRegistration
     @Override
     public Set<String> setServletSecurity(ServletSecurityElement constraint) {
         if (constraint == null) {
-            throw new IllegalArgumentException(sm.getString(
-                    "applicationServletRegistration.setServletSecurity.iae",
+            throw new IllegalArgumentException(sm.getString("applicationServletRegistration.setServletSecurity.iae",
                     getName(), context.getName()));
         }
 
         if (!context.getState().equals(LifecycleState.STARTING_PREP)) {
-            throw new IllegalStateException(sm.getString(
-                    "applicationServletRegistration.setServletSecurity.ise",
+            throw new IllegalStateException(sm.getString("applicationServletRegistration.setServletSecurity.ise",
                     getName(), context.getName()));
         }
 
@@ -166,24 +171,45 @@ public class ApplicationServletRegistration
     }
 
 
+    @SuppressWarnings("deprecation")
     @Override
     public Set<String> addMapping(String... urlPatterns) {
-        if (urlPatterns == null) {
-            return Collections.emptySet();
+        if (urlPatterns == null || urlPatterns.length == 0) {
+            throw new IllegalArgumentException(
+                    sm.getString("applicationServletRegistration.nullUrlPatterns", getName(), context.getName()));
         }
 
-        Set<String> conflicts = new HashSet<>();
+        String[] decodedUrlPatterns = new String[urlPatterns.length];
+        for (int i = 0; i < urlPatterns.length; i++) {
+            if (urlPatterns[i] == null) {
+                throw new IllegalArgumentException(sm.getString("applicationServletRegistration.nullUrlPattern"));
+            }
+            if (context.getUrlPatternsProvidedInDecodedForm()) {
+                decodedUrlPatterns[i] = urlPatterns[i];
+            } else {
+                decodedUrlPatterns[i] = UDecoder.URLDecode(urlPatterns[i], StandardCharsets.UTF_8);
+            }
+        }
 
-        for (String urlPattern : urlPatterns) {
-            String wrapperName = context.findServletMapping(urlPattern);
+        checkState();
+
+        Set<String> conflicts = new HashSet<>();
+        Set<String> overrides = new HashSet<>();
+
+        for (int i = 0; i < decodedUrlPatterns.length; i++) {
+            String wrapperName = context.findServletMapping(decodedUrlPatterns[i]);
             if (wrapperName != null) {
                 Wrapper wrapper = (Wrapper) context.findChild(wrapperName);
                 if (wrapper.isOverridable()) {
-                    // Some Wrappers (from global and host web.xml) may be
-                    // overridden rather than generating a conflict
-                    context.removeServletMapping(urlPattern);
+                    /*
+                     * Some Wrappers (from global and host web.xml) may be overridden rather than generating a conflict.
+                     * Changes as a result of this method should be all or nothing so note the overrides until the check
+                     * for conflicts has completed.
+                     */
+                    overrides.add(decodedUrlPatterns[i]);
                 } else {
-                    conflicts.add(urlPattern);
+                    // The conflicts list the original URL patterns passed
+                    conflicts.add(urlPatterns[i]);
                 }
             }
         }
@@ -192,9 +218,11 @@ public class ApplicationServletRegistration
             return conflicts;
         }
 
-        for (String urlPattern : urlPatterns) {
-            context.addServletMappingDecoded(
-                    UDecoder.URLDecode(urlPattern, StandardCharsets.UTF_8), wrapper.getName());
+        // No conflicts, remove the mappings that are about to be overridden
+        overrides.forEach(p -> context.removeServletMapping(p));
+
+        for (String urlPattern : decodedUrlPatterns) {
+            context.addServletMapping(urlPattern, wrapper.getName());
         }
 
         if (constraint != null) {
@@ -223,6 +251,20 @@ public class ApplicationServletRegistration
     @Override
     public String getRunAsRole() {
         return wrapper.getRunAs();
+    }
+
+
+    private void checkState() {
+        // The specification requires an IllegalStateException if the
+        // ServletContext has already been initialised. A stricter check
+        // (only allowing calls during STARTING_PREP, as used by
+        // setServletSecurity()) risks breaking existing applications that
+        // configure registrations before the context starts, so the looser
+        // test below only rejects calls made once the context is available.
+        if (context.getState().isAvailable()) {
+            throw new IllegalStateException(sm.getString("applicationServletRegistration.ise", getName(),
+                    context.getName()));
+        }
     }
 
 }

@@ -16,6 +16,7 @@
  */
 package org.apache.tomcat.util.scan;
 
+import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.net.JarURLConnection;
 import java.net.URL;
@@ -23,25 +24,35 @@ import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
 
 /**
- * Implementation of {@link org.apache.tomcat.Jar} that is optimised for file
- * based JAR URLs that refer to a JAR file nested inside a WAR
- * (e.g URLs of the form jar:file: ... .war!/ ... .jar).
+ * Implementation of {@link org.apache.tomcat.Jar} that is optimised for file based JAR URLs that refer to a JAR file
+ * nested inside a WAR (e.g. URLs of the form jar:file: ... .war!/ ... .jar).
  */
 public class JarFileUrlNestedJar extends AbstractInputStreamJar {
 
     private final JarFile warFile;
     private final JarEntry jarEntry;
 
+    /**
+     * Constructs a new JarFileUrlNestedJar.
+     *
+     * @param url the URL of the nested JAR file
+     * @throws IOException if an I/O error occurs
+     */
     public JarFileUrlNestedJar(URL url) throws IOException {
         super(url);
         JarURLConnection jarConn = (JarURLConnection) url.openConnection();
         jarConn.setUseCaches(false);
         warFile = jarConn.getJarFile();
 
-        String urlAsString = url.toString();
-        int pathStart = urlAsString.indexOf("!/") + 2;
-        String jarPath = urlAsString.substring(pathStart);
-        jarEntry = warFile.getJarEntry(jarPath);
+        // Use the connection to resolve the entry rather than parsing the URL string manually so that any
+        // percent-encoding in the entry name is handled the same way as the JDK handles it. A missing entry
+        // causes jarConn.getJarFile() above to throw.
+        jarEntry = jarConn.getJarEntry();
+        if (jarEntry == null) {
+            // The constructor is not going to complete so the caller can't close the JarFile
+            warFile.close();
+            throw new FileNotFoundException(url.toExternalForm());
+        }
     }
 
 
@@ -51,7 +62,7 @@ public class JarFileUrlNestedJar extends AbstractInputStreamJar {
         if (warFile != null) {
             try {
                 warFile.close();
-            } catch (IOException e) {
+            } catch (IOException ignore) {
                 // Ignore
             }
         }

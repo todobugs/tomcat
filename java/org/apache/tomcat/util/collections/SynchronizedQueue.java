@@ -16,33 +16,74 @@
  */
 package org.apache.tomcat.util.collections;
 
+import org.apache.tomcat.util.res.StringManager;
+
 /**
- * This is intended as a (mostly) GC-free alternative to
- * {@link java.util.concurrent.ConcurrentLinkedQueue} when the requirement is to
- * create an unbounded queue with no requirement to shrink the queue. The aim is
- * to provide the bare minimum of required functionality as quickly as possible
- * with minimum garbage.
+ * This is intended as a (mostly) GC-free alternative to {@link java.util.concurrent.ConcurrentLinkedQueue} when the
+ * requirement is to create an unbounded queue with no requirement to shrink the queue. The aim is to provide the bare
+ * minimum of required functionality as quickly as possible with minimum garbage.
  *
  * @param <T> The type of object managed by this queue
  */
 public class SynchronizedQueue<T> {
 
+    private static final StringManager sm = StringManager.getManager(SynchronizedQueue.class);
+
+    /**
+     * The default initial capacity for a new queue.
+     */
     public static final int DEFAULT_SIZE = 128;
 
+    /**
+     * The internal array backing the queue.
+     */
     private Object[] queue;
+
+    /**
+     * The current capacity of the internal array.
+     */
     private int size;
+
+    /**
+     * The index of the next insertion position.
+     */
     private int insert = 0;
+
+    /**
+     * The index of the next removal position.
+     */
     private int remove = 0;
 
+    /**
+     * Constructs a new SynchronizedQueue with the default initial capacity.
+     */
     public SynchronizedQueue() {
         this(DEFAULT_SIZE);
     }
 
+    /**
+     * Constructs a new SynchronizedQueue with the specified initial capacity.
+     *
+     * @param initialSize the initial capacity, which must be positive
+     *
+     * @throws IllegalArgumentException if the specified initial capacity is not positive
+     */
     public SynchronizedQueue(int initialSize) {
+        if (initialSize <= 0) {
+            throw new IllegalArgumentException(
+                    sm.getString("synchronizedQueue.invalidInitialSize", Integer.valueOf(initialSize)));
+        }
         queue = new Object[initialSize];
         size = initialSize;
     }
 
+    /**
+     * Adds the specified element to the tail of this queue.
+     *
+     * @param t the element to add
+     *
+     * @return true (as specified by {@link java.util.Queue#offer})
+     */
     public synchronized boolean offer(T t) {
         queue[insert++] = t;
 
@@ -57,6 +98,11 @@ public class SynchronizedQueue<T> {
         return true;
     }
 
+    /**
+     * Retrieves and removes the head of this queue, or returns null if this queue is empty.
+     *
+     * @return the head of this queue, or null if empty
+     */
     public synchronized T poll() {
         if (insert == remove) {
             // empty
@@ -89,6 +135,11 @@ public class SynchronizedQueue<T> {
         size = newSize;
     }
 
+    /**
+     * Returns the number of elements in this queue.
+     *
+     * @return the number of elements
+     */
     public synchronized int size() {
         int result = insert - remove;
         if (result < 0) {
@@ -97,6 +148,9 @@ public class SynchronizedQueue<T> {
         return result;
     }
 
+    /**
+     * Removes all elements from this queue.
+     */
     public synchronized void clear() {
         queue = new Object[size];
         insert = 0;

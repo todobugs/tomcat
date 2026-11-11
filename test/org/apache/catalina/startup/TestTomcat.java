@@ -32,6 +32,9 @@ import javax.servlet.http.HttpServlet;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 
+import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.core.IsInstanceOf.instanceOf;
+
 import org.junit.Assert;
 import org.junit.Test;
 
@@ -186,10 +189,10 @@ public class TestTomcat extends TomcatBaseTest {
         Tomcat tomcat = getTomcatInstance();
 
         // No file system docBase required
-        Context ctx = tomcat.addContext("", null);
+        Context ctx = getProgrammaticRootContext();
 
         Tomcat.addServlet(ctx, "myServlet", new HelloWorld());
-        ctx.addServletMappingDecoded("/", "myServlet");
+        ctx.addServletMapping("/", "myServlet");
 
         tomcat.start();
 
@@ -237,10 +240,10 @@ public class TestTomcat extends TomcatBaseTest {
         Tomcat tomcat = getTomcatInstance();
 
         // No file system docBase required
-        Context ctx = tomcat.addContext("", null);
+        Context ctx = getProgrammaticRootContext();
 
         Tomcat.addServlet(ctx, "myServlet", new HelloWorldSession());
-        ctx.addServletMappingDecoded("/", "myServlet");
+        ctx.addServletMapping("/", "myServlet");
 
         tomcat.start();
 
@@ -267,7 +270,7 @@ public class TestTomcat extends TomcatBaseTest {
         Tomcat tomcat = getTomcatInstance();
 
         // No file system docBase required
-        Context ctx = tomcat.addContext("", null);
+        Context ctx = getProgrammaticRootContext();
 
         // Enable JNDI - it is disabled by default
         tomcat.enableNaming();
@@ -279,7 +282,7 @@ public class TestTomcat extends TomcatBaseTest {
         ctx.getNamingResources().addEnvironment(environment);
 
         Tomcat.addServlet(ctx, "jndiServlet", new HelloWorldJndi());
-        ctx.addServletMappingDecoded("/", "jndiServlet");
+        ctx.addServletMapping("/", "jndiServlet");
 
         tomcat.start();
 
@@ -295,7 +298,7 @@ public class TestTomcat extends TomcatBaseTest {
         Tomcat tomcat = getTomcatInstance();
 
         // No file system docBase required
-        Context ctx = tomcat.addContext("", null);
+        Context ctx = getProgrammaticRootContext();
 
         // Enable JNDI - it is disabled by default
         tomcat.enableNaming();
@@ -313,7 +316,7 @@ public class TestTomcat extends TomcatBaseTest {
         ctx.getNamingResources().addResourceLink(link);
 
         Tomcat.addServlet(ctx, "jndiServlet", new HelloWorldJndi());
-        ctx.addServletMappingDecoded("/", "jndiServlet");
+        ctx.addServletMapping("/", "jndiServlet");
 
         tomcat.start();
 
@@ -338,7 +341,7 @@ public class TestTomcat extends TomcatBaseTest {
         ctx.addApplicationListener(WsContextListener.class.getName());
 
         Tomcat.addServlet(ctx, "testGetResource", new GetResource());
-        ctx.addServletMappingDecoded("/testGetResource", "testGetResource");
+        ctx.addServletMapping("/testGetResource", "testGetResource");
 
         tomcat.start();
 
@@ -374,11 +377,11 @@ public class TestTomcat extends TomcatBaseTest {
         Tomcat tomcat = getTomcatInstance();
 
         // No file system docBase required
-        Context ctx = tomcat.addContext("", null);
+        Context ctx = getProgrammaticRootContext();
 
         InitCount initCount = new InitCount();
         Tomcat.addServlet(ctx, "initCount", initCount);
-        ctx.addServletMappingDecoded("/", "initCount");
+        ctx.addServletMapping("/", "initCount");
 
         tomcat.start();
 
@@ -438,7 +441,7 @@ public class TestTomcat extends TomcatBaseTest {
     }
 
     @Test
-    public void testGetBrokenContextPerAddWepapp() {
+    public void testGetBrokenContextPerAddWebapp() {
         Tomcat tomcat = getTomcatInstance();
         Host host = tomcat.getHost();
         if (host instanceof StandardHost) {
@@ -571,7 +574,7 @@ public class TestTomcat extends TomcatBaseTest {
             tomcat.start();
             Assert.fail();
         } catch (Throwable t) {
-            Assert.assertTrue(getRootCause(t) instanceof LifecycleException);
+            assertThat(getRootCause(t), instanceOf(LifecycleException.class));
         }
     }
 
@@ -589,7 +592,7 @@ public class TestTomcat extends TomcatBaseTest {
             tomcat.start();
             Assert.fail();
         } catch (Throwable t) {
-            Assert.assertTrue(getRootCause(t) instanceof MultiThrowable);
+            assertThat(getRootCause(t), instanceOf(MultiThrowable.class));
         }
     }
 

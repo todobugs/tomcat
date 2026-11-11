@@ -21,16 +21,15 @@ import java.io.InputStream;
 import java.net.URL;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.Map.Entry;
 import java.util.jar.JarEntry;
 import java.util.jar.Manifest;
 
 import org.apache.tomcat.Jar;
 import org.apache.tomcat.util.compat.JreCompat;
+import org.apache.tomcat.util.scan.MultiReleaseUtil.MultiReleaseInfo;
 
 /**
- * Base implementation of Jar for implementations that use a JarInputStream to
- * access the JAR file.
+ * Base implementation of Jar for implementations that use a JarInputStream to access the JAR file.
  */
 public abstract class AbstractInputStreamJar implements Jar {
 
@@ -41,6 +40,11 @@ public abstract class AbstractInputStreamJar implements Jar {
     private Boolean multiRelease = null;
     private Map<String,String> mrMap = null;
 
+    /**
+     * Constructs a new {@code AbstractInputStreamJar} for the specified JAR file URL.
+     *
+     * @param jarFileUrl The URL for the JAR file
+     */
     public AbstractInputStreamJar(URL jarFileUrl) {
         this.jarFileURL = jarFileUrl;
     }
@@ -57,7 +61,7 @@ public abstract class AbstractInputStreamJar implements Jar {
         if (jarInputStream == null) {
             try {
                 reset();
-            } catch (IOException e) {
+            } catch (IOException ioe) {
                 entry = null;
                 return;
             }
@@ -67,15 +71,8 @@ public abstract class AbstractInputStreamJar implements Jar {
             if (multiRelease.booleanValue()) {
                 // Skip base entries where there is a multi-release entry
                 // Skip multi-release entries that are not being used
-                while (entry != null &&
-                        (mrMap.keySet().contains(entry.getName()) ||
-                                entry.getName().startsWith("META-INF/versions/") &&
-                                !mrMap.values().contains(entry.getName()))) {
-                    entry = jarInputStream.getNextJarEntry();
-                }
-            } else {
-                // Skip multi-release entries
-                while (entry != null && entry.getName().startsWith("META-INF/versions/")) {
+                while (entry != null && (mrMap.containsKey(entry.getName()) ||
+                        isVersionedEntry(entry.getName()) && !mrMap.containsValue(entry.getName()))) {
                     entry = jarInputStream.getNextJarEntry();
                 }
             }
@@ -138,12 +135,7 @@ public abstract class AbstractInputStreamJar implements Jar {
 
     @Override
     public String getURL(String entry) {
-        StringBuilder result = new StringBuilder("jar:");
-        result.append(getJarFileURL().toExternalForm());
-        result.append("!/");
-        result.append(entry);
-
-        return result.toString();
+        return "jar:" + getJarFileURL().toExternalForm() + "!/" + entry;
     }
 
 
@@ -185,6 +177,9 @@ public abstract class AbstractInputStreamJar implements Jar {
     }
 
 
+    /**
+     * Closes the JAR input stream if it is open.
+     */
     protected void closeStream() {
         if (jarInputStream != null) {
             try {
@@ -196,7 +191,24 @@ public abstract class AbstractInputStreamJar implements Jar {
     }
 
 
+    /**
+     * Creates a new {@link NonClosingJarInputStream} for reading this JAR.
+     *
+     * @return a new {@code NonClosingJarInputStream}
+     *
+     * @throws IOException If an I/O error occurs while creating the input stream
+     */
     protected abstract NonClosingJarInputStream createJarInputStream() throws IOException;
+
+
+    /*
+     * Entries below META-INF/versions/ that do not have a valid version directory are not versioned entries. They are
+     * ordinary entries.
+     */
+    private static boolean isVersionedEntry(String name) {
+        MultiReleaseInfo multiVersionInfo = MultiReleaseUtil.parseVersion(name);
+        return multiVersionInfo != null && multiVersionInfo.isValid();
+    }
 
 
     private void gotoEntry(String name) throws IOException {
@@ -212,9 +224,6 @@ public abstract class AbstractInputStreamJar implements Jar {
             if (mrName != null) {
                 name = mrName;
             }
-        } else if (name.startsWith("META-INF/versions/")) {
-            entry = null;
-            return;
         }
 
         if (entry != null && name.equals(entry.getName())) {
@@ -239,6 +248,7 @@ public abstract class AbstractInputStreamJar implements Jar {
         int targetVersion = JreCompat.getInstance().jarFileRuntimeMajorVersion();
 
         Map<String,Integer> mrVersions = new HashMap<>();
+        Map<String,String> newMrMap = new HashMap<>();
 
         JarEntry jarEntry = jarInputStream.getNextJarEntry();
 
@@ -246,28 +256,24 @@ public abstract class AbstractInputStreamJar implements Jar {
         // sufficient to be able to create the renaming map required
         while (jarEntry != null) {
             String name = jarEntry.getName();
-            if (name.startsWith("META-INF/versions/") && name.endsWith(".class")) {
-
-                // Get the base name and version for this versioned entry
-                int i = name.indexOf('/', 18);
-                if (i > 0) {
-                    String baseName = name.substring(i + 1);
-                    int version = Integer.parseInt(name.substring(18, i));
-
-                    // Ignore any entries targeting for a later version than
-                    // the target for this runtime
-                    if (version <= targetVersion) {
-                        Integer mappedVersion = mrVersions.get(baseName);
-                        if (mappedVersion == null) {
-                            // No version found for this name. Create one.
-                            mrVersions.put(baseName, Integer.valueOf(version));
-                        } else {
-                            // Ignore any entry for which we have already found
-                            // a later version
-                            if (version > mappedVersion.intValue()) {
-                                // Replace the earlier version
-                                mrVersions.put(baseName, Integer.valueOf(version));
-                            }
+            MultiReleaseInfo multiVersionInfo = MultiReleaseUtil.parseVersion(name);
+            if (multiVersionInfo != null && multiVersionInfo.isValid()) {
+                // Ignore any entries targeting for a later version than
+                // the target for this runtime
+                if (multiVersionInfo.version <= targetVersion) {
+                    String baseName = name.substring(multiVersionInfo.namePos);
+                    Integer mappedVersion = mrVersions.get(baseName);
+                    if (mappedVersion == null) {
+                        // No version found for this name. Create one.
+                        mrVersions.put(baseName, Integer.valueOf(multiVersionInfo.version));
+                        newMrMap.put(baseName, name);
+                    } else {
+                        // Ignore any entry for which we have already found
+                        // a later version
+                        if (multiVersionInfo.version > mappedVersion.intValue()) {
+                            // Replace the earlier version
+                            mrVersions.put(baseName, Integer.valueOf(multiVersionInfo.version));
+                            newMrMap.put(baseName, name);
                         }
                     }
                 }
@@ -275,15 +281,9 @@ public abstract class AbstractInputStreamJar implements Jar {
             jarEntry = jarInputStream.getNextJarEntry();
         }
 
-        mrMap = new HashMap<>();
-
-        for (Entry<String,Integer> mrVersion : mrVersions.entrySet()) {
-            mrMap.put(mrVersion.getKey() , "META-INF/versions/" + mrVersion.getValue().toString() +
-                    "/" +  mrVersion.getKey());
-        }
-
         // Reset stream back to the beginning of the JAR
         closeStream();
         jarInputStream = createJarInputStream();
+        mrMap = newMrMap;
     }
 }

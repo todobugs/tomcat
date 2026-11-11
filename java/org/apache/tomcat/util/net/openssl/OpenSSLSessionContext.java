@@ -33,6 +33,9 @@ public class OpenSSLSessionContext implements SSLSessionContext {
     private static final StringManager sm = StringManager.getManager(OpenSSLSessionContext.class);
     private static final Enumeration<byte[]> EMPTY = new EmptyEnumeration();
 
+    /**
+     * Session statistics for this context.
+     */
     private final OpenSSLSessionStats stats;
     // This is deliberately unused. The reference is retained so that a
     // reference chain is established and maintained to the OpenSSLContext while
@@ -81,15 +84,18 @@ public class OpenSSLSessionContext implements SSLSessionContext {
     }
 
     /**
-     * @return {@code true} if caching of SSL sessions is enabled, {@code false}
-     *         otherwise.
+     * Checks if caching of SSL sessions is enabled.
+     *
+     * @return true if caching of SSL sessions is enabled
      */
     public boolean isSessionCacheEnabled() {
         return SSLContext.getSessionCacheMode(contextID) == SSL.SSL_SESS_CACHE_SERVER;
     }
 
     /**
-     * @return The statistics for this context.
+     * Returns the statistics for this context.
+     *
+     * @return The session statistics
      */
     public OpenSSLSessionStats stats() {
         return stats;
@@ -122,12 +128,13 @@ public class OpenSSLSessionContext implements SSLSessionContext {
     }
 
     /**
-     * Set the context within which session be reused (server side only)
-     * See <a href="http://www.openssl.org/docs/ssl/SSL_CTX_set_session_id_context.html">
-     *     man SSL_CTX_set_session_id_context</a>
+     * Set the context within which session be reused (server side only) See
+     * <a href="http://www.openssl.org/docs/ssl/SSL_CTX_set_session_id_context.html"> man
+     * SSL_CTX_set_session_id_context</a>
      *
-     * @param sidCtx can be any kind of binary data, it is therefore possible to use e.g. the name
-     *               of the application and/or the hostname and/or service name
+     * @param sidCtx can be any kind of binary data, it is therefore possible to use e.g. the name of the application
+     *                   and/or the hostname and/or service name
+     *
      * @return {@code true} if success, {@code false} otherwise.
      */
     public boolean setSessionIdContext(byte[] sidCtx) {

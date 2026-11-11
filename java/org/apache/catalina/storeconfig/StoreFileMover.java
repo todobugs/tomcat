@@ -21,24 +21,29 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.OutputStreamWriter;
 import java.io.PrintWriter;
+import java.nio.file.AtomicMoveNotSupportedException;
+import java.nio.file.Files;
+import java.nio.file.StandardCopyOption;
 import java.sql.Timestamp;
 
+import org.apache.catalina.Globals;
 import org.apache.tomcat.util.res.StringManager;
 
 /**
  * Move server.xml or context.xml as backup
- *
- * TODO Get Encoding from Registry
  */
 public class StoreFileMover {
 
+    /**
+     * The string manager for this package.
+     */
     protected static final StringManager sm = StringManager.getManager(Constants.Package);
 
     private String filename = "conf/server.xml";
 
     private String encoding = "UTF-8";
 
-    private String basename = System.getProperty("catalina.base");
+    private String basename = System.getProperty(Globals.CATALINA_BASE_PROP);
 
     private File configOld;
 
@@ -47,64 +52,81 @@ public class StoreFileMover {
     private File configSave;
 
     /**
-     * @return Returns the configNew.
+     * Returns the File object representing the new configuration file.
+     *
+     * @return the new configuration file
      */
     public File getConfigNew() {
         return configNew;
     }
 
     /**
-     * @return Returns the configOld.
+     * Returns the File object representing the old configuration file.
+     *
+     * @return the old configuration file
      */
     public File getConfigOld() {
         return configOld;
     }
 
     /**
-     * @return Returns the configSave.
+     * Returns the File object representing the saved backup configuration file.
+     *
+     * @return the backup configuration file
      */
     public File getConfigSave() {
         return configSave;
     }
 
     /**
-     * @return Returns the basename.
+     * Returns the base directory path for configuration files.
+     *
+     * @return the base directory path
      */
     public String getBasename() {
         return basename;
     }
 
     /**
-     * @param basename
-     *            The basename to set.
+     * Sets the base directory path for configuration files.
+     *
+     * @param basename the base directory path
      */
     public void setBasename(String basename) {
         this.basename = basename;
     }
 
     /**
-     * @return The file name
+     * Returns the configuration file name.
+     *
+     * @return the configuration file name
      */
     public String getFilename() {
         return filename;
     }
 
     /**
-     * @param string The file name
+     * Sets the configuration file name.
+     *
+     * @param string the configuration file name
      */
     public void setFilename(String string) {
         filename = string;
     }
 
     /**
-     * @return The encoding
+     * Returns the character encoding used for configuration files.
+     *
+     * @return the character encoding
      */
     public String getEncoding() {
         return encoding;
     }
 
     /**
-     * @param string The encoding
+     * Sets the character encoding used for configuration files.
+     *
+     * @param string the character encoding
      */
     public void setEncoding(String string) {
         encoding = string;
@@ -112,6 +134,7 @@ public class StoreFileMover {
 
     /**
      * Calculate file objects for the old and new configuration files.
+     *
      * @param basename The base path
      * @param encoding The encoding of the file
      * @param filename The file name
@@ -124,16 +147,12 @@ public class StoreFileMover {
     }
 
     /**
-     * Calculate file objects for the old and new configuration files.
-     */
-    public StoreFileMover() {
-        init();
-    }
-
-    /**
      * Generate the Filename to new with TimeStamp.
      */
     public void init() {
+        if (getBasename() == null || getFilename() == null || getEncoding() == null) {
+            throw new IllegalArgumentException(sm.getString("storeFileMover.null"));
+        }
         String configFile = getFilename();
         configOld = new File(configFile);
         if (!configOld.isAbsolute()) {
@@ -149,34 +168,61 @@ public class StoreFileMover {
             }
         }
         String sb = getTimeTag();
-        configSave = new File(configFile + sb);
-        if (!configSave.isAbsolute()) {
-            configSave = new File(getBasename(), configFile + sb);
-        }
+        int i = 0;
+        do {
+            configSave = new File(configFile + sb + "-" + String.valueOf(i));
+            if (!configSave.isAbsolute()) {
+                configSave = new File(getBasename(), configFile + sb + "-" + String.valueOf(i));
+            }
+            i++;
+        } while (configSave.exists());
     }
 
     /**
-     * Shuffle old-&gt;save and new-&gt;old.
+     * Install the new configuration file, saving the previous one as a backup when it exists. The backup is a copy and
+     * the active file is replaced by a single move, so the configuration file is never absent.
      *
      * @throws IOException a file operation error occurred
      */
     public void move() throws IOException {
-        if (configOld.renameTo(configSave)) {
-            if (!configNew.renameTo(configOld)) {
-                configSave.renameTo(configOld);
-                throw new IOException(sm.getString("storeFileMover.renameError",
-                        configNew.getAbsolutePath(), configOld.getAbsolutePath()));
+        if (configOld.exists()) {
+            // Copy the existing configuration file to the backup location rather
+            // than renaming it away. Replacing the configuration file with a move
+            // is atomic, so the active configuration file is never absent, even
+            // when the process dies before the replacement happens
+            try {
+                Files.copy(configOld.toPath(), configSave.toPath(), StandardCopyOption.COPY_ATTRIBUTES);
+            } catch (IOException ioe) {
+                throw new IOException(sm.getString("storeFileMover.copyError", configOld.getAbsolutePath(),
+                        configSave.getAbsolutePath()), ioe);
+            }
+            try {
+                Files.move(configNew.toPath(), configOld.toPath(), StandardCopyOption.REPLACE_EXISTING,
+                        StandardCopyOption.ATOMIC_MOVE);
+            } catch (AtomicMoveNotSupportedException amns) {
+                // Fall back to a plain replace when atomic moves are unsupported
+                moveWithReplace();
+            } catch (IOException ioe) {
+                throw new IOException(sm.getString("storeFileMover.renameError", configNew.getAbsolutePath(),
+                        configOld.getAbsolutePath()), ioe);
             }
         } else {
-            if (!configOld.exists()) {
-                if (!configNew.renameTo(configOld)) {
-                    throw new IOException(sm.getString("storeFileMover.renameError",
-                            configNew.getAbsolutePath(), configOld.getAbsolutePath()));
-                }
-            } else {
-                throw new IOException(sm.getString("storeFileMover.renameError",
-                        configOld.getAbsolutePath(), configSave.getAbsolutePath()));
+            // Nothing to back up: install the new file directly
+            try {
+                Files.move(configNew.toPath(), configOld.toPath());
+            } catch (IOException ioe) {
+                throw new IOException(sm.getString("storeFileMover.renameError", configNew.getAbsolutePath(),
+                        configOld.getAbsolutePath()), ioe);
             }
+        }
+    }
+
+    private void moveWithReplace() throws IOException {
+        try {
+            Files.move(configNew.toPath(), configOld.toPath(), StandardCopyOption.REPLACE_EXISTING);
+        } catch (IOException ioe) {
+            throw new IOException(sm.getString("storeFileMover.renameError", configNew.getAbsolutePath(),
+                    configOld.getAbsolutePath()), ioe);
         }
     }
 
@@ -184,11 +230,11 @@ public class StoreFileMover {
      * Open an output writer for the new configuration file.
      *
      * @return The writer
+     *
      * @throws IOException Failed opening a writer to the new file
      */
     public PrintWriter getWriter() throws IOException {
-        return new PrintWriter(new OutputStreamWriter(
-                new FileOutputStream(configNew), getEncoding()));
+        return new PrintWriter(new OutputStreamWriter(new FileOutputStream(configNew), getEncoding()));
     }
 
     /**
@@ -198,16 +244,16 @@ public class StoreFileMover {
      */
     protected String getTimeTag() {
         String ts = (new Timestamp(System.currentTimeMillis())).toString();
-        //        yyyy-mm-dd hh:mm:ss
-        //        0123456789012345678
-        StringBuffer sb = new StringBuffer(".");
-        sb.append(ts.substring(0, 10));
+        // yyyy-mm-dd hh:mm:ss
+        // 0123456789012345678
+        StringBuilder sb = new StringBuilder(".");
+        sb.append(ts, 0, 10);
         sb.append('.');
-        sb.append(ts.substring(11, 13));
+        sb.append(ts, 11, 13);
         sb.append('-');
-        sb.append(ts.substring(14, 16));
+        sb.append(ts, 14, 16);
         sb.append('-');
-        sb.append(ts.substring(17, 19));
+        sb.append(ts, 17, 19);
         return sb.toString();
     }
 

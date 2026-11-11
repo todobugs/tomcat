@@ -19,12 +19,22 @@ package org.apache.jasper.runtime;
 import java.util.Set;
 
 /**
- * The EL engine needs access to the imports used in the JSP page to configure
- * the ELContext. The imports are available at compile time but the ELContext
- * is created lazily per page. This interface exposes the imports at runtime so
- * that they may be added to the ELContext when it is created.
+ * The EL engine needs access to the imports used in the JSP page to configure the ELContext. The imports are available
+ * at compile time but the ELContext is created lazily per page. This interface exposes the imports at runtime so that
+ * they may be added to the ELContext when it is created.
  */
 public interface JspSourceImports {
+    /**
+     * Returns the set of package imports.
+     *
+     * @return the package imports
+     */
     Set<String> getPackageImports();
+
+    /**
+     * Returns the set of class imports.
+     *
+     * @return the class imports
+     */
     Set<String> getClassImports();
 }

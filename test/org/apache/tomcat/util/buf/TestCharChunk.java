@@ -16,13 +16,8 @@
  */
 package org.apache.tomcat.util.buf;
 
-import java.io.IOException;
-
 import org.junit.Assert;
-import org.junit.Ignore;
 import org.junit.Test;
-
-import org.apache.tomcat.util.buf.CharChunk.CharOutputChannel;
 
 /**
  * Test cases for {@link CharChunk}.
@@ -69,29 +64,21 @@ public class TestCharChunk {
     }
 
 
-    @Ignore // Requires an 11GB heap (on markt's desktop - YMMV)
     @Test
-    public void testAppend() throws Exception {
+    public void testIndexOf_Char() {
+        char[] chars = "xx=yy=zz".toCharArray();
+
         CharChunk cc = new CharChunk();
-        cc.setCharOutputChannel(new Sink());
-        // Defaults to no limit
+        cc.setChars(chars, 0, chars.length);
+        Assert.assertEquals(2, cc.indexOf('='));
+        Assert.assertEquals(5, cc.indexOf('=', 3));
 
-        char data[] = new char[32 * 1024 * 1024];
-
-        for (int i = 0; i < 100; i++) {
-            cc.append(data, 0, data.length);
-        }
-
-        Assert.assertEquals(AbstractChunk.ARRAY_MAX_SIZE, cc.getBuffer().length);
-    }
-
-
-    public static class Sink implements CharOutputChannel {
-
-        @Override
-        public void realWriteChars(char[] cbuf, int off, int len) throws IOException {
-            // NO-OP
-        }
+        // Chunk that does not start at the beginning of the buffer
+        cc.setChars(chars, 3, 5);
+        Assert.assertEquals(2, cc.indexOf('='));
+        Assert.assertEquals(2, cc.indexOf('=', 0));
+        Assert.assertEquals(0, cc.indexOf('y'));
+        Assert.assertEquals(-1, cc.indexOf('x'));
     }
 
 

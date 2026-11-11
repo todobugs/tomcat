@@ -20,9 +20,9 @@ import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.lang.reflect.Method;
 import java.nio.ByteBuffer;
-import java.util.ArrayList;
 import java.util.List;
 
+import javax.naming.NamingException;
 import javax.websocket.DecodeException;
 import javax.websocket.Decoder;
 import javax.websocket.Decoder.Binary;
@@ -35,29 +35,36 @@ import org.apache.tomcat.util.res.StringManager;
 /**
  * ByteBuffer specific concrete implementation for handling whole messages.
  */
-public class PojoMessageHandlerWholeBinary
-        extends PojoMessageHandlerWholeBase<ByteBuffer> {
+public class PojoMessageHandlerWholeBinary extends PojoMessageHandlerWholeBase<ByteBuffer> {
 
-    private static final StringManager sm =
-            StringManager.getManager(PojoMessageHandlerWholeBinary.class);
-
-    private final List<Decoder> decoders = new ArrayList<>();
+    private static final StringManager sm = StringManager.getManager(PojoMessageHandlerWholeBinary.class);
 
     private final boolean isForInputStream;
 
-    public PojoMessageHandlerWholeBinary(Object pojo, Method method,
-            Session session, EndpointConfig config,
-            List<Class<? extends Decoder>> decoderClazzes, Object[] params,
-            int indexPayload, boolean convert, int indexSession,
-            boolean isForInputStream, long maxMessageSize) {
-        super(pojo, method, session, params, indexPayload, convert,
-                indexSession, maxMessageSize);
+    /**
+     * Create a whole binary message handler.
+     *
+     * @param pojo            POJO instance
+     * @param method          Method to invoke
+     * @param session         WebSocket session
+     * @param config          Endpoint configuration
+     * @param decoderClazzes  List of decoder classes
+     * @param params          Pre-populated parameter array
+     * @param indexPayload    Index of the payload parameter
+     * @param convert         Convert the message before passing to the method
+     * @param indexSession    Index of the session parameter
+     * @param isForInputStream True if the payload is an InputStream
+     * @param maxMessageSize  Maximum message size
+     */
+    public PojoMessageHandlerWholeBinary(Object pojo, Method method, Session session, EndpointConfig config,
+            List<Class<? extends Decoder>> decoderClazzes, Object[] params, int indexPayload, boolean convert,
+            int indexSession, boolean isForInputStream, long maxMessageSize) {
+        super(pojo, method, session, params, indexPayload, convert, indexSession, maxMessageSize);
 
         // Update binary text size handled by session
         if (maxMessageSize > -1 && maxMessageSize > session.getMaxBinaryMessageBufferSize()) {
             if (maxMessageSize > Integer.MAX_VALUE) {
-                throw new IllegalArgumentException(sm.getString(
-                        "pojoMessageHandlerWhole.maxBufferSize"));
+                throw new IllegalArgumentException(sm.getString("pojoMessageHandlerWhole.maxBufferSize"));
             }
             session.setMaxBinaryMessageBufferSize((int) maxMessageSize);
         }
@@ -66,13 +73,11 @@ public class PojoMessageHandlerWholeBinary
             if (decoderClazzes != null) {
                 for (Class<? extends Decoder> decoderClazz : decoderClazzes) {
                     if (Binary.class.isAssignableFrom(decoderClazz)) {
-                        Binary<?> decoder = (Binary<?>) decoderClazz.getConstructor().newInstance();
+                        Binary<?> decoder = (Binary<?>) createDecoderInstance(decoderClazz);
                         decoder.init(config);
                         decoders.add(decoder);
-                    } else if (BinaryStream.class.isAssignableFrom(
-                            decoderClazz)) {
-                        BinaryStream<?> decoder = (BinaryStream<?>)
-                                decoderClazz.getConstructor().newInstance();
+                    } else if (BinaryStream.class.isAssignableFrom(decoderClazz)) {
+                        BinaryStream<?> decoder = (BinaryStream<?>) createDecoderInstance(decoderClazz);
                         decoder.init(config);
                         decoders.add(decoder);
                     } else {
@@ -80,7 +85,7 @@ public class PojoMessageHandlerWholeBinary
                     }
                 }
             }
-        } catch (ReflectiveOperationException e) {
+        } catch (ReflectiveOperationException | NamingException e) {
             throw new IllegalArgumentException(e);
         }
         this.isForInputStream = isForInputStream;
@@ -101,8 +106,7 @@ public class PojoMessageHandlerWholeBinary
                 try {
                     return ((BinaryStream<?>) decoder).decode(bais);
                 } catch (IOException ioe) {
-                    throw new DecodeException(message, sm.getString(
-                            "pojoMessageHandlerWhole.decodeIoFail"), ioe);
+                    throw new DecodeException(message, sm.getString("pojoMessageHandlerWhole.decodeIoFail"), ioe);
                 }
             }
         }
@@ -118,14 +122,6 @@ public class PojoMessageHandlerWholeBinary
             return new ByteArrayInputStream(array);
         } else {
             return array;
-        }
-    }
-
-
-    @Override
-    protected void onClose() {
-        for (Decoder decoder : decoders) {
-            decoder.destroy();
         }
     }
 }

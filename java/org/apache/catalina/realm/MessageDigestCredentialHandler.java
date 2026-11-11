@@ -20,51 +20,72 @@ import java.io.UnsupportedEncodingException;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.security.NoSuchAlgorithmException;
-import java.util.Arrays;
+import java.util.Base64;
 
 import org.apache.juli.logging.Log;
 import org.apache.juli.logging.LogFactory;
 import org.apache.tomcat.util.buf.B2CConverter;
 import org.apache.tomcat.util.buf.HexUtils;
-import org.apache.tomcat.util.codec.binary.Base64;
 import org.apache.tomcat.util.security.ConcurrentMessageDigest;
+import org.apache.tomcat.util.security.ConstantTime;
 
 /**
  * This credential handler supports the following forms of stored passwords:
  * <ul>
- * <li><b>encodedCredential</b> - a hex encoded digest of the password digested
- *     using the configured digest</li>
- * <li><b>{MD5}encodedCredential</b> - a Base64 encoded MD5 digest of the
- *     password</li>
- * <li><b>{SHA}encodedCredential</b> - a Base64 encoded SHA1 digest of the
- *     password</li>
- * <li><b>{SSHA}encodedCredential</b> - 20 character salt followed by the salted
- *     SHA1 digest Base64 encoded</li>
- * <li><b>salt$iterationCount$encodedCredential</b> - a hex encoded salt,
- *     iteration code and a hex encoded credential, each separated by $</li>
- * </ul>
+ * <li><b>encodedCredential</b> - a hex encoded digest of the password digested using the configured digest</li>
+ * <li><b>{MD5}encodedCredential</b> - a Base64 encoded digest of the password. The prefix only indicates the storage
+ * encoding used by some directories and databases; the digest is generated with the configured digest algorithm.</li>
+ * <li><b>{SHA}encodedCredential</b> - a Base64 encoded digest of the password. The prefix only indicates the storage
+ * encoding used by some directories and databases; the digest is generated with the configured digest algorithm.</li>
+ * <li><b>{SSHA}encodedCredential</b> - the Base64 encoding of a 20 byte digest of the password (generated with the
+ * configured digest algorithm) concatenated with a variable length salt.
  *
+ * <pre>
+ * {SSHA}&lt;base64(&lt;digest:20&gt;&lt;salt:n&gt;)&gt;
+ * </pre>
+ *
+ * </li>
+ * <li><b>salt$iterationCount$encodedCredential</b> - a hex encoded salt, iteration code and a hex encoded credential,
+ * each separated by $</li>
+ * </ul>
  * <p>
- * If the stored password form does not include an iteration count then an
- * iteration count of 1 is used.
+ * If the stored password form does not include an iteration count then an iteration count of 1 is used.
  * <p>
  * If the stored password form does not include salt then no salt is used.
  */
 public class MessageDigestCredentialHandler extends DigestCredentialHandlerBase {
 
+    /**
+     * Default constructor.
+     */
+    public MessageDigestCredentialHandler() {
+    }
+
     private static final Log log = LogFactory.getLog(MessageDigestCredentialHandler.class);
 
+    /**
+     * The default number of iterations.
+     */
     public static final int DEFAULT_ITERATIONS = 1;
 
     private Charset encoding = StandardCharsets.UTF_8;
     private String algorithm = null;
+    private boolean digestInRfc3112Order = false;
 
 
+    /**
+     * Get the encoding.
+     * @return the encoding
+     */
     public String getEncoding() {
         return encoding.name();
     }
 
 
+    /**
+     * Set the encoding.
+     * @param encodingName the encoding name
+     */
     public void setEncoding(String encodingName) {
         if (encodingName == null) {
             encoding = StandardCharsets.UTF_8;
@@ -72,8 +93,7 @@ public class MessageDigestCredentialHandler extends DigestCredentialHandlerBase 
             try {
                 this.encoding = B2CConverter.getCharset(encodingName);
             } catch (UnsupportedEncodingException e) {
-                log.error(sm.getString("mdCredentialHandler.unknownEncoding",
-                        encodingName, encoding.name()));
+                log.error(sm.getString("mdCredentialHandler.unknownEncoding", encodingName, encoding.name()));
             }
         }
     }
@@ -92,59 +112,79 @@ public class MessageDigestCredentialHandler extends DigestCredentialHandlerBase 
     }
 
 
+    /**
+     * Get whether the digest is in RFC 3112 order.
+     * @return whether the digest is in RFC 3112 order
+     */
+    public boolean getDigestInRfc3112Order() {
+        return digestInRfc3112Order;
+    }
+
+
+    /**
+     * Set whether the digest is in RFC 3112 order.
+     * @param digestInRfc3112Order whether the digest is in RFC 3112 order
+     */
+    public void setDigestInRfc3112Order(boolean digestInRfc3112Order) {
+        this.digestInRfc3112Order = digestInRfc3112Order;
+    }
+
+
     @Override
     public boolean matches(String inputCredentials, String storedCredentials) {
-
         if (inputCredentials == null || storedCredentials == null) {
             return false;
         }
 
         if (getAlgorithm() == null) {
             // No digests, compare directly
-            return storedCredentials.equals(inputCredentials);
+            return ConstantTime.equals(inputCredentials, storedCredentials, false);
         } else {
             // Some directories and databases prefix the password with the hash
             // type. The string is in a format compatible with Base64.encode not
             // the normal hex encoding of the digest
-            if (storedCredentials.startsWith("{MD5}") ||
-                    storedCredentials.startsWith("{SHA}")) {
+            if (storedCredentials.startsWith("{MD5}") || storedCredentials.startsWith("{SHA}")) {
                 // Server is storing digested passwords with a prefix indicating
                 // the digest type
-                String serverDigest = storedCredentials.substring(5);
-                String userDigest = Base64.encodeBase64String(ConcurrentMessageDigest.digest(
-                        getAlgorithm(), inputCredentials.getBytes(StandardCharsets.ISO_8859_1)));
-                return userDigest.equals(serverDigest);
+                String base64ServerDigest = storedCredentials.substring(5);
+                byte[] userDigest = ConcurrentMessageDigest.digest(getAlgorithm(),
+                        inputCredentials.getBytes(StandardCharsets.ISO_8859_1));
+                String base64UserDigest = Base64.getEncoder().encodeToString(userDigest);
 
+                return ConstantTime.equals(base64UserDigest, base64ServerDigest, false);
             } else if (storedCredentials.startsWith("{SSHA}")) {
-                // Server is storing digested passwords with a prefix indicating
-                // the digest type and the salt used when creating that digest
-
-                String serverDigestPlusSalt = storedCredentials.substring(6);
-
+                // "{SSHA}<sha-1 digest:20><salt:n>"
                 // Need to convert the salt to bytes to apply it to the user's
                 // digested password.
-                byte[] serverDigestPlusSaltBytes =
-                        Base64.decodeBase64(serverDigestPlusSalt);
-                final int saltPos = 20;
-                byte[] serverDigestBytes = new byte[saltPos];
-                System.arraycopy(serverDigestPlusSaltBytes, 0,
-                        serverDigestBytes, 0, saltPos);
-                final int saltLength = serverDigestPlusSaltBytes.length - saltPos;
+                String serverDigestPlusSalt = storedCredentials.substring(6);
+                byte[] serverDigestPlusSaltBytes = null;
+                try {
+                    serverDigestPlusSaltBytes = Base64.getDecoder().decode(serverDigestPlusSalt);
+                } catch (IllegalArgumentException e) {
+                    return false;
+                }
+
+                // Extract the first 20 bytes containing the SHA-1 digest
+                final int digestLength = 20;
+                if (serverDigestPlusSaltBytes.length < digestLength) {
+                    return false;
+                }
+                byte[] serverDigestBytes = new byte[digestLength];
+                System.arraycopy(serverDigestPlusSaltBytes, 0, serverDigestBytes, 0, digestLength);
+
+                // the remaining bytes are the salt
+                final int saltLength = serverDigestPlusSaltBytes.length - digestLength;
                 byte[] serverSaltBytes = new byte[saltLength];
-                System.arraycopy(serverDigestPlusSaltBytes, saltPos,
-                        serverSaltBytes, 0, saltLength);
+                System.arraycopy(serverDigestPlusSaltBytes, digestLength, serverSaltBytes, 0, saltLength);
 
                 // Generate the digested form of the user provided password
                 // using the salt
                 byte[] userDigestBytes = ConcurrentMessageDigest.digest(getAlgorithm(),
-                        inputCredentials.getBytes(StandardCharsets.ISO_8859_1),
-                        serverSaltBytes);
+                        inputCredentials.getBytes(StandardCharsets.ISO_8859_1), serverSaltBytes);
 
-                return Arrays.equals(userDigestBytes, serverDigestBytes);
-
+                return ConstantTime.equals(userDigestBytes, serverDigestBytes);
             } else if (storedCredentials.indexOf('$') > -1) {
                 return matchesSaltIterationsEncoded(inputCredentials, storedCredentials);
-
             } else {
                 // Hex hashes should be compared case-insensitively
                 String userDigest = mutate(inputCredentials, null, 1);
@@ -153,7 +193,7 @@ public class MessageDigestCredentialHandler extends DigestCredentialHandlerBase 
                     // Root cause should be logged by mutate()
                     return false;
                 }
-                return storedCredentials.equalsIgnoreCase(userDigest);
+                return ConstantTime.equals(storedCredentials, userDigest, true);
             }
         }
     }
@@ -164,13 +204,17 @@ public class MessageDigestCredentialHandler extends DigestCredentialHandlerBase 
         if (algorithm == null) {
             return inputCredentials;
         } else {
+            byte[] inputCredentialbytes = inputCredentials.getBytes(encoding);
             byte[] userDigest;
             if (salt == null) {
-                userDigest = ConcurrentMessageDigest.digest(algorithm, iterations,
-                        inputCredentials.getBytes(encoding));
+                userDigest = ConcurrentMessageDigest.digest(algorithm, iterations, inputCredentialbytes);
             } else {
-                userDigest = ConcurrentMessageDigest.digest(algorithm, iterations,
-                        salt, inputCredentials.getBytes(encoding));
+                if (digestInRfc3112Order) {
+                    // RFC 3112 states that the input order for the digest is credentials then salt
+                    userDigest = ConcurrentMessageDigest.digest(algorithm, iterations, inputCredentialbytes, salt);
+                } else {
+                    userDigest = ConcurrentMessageDigest.digest(algorithm, iterations, salt, inputCredentialbytes);
+                }
             }
             return HexUtils.toHexString(userDigest);
         }

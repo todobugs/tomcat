@@ -14,7 +14,6 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  */
-
 package org.apache.catalina.mapper;
 
 import javax.servlet.http.MappingMatch;
@@ -26,16 +25,43 @@ import org.apache.tomcat.util.buf.MessageBytes;
 
 /**
  * Mapping data.
- *
- * @author Remy Maucherat
  */
 public class MappingData {
 
+    /**
+     * Default constructor.
+     */
+    public MappingData() {
+    }
+
+    /**
+     * The mapped host.
+     */
     public Host host = null;
+    /**
+     * The mapped context.
+     */
     public Context context = null;
+    /**
+     * The number of slashes in the context path.
+     */
     public int contextSlashCount = 0;
+    /**
+     * The mapped contexts.
+     */
     public Context[] contexts = null;
+    /**
+     * The mapped wrapper.
+     */
     public Wrapper wrapper = null;
+    /**
+     * The wrapper for the current request dispatcher target. Only set when required so may be null even during the
+     * processing of a dispatched request.
+     */
+    public Wrapper requestDispatcherWrapper = null;
+    /**
+     * Whether this is a JSP wildcard mapping.
+     */
     public boolean jspWildCard = false;
 
     /**
@@ -43,21 +69,40 @@ public class MappingData {
      */
     @Deprecated
     public final MessageBytes contextPath = MessageBytes.newInstance();
+    /**
+     * The request path.
+     */
     public final MessageBytes requestPath = MessageBytes.newInstance();
+    /**
+     * The wrapper path.
+     */
     public final MessageBytes wrapperPath = MessageBytes.newInstance();
+    /**
+     * The path info.
+     */
     public final MessageBytes pathInfo = MessageBytes.newInstance();
 
+    /**
+     * The redirect path.
+     */
     public final MessageBytes redirectPath = MessageBytes.newInstance();
 
     // Fields used by ApplicationMapping to implement javax.servlet.http.HttpServletMapping
+    /**
+     * The match type.
+     */
     public MappingMatch matchType = null;
 
+    /**
+     * Recycle this mapping data for reuse.
+     */
     public void recycle() {
         host = null;
         context = null;
         contextSlashCount = 0;
         contexts = null;
         wrapper = null;
+        requestDispatcherWrapper = null;
         jspWildCard = false;
         contextPath.recycle();
         requestPath.recycle();
@@ -66,4 +111,10 @@ public class MappingData {
         redirectPath.recycle();
         matchType = null;
     }
+
+    @Override
+    public final String toString() {
+        return "MappingData[" + host + ":" + context + ":" + wrapper + "]";
+    }
+
 }

@@ -22,26 +22,21 @@ import java.util.regex.Pattern;
 
 
 /**
- * A <b>Host</b> is a Container that represents a virtual host in the
- * Catalina servlet engine.  It is useful in the following types of scenarios:
+ * A <b>Host</b> is a Container that represents a virtual host in the Catalina servlet engine. It is useful in the
+ * following types of scenarios:
  * <ul>
- * <li>You wish to use Interceptors that see every single request processed
- *     by this particular virtual host.
- * <li>You wish to run Catalina in with a standalone HTTP connector, but still
- *     want support for multiple virtual hosts.
+ * <li>You wish to use Interceptors that see every single request processed by this particular virtual host.
+ * <li>You wish to run Catalina in with a standalone HTTP connector, but still want support for multiple virtual hosts.
  * </ul>
- * In general, you would not use a Host when deploying Catalina connected
- * to a web server (such as Apache), because the Connector will have
- * utilized the web server's facilities to determine which Context (or
- * perhaps even which Wrapper) should be utilized to process this request.
+ * In general, you would not use a Host when deploying Catalina connected to a web server (such as Apache), because the
+ * Connector will have utilized the web server's facilities to determine which Context (or perhaps even which Wrapper)
+ * should be utilized to process this request.
  * <p>
- * The parent Container attached to a Host is generally an Engine, but may
- * be some other implementation, or may be omitted if it is not necessary.
+ * The parent Container attached to a Host is generally an Engine, but may be some other implementation, or may be
+ * omitted if it is not necessary.
  * <p>
- * The child containers attached to a Host are generally implementations
- * of Context (representing an individual servlet context).
- *
- * @author Craig R. McClanahan
+ * The child containers attached to a Host are generally implementations of Context (representing an individual servlet
+ * context).
  */
 public interface Host extends Container {
 
@@ -50,75 +45,75 @@ public interface Host extends Container {
 
 
     /**
-     * The ContainerEvent event type sent when a new alias is added
-     * by <code>addAlias()</code>.
+     * The ContainerEvent event type sent when a new alias is added by <code>addAlias()</code>.
      */
-    public static final String ADD_ALIAS_EVENT = "addAlias";
+    String ADD_ALIAS_EVENT = "addAlias";
 
 
     /**
-     * The ContainerEvent event type sent when an old alias is removed
-     * by <code>removeAlias()</code>.
+     * The ContainerEvent event type sent when an old alias is removed by <code>removeAlias()</code>.
      */
-    public static final String REMOVE_ALIAS_EVENT = "removeAlias";
+    String REMOVE_ALIAS_EVENT = "removeAlias";
 
 
     // ------------------------------------------------------------- Properties
 
 
     /**
-     * @return the XML root for this Host.  This can be an absolute
-     * pathname or a relative pathname.
-     * If null, the base path defaults to
-     * ${catalina.base}/conf/&lt;engine name&gt;/&lt;host name&gt; directory
+     * Get the XML root for this Host. This can be an absolute pathname or a relative pathname. If null, the base
+     * path defaults to ${catalina.base}/conf/&lt;engine name&gt;/&lt;host name&gt; directory.
+     *
+     * @return the XML root
      */
-    public String getXmlBase();
+    String getXmlBase();
 
     /**
-     * Set the Xml root for this Host.  This can be an absolute
-     * pathname or a relative pathname.
-     * If null, the base path defaults to
-     * ${catalina.base}/conf/&lt;engine name&gt;/&lt;host name&gt; directory
+     * Set the Xml root for this Host. This can be an absolute pathname or a relative pathname. If null, the base path
+     * defaults to ${catalina.base}/conf/&lt;engine name&gt;/&lt;host name&gt; directory
+     *
      * @param xmlBase The new XML root
      */
-    public void setXmlBase(String xmlBase);
+    void setXmlBase(String xmlBase);
 
     /**
-     * @return a default configuration path of this Host. The file will be
-     * canonical if possible.
+     * Get the configuration path of this Host. If a base path has been configured via {@link #setXmlBase(String)},
+     * that value is returned. Otherwise, the default path
+     * ${catalina.base}/conf/&lt;engine name&gt;/&lt;host name&gt; is returned. The file will be canonical if possible.
+     *
+     * @return the configuration base file
      */
-    public File getConfigBaseFile();
+    File getConfigBaseFile();
 
     /**
-     * @return the application root for this Host.  This can be an absolute
-     * pathname, a relative pathname, or a URL.
+     * Get the application root for this Host. This can be an absolute pathname, a relative pathname, or a URL.
+     *
+     * @return the application root
      */
-    public String getAppBase();
+    String getAppBase();
 
 
     /**
-     * @return an absolute {@link File} for the appBase of this Host. The file
-     * will be canonical if possible. There is no guarantee that that the
-     * appBase exists.
+     * Get an absolute {@link File} for the appBase of this Host. The file will be canonical if possible. There is
+     * no guarantee that the appBase exists.
+     *
+     * @return the application base file
      */
-    public File getAppBaseFile();
+    File getAppBaseFile();
 
 
     /**
-     * Set the application root for this Host.  This can be an absolute
-     * pathname, a relative pathname, or a URL.
+     * Set the application root for this Host. This can be an absolute pathname, a relative pathname, or a URL.
      *
      * @param appBase The new application root
      */
-    public void setAppBase(String appBase);
+    void setAppBase(String appBase);
 
 
     /**
-     * @return the value of the auto deploy flag.  If true, it indicates that
-     * this host's child webapps should be discovered and automatically
-     * deployed dynamically.
+     * @return the value of the auto deploy flag. If true, it indicates that this host's child webapps should be
+     *             discovered and automatically deployed dynamically.
      */
-    public boolean getAutoDeploy();
+    boolean getAutoDeploy();
 
 
     /**
@@ -126,31 +121,32 @@ public interface Host extends Container {
      *
      * @param autoDeploy The new auto deploy flag
      */
-    public void setAutoDeploy(boolean autoDeploy);
+    void setAutoDeploy(boolean autoDeploy);
 
 
     /**
-     * @return the Java class name of the context configuration class
-     * for new web applications.
+     * Get the Java class name of the context configuration class for new web applications.
+     *
+     * @return the context configuration class name
      */
-    public String getConfigClass();
+    String getConfigClass();
 
 
     /**
-     * Set the Java class name of the context configuration class
-     * for new web applications.
+     * Set the Java class name of the context configuration class for new web applications.
      *
      * @param configClass The new context configuration class
      */
-    public void setConfigClass(String configClass);
+    void setConfigClass(String configClass);
 
 
     /**
-     * @return the value of the deploy on startup flag.  If true, it indicates
-     * that this host's child webapps should be discovered and automatically
-     * deployed.
+     * Get the value of the deploy on startup flag. If true, it indicates that this host's child webapps should be
+     * discovered and deployed when the Host starts, independently of the auto deploy flag.
+     *
+     * @return the deploy on startup flag
      */
-    public boolean getDeployOnStartup();
+    boolean getDeployOnStartup();
 
 
     /**
@@ -158,76 +154,78 @@ public interface Host extends Container {
      *
      * @param deployOnStartup The new deploy on startup flag
      */
-    public void setDeployOnStartup(boolean deployOnStartup);
+    void setDeployOnStartup(boolean deployOnStartup);
 
 
     /**
-     * @return the regular expression that defines the files and directories in
-     * the host's appBase that will be ignored by the automatic deployment
-     * process.
+     * Get the regular expression that defines the files and directories in the host's appBase that will be ignored
+     * by the automatic deployment process.
+     *
+     * @return the deploy ignore regular expression
      */
-    public String getDeployIgnore();
+    String getDeployIgnore();
 
 
     /**
-     * @return the compiled regular expression that defines the files and
-     * directories in the host's appBase that will be ignored by the automatic
-     * deployment process.
+     * Get the compiled regular expression that defines the files and directories in the host's appBase that will be
+     * ignored by the automatic deployment process.
+     *
+     * @return the compiled deploy ignore pattern
      */
-    public Pattern getDeployIgnorePattern();
+    Pattern getDeployIgnorePattern();
 
 
     /**
-     * Set the regular expression that defines the files and directories in
-     * the host's appBase that will be ignored by the automatic deployment
-     * process.
+     * Set the regular expression that defines the files and directories in the host's appBase that will be ignored by
+     * the automatic deployment process.
      *
      * @param deployIgnore A regular expression matching file names
      */
-    public void setDeployIgnore(String deployIgnore);
+    void setDeployIgnore(String deployIgnore);
 
 
     /**
-     * @return the executor that is used for starting and stopping contexts. This
-     * is primarily for use by components deploying contexts that want to do
-     * this in a multi-threaded manner.
+     * Get the executor that is used for starting and stopping contexts. This is primarily for use by components
+     * deploying contexts that want to do this in a multithreaded manner.
+     *
+     * @return the start/stop executor
      */
-    public ExecutorService getStartStopExecutor();
+    ExecutorService getStartStopExecutor();
 
 
     /**
-     * Returns <code>true</code> if the Host will attempt to create directories for appBase and xmlBase
-     * unless they already exist.
+     * Returns <code>true</code> if the Host will attempt to create directories for appBase and xmlBase unless they
+     * already exist.
+     *
      * @return true if the Host will attempt to create directories
      */
-    public boolean getCreateDirs();
+    boolean getCreateDirs();
 
 
     /**
-     * Should the Host attempt to create directories for xmlBase and appBase
-     * upon startup.
+     * Should the Host attempt to create directories for xmlBase and appBase upon startup.
      *
      * @param createDirs The new value for this flag
      */
-    public void setCreateDirs(boolean createDirs);
+    void setCreateDirs(boolean createDirs);
 
 
     /**
-     * @return <code>true</code> of the Host is configured to automatically undeploy old
-     * versions of applications deployed using parallel deployment. This only
-     * takes effect is {@link #getAutoDeploy()} also returns <code>true</code>.
+     * Get whether the Host is configured to automatically undeploy old versions of applications deployed using
+     * parallel deployment. This only takes effect if {@link #getAutoDeploy()} also returns {@code true}.
+     *
+     * @return the undeploy old versions flag
      */
-    public boolean getUndeployOldVersions();
+    boolean getUndeployOldVersions();
 
 
     /**
-     * Set to <code>true</code> if the Host should automatically undeploy old versions of
-     * applications deployed using parallel deployment. This only takes effect
-     * if {@link #getAutoDeploy()} returns <code>true</code>.
+     * Set to <code>true</code> if the Host should automatically undeploy old versions of applications deployed using
+     * parallel deployment. This only takes effect if {@link #getAutoDeploy()} returns <code>true</code>.
      *
      * @param undeployOldVersions The new value for this flag
      */
-    public void setUndeployOldVersions(boolean undeployOldVersions);
+    void setUndeployOldVersions(boolean undeployOldVersions);
 
 
     // --------------------------------------------------------- Public Methods
@@ -237,14 +235,15 @@ public interface Host extends Container {
      *
      * @param alias The alias to be added
      */
-    public void addAlias(String alias);
+    void addAlias(String alias);
 
 
     /**
-     * @return the set of alias names for this Host.  If none are defined,
-     * a zero length array is returned.
+     * Get the array of alias names for this Host. If none are defined, a zero length array is returned.
+     *
+     * @return the array of alias names
      */
-    public String[] findAliases();
+    String[] findAliases();
 
 
     /**
@@ -252,5 +251,5 @@ public interface Host extends Container {
      *
      * @param alias Alias name to be removed
      */
-    public void removeAlias(String alias);
+    void removeAlias(String alias);
 }

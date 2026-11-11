@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package javax.el;
 
 import java.beans.FeatureDescriptor;
@@ -28,8 +27,7 @@ public class ListELResolver extends ELResolver {
 
     private final boolean readOnly;
 
-    private static final Class<?> UNMODIFIABLE =
-        Collections.unmodifiableList(new ArrayList<>()).getClass();
+    private static final Class<?> UNMODIFIABLE = Collections.unmodifiableList(new ArrayList<>()).getClass();
 
     public ListELResolver() {
         this.readOnly = false;
@@ -48,8 +46,7 @@ public class ListELResolver extends ELResolver {
             List<?> list = (List<?>) base;
             int idx = coerce(property);
             if (idx < 0 || idx >= list.size()) {
-                throw new PropertyNotFoundException(
-                        new ArrayIndexOutOfBoundsException(idx).getMessage());
+                throw new PropertyNotFoundException(new ArrayIndexOutOfBoundsException(idx).getMessage());
             }
             return Object.class;
         }
@@ -75,8 +72,7 @@ public class ListELResolver extends ELResolver {
     }
 
     @Override
-    public void setValue(ELContext context, Object base, Object property,
-            Object value) {
+    public void setValue(ELContext context, Object base, Object property, Object value) {
         Objects.requireNonNull(context);
 
         if (base instanceof List<?>) {
@@ -85,8 +81,8 @@ public class ListELResolver extends ELResolver {
             List<Object> list = (List<Object>) base;
 
             if (this.readOnly) {
-                throw new PropertyNotWritableException(Util.message(context,
-                        "resolverNotWriteable", base.getClass().getName()));
+                throw new PropertyNotWritableException(
+                        Util.message(context, "resolverNotWritable", base.getClass().getName()));
             }
 
             int idx = coerce(property);
@@ -110,9 +106,7 @@ public class ListELResolver extends ELResolver {
             try {
                 int idx = coerce(property);
                 if (idx < 0 || idx >= list.size()) {
-                    throw new PropertyNotFoundException(
-                            new ArrayIndexOutOfBoundsException(idx)
-                                    .getMessage());
+                    throw new PropertyNotFoundException(new ArrayIndexOutOfBoundsException(idx).getMessage());
                 }
             } catch (IllegalArgumentException e) {
                 // ignore
@@ -136,7 +130,7 @@ public class ListELResolver extends ELResolver {
         return null;
     }
 
-    private static final int coerce(Object property) {
+    private static int coerce(Object property) {
         if (property instanceof Number) {
             return ((Number) property).intValue();
         }
@@ -149,7 +143,6 @@ public class ListELResolver extends ELResolver {
         if (property instanceof String) {
             return Integer.parseInt((String) property);
         }
-        throw new IllegalArgumentException(property != null ?
-                property.toString() : "null");
+        throw new IllegalArgumentException(property != null ? property.toString() : "null");
     }
 }

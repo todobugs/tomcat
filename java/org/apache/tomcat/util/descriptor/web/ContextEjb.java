@@ -17,21 +17,21 @@
 package org.apache.tomcat.util.descriptor.web;
 
 
-
 /**
- * Representation of an EJB resource reference for a web application, as
- * represented in a <code>&lt;ejb-ref&gt;</code> element in the
- * deployment descriptor.
- *
- * @author Craig R. McClanahan
- * @author Peter Rossbach (pero@apache.org)
+ * Representation of an EJB resource reference for a web application, as represented in a <code>&lt;ejb-ref&gt;</code>
+ * element in the deployment descriptor.
  */
 public class ContextEjb extends ResourceBase {
 
     private static final long serialVersionUID = 1L;
 
-    // ------------------------------------------------------------- Properties
+    /**
+     * Default constructor for ContextEjb.
+     */
+    public ContextEjb() {
+    }
 
+    // ------------------------------------------------------------- Properties
 
 
     /**
@@ -39,10 +39,20 @@ public class ContextEjb extends ResourceBase {
      */
     private String home = null;
 
+    /**
+     * Returns the name of the EJB home implementation class.
+     *
+     * @return the EJB home class name
+     */
     public String getHome() {
         return this.home;
     }
 
+    /**
+     * Sets the name of the EJB home implementation class.
+     *
+     * @param home the EJB home class name
+     */
     public void setHome(String home) {
         this.home = home;
     }
@@ -53,10 +63,20 @@ public class ContextEjb extends ResourceBase {
      */
     private String link = null;
 
+    /**
+     * Returns the link to a Jakarta EE EJB definition.
+     *
+     * @return the EJB link
+     */
     public String getLink() {
         return this.link;
     }
 
+    /**
+     * Sets the link to a Jakarta EE EJB definition.
+     *
+     * @param link the EJB link
+     */
     public void setLink(String link) {
         this.link = link;
     }
@@ -66,10 +86,20 @@ public class ContextEjb extends ResourceBase {
      */
     private String remote = null;
 
+    /**
+     * Returns the name of the EJB remote implementation class.
+     *
+     * @return the EJB remote class name
+     */
     public String getRemote() {
         return this.remote;
     }
 
+    /**
+     * Sets the name of the EJB remote implementation class.
+     *
+     * @param remote the EJB remote class name
+     */
     public void setRemote(String remote) {
         this.remote = remote;
     }
@@ -107,7 +137,7 @@ public class ContextEjb extends ResourceBase {
             sb.append(", link=");
             sb.append(link);
         }
-        sb.append("]");
+        sb.append(']');
         return sb.toString();
 
     }
@@ -151,12 +181,9 @@ public class ContextEjb extends ResourceBase {
             return false;
         }
         if (remote == null) {
-            if (other.remote != null) {
-                return false;
-            }
-        } else if (!remote.equals(other.remote)) {
-            return false;
+            return other.remote == null;
+        } else {
+            return remote.equals(other.remote);
         }
-        return true;
     }
 }

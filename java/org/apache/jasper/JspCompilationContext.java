@@ -23,7 +23,6 @@ import java.net.JarURLConnection;
 import java.net.MalformedURLException;
 import java.net.URL;
 import java.net.URLClassLoader;
-import java.net.URLConnection;
 import java.util.Set;
 import java.util.jar.JarEntry;
 
@@ -40,21 +39,13 @@ import org.apache.jasper.servlet.JspServletWrapper;
 import org.apache.juli.logging.Log;
 import org.apache.juli.logging.LogFactory;
 import org.apache.tomcat.Jar;
+import org.apache.tomcat.util.buf.CloseableURLConnection;
 import org.apache.tomcat.util.descriptor.tld.TldResourcePath;
 
 /**
- * A place holder for various things that are used through out the JSP
- * engine. This is a per-request/per-context data structure. Some of
- * the instance variables are set at different points.
- *
- * Most of the path-related stuff is here - mangling names, versions, dirs,
- * loading resources and dealing with uris.
- *
- * @author Anil K. Vijendran
- * @author Harish Prabandham
- * @author Pierre Delisle
- * @author Costin Manolache
- * @author Kin-man Chung
+ * A placeholder for various things that are used throughout the JSP engine. This is a per-request/per-context data
+ * structure. Some of the instance variables are set at different points. Most of the path-related stuff is here -
+ * mangling names, versions, dirs, loading resources and dealing with uris.
  */
 public class JspCompilationContext {
 
@@ -94,21 +85,38 @@ public class JspCompilationContext {
     private Jar tagJar;
 
     // jspURI _must_ be relative to the context
-    public JspCompilationContext(String jspUri, Options options,
-            ServletContext context, JspServletWrapper jsw,
+    /**
+     * Creates a compilation context for a JSP page.
+     *
+     * @param jspUri The URI of the JSP page relative to the context
+     * @param options The compilation options
+     * @param context The servlet context
+     * @param jsw The JSP servlet wrapper
+     * @param rctxt The JSP runtime context
+     */
+    public JspCompilationContext(String jspUri, Options options, ServletContext context, JspServletWrapper jsw,
             JspRuntimeContext rctxt) {
         this(jspUri, null, options, context, jsw, rctxt, null, false);
     }
 
-    public JspCompilationContext(String tagfile, TagInfo tagInfo,
-            Options options, ServletContext context, JspServletWrapper jsw,
-            JspRuntimeContext rctxt, Jar tagJar) {
+    /**
+     * Creates a compilation context for a tag file.
+     *
+     * @param tagfile The URI of the tag file
+     * @param tagInfo The tag information
+     * @param options The compilation options
+     * @param context The servlet context
+     * @param jsw The JSP servlet wrapper
+     * @param rctxt The JSP runtime context
+     * @param tagJar The JAR containing the tag file
+     */
+    public JspCompilationContext(String tagfile, TagInfo tagInfo, Options options, ServletContext context,
+            JspServletWrapper jsw, JspRuntimeContext rctxt, Jar tagJar) {
         this(tagfile, tagInfo, options, context, jsw, rctxt, tagJar, true);
     }
 
-    private JspCompilationContext(String jspUri, TagInfo tagInfo,
-            Options options, ServletContext context, JspServletWrapper jsw,
-            JspRuntimeContext rctxt, Jar tagJar, boolean isTagFile) {
+    private JspCompilationContext(String jspUri, TagInfo tagInfo, Options options, ServletContext context,
+            JspServletWrapper jsw, JspRuntimeContext rctxt, Jar tagJar, boolean isTagFile) {
 
         this.jspUri = canonicalURI(jspUri);
         this.options = options;
@@ -140,13 +148,15 @@ public class JspCompilationContext {
 
     /* ==================== Methods to override ==================== */
 
-    /** ---------- Class path and loader ---------- */
+    // ---------- Class path and loader ----------
 
     /**
-     * @return the classpath that is passed off to the Java compiler.
+     * Returns the classpath used by the Java compiler for this JSP.
+     *
+     * @return the classpath that is passed off to the Java compiler
      */
     public String getClassPath() {
-        if( classPath != null ) {
+        if (classPath != null) {
             return classPath;
         }
         return rctxt.getClassPath();
@@ -154,6 +164,7 @@ public class JspCompilationContext {
 
     /**
      * The classpath that is passed off to the Java compiler.
+     *
      * @param classPath The class path to use
      */
     public void setClassPath(String classPath) {
@@ -161,42 +172,52 @@ public class JspCompilationContext {
     }
 
     /**
-     * What class loader to use for loading classes while compiling
-     * this JSP?
+     * What class loader to use for loading classes while compiling this JSP?
+     *
      * @return the class loader used to load all compiled classes
      */
     public ClassLoader getClassLoader() {
-        if( loader != null ) {
+        if (loader != null) {
             return loader;
         }
         return rctxt.getParentClassLoader();
     }
 
+    /**
+     * Sets the class loader to use for loading classes while compiling this JSP.
+     *
+     * @param loader The class loader
+     */
     public void setClassLoader(ClassLoader loader) {
         this.loader = loader;
     }
 
+    /**
+     * Returns the JSP-specific class loader, creating it if necessary.
+     *
+     * @return the JSP class loader
+     */
     public ClassLoader getJspLoader() {
-        if( jspLoader == null ) {
-            jspLoader = new JasperLoader
-                    (new URL[] {baseUrl},
-                            getClassLoader(),
-                            rctxt.getPermissionCollection());
+        if (jspLoader == null) {
+            jspLoader = new JasperLoader(new URL[] { baseUrl }, getClassLoader(), rctxt.getPermissionCollection());
         }
         return jspLoader;
     }
 
+    /**
+     * Clears the JSP class loader so it will be recreated on next access.
+     */
     public void clearJspLoader() {
         jspLoader = null;
     }
 
 
-    /** ---------- Input/Output  ---------- */
+    // ---------- Input/Output ----------
 
     /**
-     * The output directory to generate code into.  The output directory
-     * is make up of the scratch directory, which is provide in Options,
-     * plus the directory derived from the package name.
+     * The output directory to generate code into. The output directory is make up of the scratch directory, which is
+     * provided in Options, plus the directory derived from the package name.
+     *
      * @return the output directory in which the generated sources are placed
      */
     public String getOutputDir() {
@@ -208,16 +229,15 @@ public class JspCompilationContext {
     }
 
     /**
-     * Create a "Compiler" object based on some init param data. This
-     * is not done yet. Right now we're just hardcoding the actual
-     * compilers that are created.
+     * Create a "Compiler" object based on some init param data. This is not done yet. Right now we're just hardcoding
+     * the actual compilers that are created.
+     *
      * @return the Java compiler wrapper
      */
     public Compiler createCompiler() {
-        if (jspCompiler != null ) {
+        if (jspCompiler != null) {
             return jspCompiler;
         }
-        jspCompiler = null;
         if (options.getCompilerClassName() != null) {
             jspCompiler = createCompiler(options.getCompilerClassName());
         } else {
@@ -241,6 +261,13 @@ public class JspCompilationContext {
         return jspCompiler;
     }
 
+    /**
+     * Creates a compiler instance by class name using reflection.
+     *
+     * @param className The fully qualified compiler class name
+     *
+     * @return the compiler instance, or {@code null} if the class cannot be loaded
+     */
     protected Compiler createCompiler(String className) {
         Compiler compiler = null;
         try {
@@ -249,22 +276,28 @@ public class JspCompilationContext {
             if (log.isDebugEnabled()) {
                 log.debug(Localizer.getMessage("jsp.error.compiler"), e);
             }
-        } catch (ReflectiveOperationException e) {
+        } catch (ReflectiveOperationException | ClassCastException e) {
             log.warn(Localizer.getMessage("jsp.error.compiler"), e);
         }
         return compiler;
     }
 
+    /**
+     * Returns the compiler instance for this compilation context.
+     *
+     * @return the compiler instance
+     */
     public Compiler getCompiler() {
         return jspCompiler;
     }
 
-    /** ---------- Access resources in the webapp ---------- */
+    // ---------- Access resources in the webapp ----------
 
     /**
-     * Get the full value of a URI relative to this compilations context
-     * uses current file as the base.
+     * Get the full value of a URI relative to this compilations context uses current file as the base.
+     *
      * @param uri The relative URI
+     *
      * @return absolute URI
      */
     public String resolveRelativeUri(String uri) {
@@ -278,30 +311,47 @@ public class JspCompilationContext {
     }
 
     /**
-     * Gets a resource as a stream, relative to the meanings of this
-     * context's implementation.
+     * Gets a resource as a stream, relative to the meanings of this context's implementation.
+     *
      * @param res the resource to look for
-     * @return a null if the resource cannot be found or represented
-     *         as an InputStream.
+     *
+     * @return a null if the resource cannot be found or represented as an InputStream.
      */
     public java.io.InputStream getResourceAsStream(String res) {
         return context.getResourceAsStream(canonicalURI(res));
     }
 
 
+    /**
+     * Gets a resource as a URL, relative to the context of this compilation.
+     *
+     * @param res The resource path
+     *
+     * @return the resource URL
+     *
+     * @throws MalformedURLException If the resource URL is malformed
+     */
     public URL getResource(String res) throws MalformedURLException {
         return context.getResource(canonicalURI(res));
     }
 
 
+    /**
+     * Gets the resource paths beneath the given path, relative to the context.
+     *
+     * @param path The path to list resources for
+     *
+     * @return the set of resource paths
+     */
     public Set<String> getResourcePaths(String path) {
         return context.getResourcePaths(canonicalURI(path));
     }
 
     /**
-     * Gets the actual path of a URI relative to the context of
-     * the compilation.
+     * Gets the actual path of a URI relative to the context of the compilation.
+     *
      * @param path The webapp path
+     *
      * @return the corresponding path in the filesystem
      */
     public String getRealPath(String path) {
@@ -312,16 +362,21 @@ public class JspCompilationContext {
     }
 
     /**
-     * Returns the JAR file in which the tag file for which this
-     * JspCompilationContext was created is packaged, or null if this
-     * JspCompilationContext does not correspond to a tag file, or if the
-     * corresponding tag file is not packaged in a JAR.
+     * Returns the JAR file in which the tag file for which this JspCompilationContext was created is packaged, or null
+     * if this JspCompilationContext does not correspond to a tag file, or if the corresponding tag file is not packaged
+     * in a JAR.
+     *
      * @return a JAR file
      */
     public Jar getTagFileJar() {
         return this.tagJar;
     }
 
+    /**
+     * Sets the JAR file in which the tag file is packaged.
+     *
+     * @param tagJar The JAR file
+     */
     public void setTagFileJar(Jar tagJar) {
         this.tagJar = tagJar;
     }
@@ -329,8 +384,8 @@ public class JspCompilationContext {
     /* ==================== Common implementation ==================== */
 
     /**
-     * Just the class name (does not include package name) of the
-     * generated class.
+     * Just the class name (does not include package name) of the generated class.
+     *
      * @return the class name
      */
     public String getServletClassName() {
@@ -352,13 +407,18 @@ public class JspCompilationContext {
         return className;
     }
 
+    /**
+     * Sets the class name for the generated servlet.
+     *
+     * @param className The class name
+     */
     public void setServletClassName(String className) {
         this.className = className;
     }
 
     /**
-     * Path of the JSP URI. Note that this is not a file name. This is
-     * the context rooted URI of the JSP file.
+     * Path of the JSP URI. Note that this is not a file name. This is the context rooted URI of the JSP file.
+     *
      * @return the path to the JSP
      */
     public String getJspFile() {
@@ -366,14 +426,28 @@ public class JspCompilationContext {
     }
 
 
+    /**
+     * Returns the last modified time of the given resource using the default tag JAR.
+     *
+     * @param resource The resource path
+     *
+     * @return the last modified time in milliseconds, or -1 if not available
+     */
     public Long getLastModified(String resource) {
         return getLastModified(resource, tagJar);
     }
 
 
+    /**
+     * Returns the last modified time of the given resource.
+     *
+     * @param resource The resource path
+     * @param tagJar The JAR file containing the resource, or {@code null} for webapp resources
+     *
+     * @return the last modified time in milliseconds, or -1 if not available
+     */
     public Long getLastModified(String resource, Jar tagJar) {
         long result = -1;
-        URLConnection uc = null;
         try {
             if (tagJar != null) {
                 if (resource.startsWith("/")) {
@@ -386,70 +460,77 @@ public class JspCompilationContext {
                     incrementRemoved();
                     return Long.valueOf(result);
                 }
-                uc = jspUrl.openConnection();
-                if (uc instanceof JarURLConnection) {
-                    JarEntry jarEntry = ((JarURLConnection) uc).getJarEntry();
-                    if (jarEntry != null) {
-                        result = jarEntry.getTime();
+                try (CloseableURLConnection uc = new CloseableURLConnection(jspUrl)) {
+                    if (uc.getConnection() instanceof JarURLConnection) {
+                        JarEntry jarEntry = ((JarURLConnection) uc.getConnection()).getJarEntry();
+                        if (jarEntry != null) {
+                            result = jarEntry.getTime();
+                        } else {
+                            result = uc.getLastModified();
+                        }
                     } else {
                         result = uc.getLastModified();
                     }
-                } else {
-                    result = uc.getLastModified();
                 }
             }
-        } catch (IOException e) {
+        } catch (IOException ioe) {
             if (log.isDebugEnabled()) {
-                log.debug(Localizer.getMessage(
-                        "jsp.error.lastModified", getJspFile()), e);
-            }
-            result = -1;
-        } finally {
-            if (uc != null) {
-                try {
-                    uc.getInputStream().close();
-                } catch (IOException e) {
-                    if (log.isDebugEnabled()) {
-                        log.debug(Localizer.getMessage(
-                                "jsp.error.lastModified", getJspFile()), e);
-                    }
-                    result = -1;
-                }
+                log.debug(Localizer.getMessage("jsp.error.lastModified", getJspFile()), ioe);
             }
         }
         return Long.valueOf(result);
     }
 
+    /**
+     * Returns whether this compilation context corresponds to a tag file.
+     *
+     * @return {@code true} if this is a tag file
+     */
     public boolean isTagFile() {
         return isTagFile;
     }
 
+    /**
+     * Returns the tag information for this compilation context.
+     *
+     * @return the tag info, or {@code null} if not a tag file
+     */
     public TagInfo getTagInfo() {
         return tagInfo;
     }
 
+    /**
+     * Sets the tag information for this compilation context.
+     *
+     * @param tagi The tag info
+     */
     public void setTagInfo(TagInfo tagi) {
         tagInfo = tagi;
     }
 
     /**
-     * @return <code>true</code> if we are compiling a tag file
-     *  in prototype mode.
-     *  ie we only generate codes with class for the tag handler with empty
-     *  method bodies.
+     * Returns whether we are compiling a tag file in prototype mode, i.e., generating
+     * code with class for the tag handler with empty method bodies.
+     *
+     * @return {@code true} if we are compiling a tag file in prototype mode
      */
     public boolean isPrototypeMode() {
         return protoTypeMode;
     }
 
+    /**
+     * Sets the prototype mode for tag file compilation.
+     *
+     * @param pm The prototype mode flag
+     */
     public void setPrototypeMode(boolean pm) {
         protoTypeMode = pm;
     }
 
     /**
-     * Package name for the generated class is made up of the base package
-     * name, which is user settable, and the derived package name.  The
-     * derived package name directly mirrors the file hierarchy of the JSP page.
+     * Package name for the generated class is made up of the base package name, which is user settable, and the derived
+     * package name. The derived package name directly mirrors the file hierarchy of the JSP page.
+     *
      * @return the package name
      */
     public String getServletPackageName() {
@@ -463,25 +544,30 @@ public class JspCompilationContext {
             return packageName;
         } else {
             String dPackageName = getDerivedPackageName();
-            if (dPackageName.length() == 0) {
+            if (dPackageName.isEmpty()) {
                 return basePackageName;
             }
             return basePackageName + '.' + getDerivedPackageName();
         }
     }
 
+    /**
+     * Returns the derived package name based on the JSP URI path hierarchy.
+     *
+     * @return the derived package name
+     */
     protected String getDerivedPackageName() {
         if (derivedPackageName == null) {
             int iSep = jspUri.lastIndexOf('/');
-            derivedPackageName = (iSep > 0) ?
-                    JspUtil.makeJavaPackage(jspUri.substring(1,iSep)) : "";
+            derivedPackageName = (iSep > 0) ? JspUtil.makeJavaPackage(jspUri.substring(1, iSep)) : "";
         }
         return derivedPackageName;
     }
 
     /**
-     * @return The base package name into which all servlet and associated code
-     *         is generated
+     * Returns the base package name into which all servlet and associated code is generated.
+     *
+     * @return the base package name
      */
     public String getBasePackageName() {
         return basePackageName;
@@ -489,6 +575,7 @@ public class JspCompilationContext {
 
     /**
      * The package name into which the servlet class is generated.
+     *
      * @param basePackageName The package name to use
      */
     public void setBasePackageName(String basePackageName) {
@@ -496,8 +583,9 @@ public class JspCompilationContext {
     }
 
     /**
-     * @return Full path name of the Java file into which the servlet is being
-     * generated.
+     * Returns the full path name of the Java file into which the servlet is being generated.
+     *
+     * @return the full path of the generated Java file
      */
     public String getServletJavaFileName() {
         if (servletJavaFileName == null) {
@@ -507,22 +595,36 @@ public class JspCompilationContext {
     }
 
     /**
-     * @return the Options object for this context.
+     * Returns the options object for this compilation context.
+     *
+     * @return the options object
      */
     public Options getOptions() {
         return options;
     }
 
+    /**
+     * Returns the servlet context for this compilation context.
+     *
+     * @return the servlet context
+     */
     public ServletContext getServletContext() {
         return context;
     }
 
+    /**
+     * Returns the JSP runtime context for this compilation context.
+     *
+     * @return the runtime context
+     */
     public JspRuntimeContext getRuntimeContext() {
         return rctxt;
     }
 
     /**
-     * @return the path of the Java file relative to the work directory.
+     * Returns the path of the Java file relative to the work directory.
+     *
+     * @return the relative path of the Java file
      */
     public String getJavaPath() {
 
@@ -534,12 +636,16 @@ public class JspCompilationContext {
             String tagName = tagInfo.getTagClassName();
             javaPath = tagName.replace('.', '/') + ".java";
         } else {
-            javaPath = getServletPackageName().replace('.', '/') + '/' +
-                    getServletClassName() + ".java";
+            javaPath = getServletPackageName().replace('.', '/') + '/' + getServletClassName() + ".java";
         }
         return javaPath;
     }
 
+    /**
+     * Returns the full path name of the compiled class file.
+     *
+     * @return the class file path
+     */
     public String getClassFileName() {
         if (classFileName == null) {
             classFileName = getOutputDir() + getServletClassName() + ".class";
@@ -548,31 +654,41 @@ public class JspCompilationContext {
     }
 
     /**
-     * @return the writer that is used to write the generated Servlet source.
+     * Returns the writer used to write the generated Servlet source code.
+     *
+     * @return the servlet writer
      */
     public ServletWriter getWriter() {
         return writer;
     }
 
+    /**
+     * Sets the writer used to write the generated Servlet source code.
+     *
+     * @param writer The servlet writer
+     */
     public void setWriter(ServletWriter writer) {
         this.writer = writer;
     }
 
     /**
      * Gets the 'location' of the TLD associated with the given taglib 'uri'.
+     *
      * @param uri The taglib URI
-     * @return An array of two Strings: The first element denotes the real
-     * path to the TLD. If the path to the TLD points to a jar file, then the
-     * second element denotes the name of the TLD entry in the jar file.
-     * Returns null if the given uri is not associated with any tag library
-     * 'exposed' in the web application.
+     *
+     * @return An array of two Strings: The first element denotes the real path to the TLD. If the path to the TLD
+     *             points to a jar file, then the second element denotes the name of the TLD entry in the jar file.
+     *             Returns null if the given uri is not associated with any tag library 'exposed' in the web
+     *             application.
      */
     public TldResourcePath getTldResourcePath(String uri) {
         return getOptions().getTldCache().getTldResourcePath(uri);
     }
 
     /**
-     * @return <code>true</code> if generated code is kept.
+     * Returns whether the generated code is kept after compilation.
+     *
+     * @return {@code true} if generated code is kept
      */
     public boolean keepGenerated() {
         return getOptions().getKeepGenerated();
@@ -580,19 +696,33 @@ public class JspCompilationContext {
 
     // ==================== Removal ====================
 
+    /**
+     * Increments the removed counter and removes the wrapper from the runtime context.
+     */
     public void incrementRemoved() {
-        if (removed == false && rctxt != null) {
+        if (!removed && rctxt != null) {
             rctxt.removeWrapper(jspUri);
         }
         removed = true;
     }
 
+    /**
+     * Returns whether this JSP has been removed.
+     *
+     * @return {@code true} if this JSP has been removed
+     */
     public boolean isRemoved() {
         return removed;
     }
 
     // ==================== Compile and reload ====================
 
+    /**
+     * Compiles the JSP if it is out of date with respect to the generated class file.
+     *
+     * @throws JasperException If a compilation error occurs
+     * @throws FileNotFoundException If the JSP file has been removed
+     */
     public void compile() throws JasperException, FileNotFoundException {
         createCompiler();
         if (jspCompiler.isOutDated()) {
@@ -603,7 +733,6 @@ public class JspCompilationContext {
                 jspCompiler.removeGeneratedFiles();
                 jspLoader = null;
                 jspCompiler.compile();
-                jsw.setReload(true);
                 jsw.setCompilationException(null);
             } catch (JasperException ex) {
                 // Cache compilation exception
@@ -616,19 +745,26 @@ public class JspCompilationContext {
             } catch (FileNotFoundException fnfe) {
                 // Re-throw to let caller handle this - will result in a 404
                 throw fnfe;
-            } catch (Exception ex) {
-                JasperException je = new JasperException(
-                        Localizer.getMessage("jsp.error.unable.compile"),
-                        ex);
+            } catch (Exception e) {
+                JasperException je = new JasperException(Localizer.getMessage("jsp.error.unable.compile"), e);
                 // Cache compilation exception
                 jsw.setCompilationException(je);
                 throw je;
+            } finally {
+                jsw.setReload(true);
             }
         }
     }
 
     // ==================== Manipulating the class ====================
 
+    /**
+     * Loads the compiled servlet class using the JSP class loader.
+     *
+     * @return the loaded servlet class
+     *
+     * @throws JasperException If the class cannot be loaded
+     */
     public Class<?> load() throws JasperException {
         try {
             getJspLoader();
@@ -636,16 +772,19 @@ public class JspCompilationContext {
             String name = getFQCN();
             servletClass = jspLoader.loadClass(name);
         } catch (ClassNotFoundException cex) {
-            throw new JasperException(Localizer.getMessage("jsp.error.unable.load"),
-                    cex);
-        } catch (Exception ex) {
-            throw new JasperException(Localizer.getMessage("jsp.error.unable.compile"),
-                    ex);
+            throw new JasperException(Localizer.getMessage("jsp.error.unable.load"), cex);
+        } catch (Exception e) {
+            throw new JasperException(Localizer.getMessage("jsp.error.unable.compile"), e);
         }
         removed = false;
         return servletClass;
     }
 
+    /**
+     * Returns the fully qualified class name of the generated servlet or tag handler.
+     *
+     * @return the fully qualified class name
+     */
     public String getFQCN() {
         String name;
         if (isTagFile()) {
@@ -660,6 +799,9 @@ public class JspCompilationContext {
 
     private static final Object outputDirLock = new Object();
 
+    /**
+     * Checks and creates the output directory if it does not exist.
+     */
     public void checkOutputDir() {
         if (outputDir != null) {
             if (!(new File(outputDir)).exists()) {
@@ -670,30 +812,38 @@ public class JspCompilationContext {
         }
     }
 
+    /**
+     * Creates the output directory for generated files.
+     *
+     * @return {@code true} if the directory was created or already exists
+     */
     protected boolean makeOutputDir() {
-        synchronized(outputDirLock) {
+        synchronized (outputDirLock) {
             File outDirFile = new File(outputDir);
             return (outDirFile.mkdirs() || outDirFile.isDirectory());
         }
     }
 
+    /**
+     * Creates the output directory path based on the package name and scratch directory.
+     */
     protected void createOutputDir() {
-        String path = null;
+        String path;
         if (isTagFile()) {
             String tagName = tagInfo.getTagClassName();
             path = tagName.replace('.', File.separatorChar);
             path = path.substring(0, path.lastIndexOf(File.separatorChar));
         } else {
-            path = getServletPackageName().replace('.',File.separatorChar);
+            path = getServletPackageName().replace('.', File.separatorChar);
         }
 
         // Append servlet or tag handler path to scratch dir
         try {
             File base = options.getScratchDir();
             baseUrl = base.toURI().toURL();
-            outputDir = base.getAbsolutePath() + File.separator + path +
-                    File.separator;
+            outputDir = base.getAbsolutePath() + File.separator + path + File.separator;
             if (!makeOutputDir()) {
+                log.error(Localizer.getMessage("jsp.error.outputfolder.detail", outputDir));
                 throw new IllegalStateException(Localizer.getMessage("jsp.error.outputfolder"));
             }
         } catch (MalformedURLException e) {
@@ -701,11 +851,26 @@ public class JspCompilationContext {
         }
     }
 
-    protected static final boolean isPathSeparator(char c) {
+    /**
+     * Checks whether the given character is a path separator.
+     *
+     * @param c The character to check
+     *
+     * @return {@code true} if the character is '/' or '\\'
+     */
+    protected static boolean isPathSeparator(char c) {
         return (c == '/' || c == '\\');
     }
 
-    protected static final String canonicalURI(String s) {
+    /**
+     * Canonicalizes a URI string by resolving relative path components like '.' and '..'
+     * and collapsing multiple separators.
+     *
+     * @param s The URI string to canonicalize
+     *
+     * @return the canonical URI, or {@code null} if the input is {@code null}
+     */
+    protected static String canonicalURI(String s) {
         if (s == null) {
             return null;
         }
@@ -714,52 +879,47 @@ public class JspCompilationContext {
         int pos = 0;
         while (pos < len) {
             char c = s.charAt(pos);
-            if ( isPathSeparator(c) ) {
+            if (isPathSeparator(c)) {
                 /*
-                 * multiple path separators.
-                 * 'foo///bar' -> 'foo/bar'
+                 * multiple path separators. 'foo///bar' -> 'foo/bar'
                  */
-                while (pos+1 < len && isPathSeparator(s.charAt(pos+1))) {
+                while (pos + 1 < len && isPathSeparator(s.charAt(pos + 1))) {
                     ++pos;
                 }
 
-                if (pos+1 < len && s.charAt(pos+1) == '.') {
+                if (pos + 1 < len && s.charAt(pos + 1) == '.') {
                     /*
                      * a single dot at the end of the path - we are done.
                      */
-                    if (pos+2 >= len) {
+                    if (pos + 2 >= len) {
                         break;
                     }
 
-                    switch (s.charAt(pos+2)) {
+                    switch (s.charAt(pos + 2)) {
                         /*
-                         * self directory in path
-                         * foo/./bar -> foo/bar
+                         * self directory in path foo/./bar -> foo/bar
                          */
                         case '/':
                         case '\\':
                             pos += 2;
                             continue;
 
-                            /*
-                             * two dots in a path: go back one hierarchy.
-                             * foo/bar/../baz -> foo/baz
-                             */
+                        /*
+                         * two dots in a path: go back one hierarchy. foo/bar/../baz -> foo/baz
+                         */
                         case '.':
                             // only if we have exactly _two_ dots.
-                            if (pos+3 < len && isPathSeparator(s.charAt(pos+3))) {
+                            if (pos + 3 < len && isPathSeparator(s.charAt(pos + 3))) {
                                 pos += 3;
-                                int separatorPos = result.length()-1;
-                                while (separatorPos >= 0 &&
-                                        ! isPathSeparator(result
-                                                .charAt(separatorPos))) {
+                                int separatorPos = result.length() - 1;
+                                while (separatorPos >= 0 && !isPathSeparator(result.charAt(separatorPos))) {
                                     --separatorPos;
                                 }
                                 if (separatorPos >= 0) {
                                     result.setLength(separatorPos);
                                 }
                                 continue;
-                        }
+                            }
                     }
                 }
             }

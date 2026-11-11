@@ -15,6 +15,9 @@
   See the License for the specific language governing permissions and
   limitations under the License.
 -->
+<!DOCTYPE mbeans-descriptors PUBLIC
+   "-//Apache Software Foundation//DTD Model MBeans Configuration File"
+   "http://jakarta.apache.org/commons/dtds/mbeans-descriptors.dtd">
 <mbeans-descriptors>
 
   <mbean name="ApplicationFilterConfig"
@@ -153,7 +156,7 @@
                type="org.apache.tomcat.InstanceManager" />
 
     <attribute name="javaVMs"
-               description="The Java virtual machines on which this module is running"
+               description="Deprecated. Will be removed in Tomact 10.1. The Java virtual machines on which this module is running"
                type="[Ljava.lang.String;"/>
 
     <attribute name="loader"
@@ -204,6 +207,10 @@
     <attribute name="name"
                description="The name of this Context"
                type="java.lang.String"/>
+
+    <attribute name="parallelAnnotationScanning"
+               description="The parallel annotation scanning flag"
+               type="boolean"/>
 
     <attribute name="parentClassLoader"
                description="Parent class loader."
@@ -318,6 +325,10 @@
                description="Unpack WAR property"
                type="boolean"/>
 
+    <attribute name="useBloomFilterForArchives"
+               description="DEPRECATED: Use a bloom filter for archives lookups"
+               type="boolean"/>
+
     <attribute name="useHttpOnly"
                description="Indicates that session cookies should use HttpOnly"
                type="boolean"/>
@@ -363,12 +374,12 @@
     </operation>
 
     <operation name="addApplicationParameter"
-               description="Add a new application parameter for this application."
-               impact="ACTION"
-               returnType="void">
-      <parameter name="listener"
-                 description="Java class name of a listener class"
-                 type="java.lang.String"/>
+                description="Add a new application parameter for this application."
+                impact="ACTION"
+                returnType="void">
+       <parameter name="parameter"
+                  description="Application parameter to add"
+                  type="org.apache.tomcat.util.descriptor.web.ApplicationParameter"/>
     </operation>
 
     <operation name="addChild"
@@ -534,15 +545,15 @@
     </operation>
 
     <operation name="findApplicationParameters"
-               description="Return the set of application parameters for this application."
-               impact="INFO"
-               returnType="java.lang.String">
+                description="Return the set of application parameters for this application."
+                impact="INFO"
+                returnType="[Ljava.lang.String;">
     </operation>
 
     <operation name="findConstraints"
-               description="Return the set of security constraints for this web application. If there are none, a zero-length array is returned."
-               impact="INFO"
-               returnType="java.lang.String">
+                description="Return the set of security constraints for this web application. If there are none, a zero-length array is returned."
+                impact="INFO"
+                returnType="[Ljava.lang.String;">
     </operation>
 
     <operation name="findContainerListenerNames"
@@ -576,12 +587,12 @@
     </operation>
 
     <operation name="findFilterDef"
-               description="Return the filter definition for the specified filter name, if any; otherwise return null."
-               impact="ACTION"
-               returnType="java.lang.String">
-      <parameter name="exceptionType"
-                 description="Exception type to look up"
-                 type="java.lang.String"/>
+                description="Return the filter definition for the specified filter name, if any; otherwise return null."
+                impact="ACTION"
+                returnType="java.lang.String">
+       <parameter name="name"
+                  description="Filter name to look up"
+                  type="java.lang.String"/>
     </operation>
 
     <operation name="findFilterDefs"
@@ -1097,7 +1108,7 @@
                type="boolean"/>
 
     <attribute name="createDirs"
-               description="Should we create directories upon startup for appBase and xmlBase? "
+               description="Should we create directories upon startup for appBase and xmlBase?"
                type="boolean"/>
 
     <attribute name="deployIgnore"
@@ -1509,10 +1520,6 @@
                type="int"
                writeable="false" />
 
-    <attribute name="prestartminSpareThreads"
-               description="Prestart threads?"
-               is="true"
-               type="boolean"/>
 
     <attribute name="queueSize"
                description="Number of tasks waiting to be processed"
@@ -1584,7 +1591,7 @@
                writeable="false" />
 
     <attribute name="maxInstances"
-               description="Maximum number of STM instances."
+               description="Deprecated. Will be removed in Tomcat 10.1 onwards. Maximum number of STM instances."
                type="int" />
 
     <attribute name="minTime"
@@ -1616,7 +1623,7 @@
                writeable="false" />
 
     <attribute name="singleThreadModel"
-               description="Does this servlet implement the SingleThreadModel interface?"
+               description="Deprecated. Will be removed in Tomcat 10.1 onwards. Does this servlet implement the SingleThreadModel interface?"
                type="java.lang.Boolean"
                is="true"
                writeable="false" />

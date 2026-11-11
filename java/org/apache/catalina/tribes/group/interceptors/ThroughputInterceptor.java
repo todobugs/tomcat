@@ -31,46 +31,67 @@ import org.apache.catalina.tribes.util.StringManager;
 import org.apache.juli.logging.Log;
 import org.apache.juli.logging.LogFactory;
 
-public class ThroughputInterceptor extends ChannelInterceptorBase
-        implements ThroughputInterceptorMBean {
+/**
+ * Interceptor that measures and reports message throughput statistics.
+ */
+public class ThroughputInterceptor extends ChannelInterceptorBase implements ThroughputInterceptorMBean {
+
+    /**
+     * Constructs a new ThroughputInterceptor.
+     */
+    public ThroughputInterceptor() {
+    }
 
     private static final Log log = LogFactory.getLog(ThroughputInterceptor.class);
+
+    /**
+     * The string manager for this package.
+     */
     protected static final StringManager sm = StringManager.getManager(ThroughputInterceptor.class);
 
-    double mbTx = 0;
-    double mbAppTx = 0;
-    double mbRx = 0;
-    double timeTx = 0;
-    double lastCnt = 0;
+    // Statistics are best effort: the increments below may lose updates when several
+    // threads update them at once. Volatile is used to keep individual reads and writes
+    // atomic and visible without adding any locking to the message path, which is
+    // shared by every interceptor in the channel.
+    volatile double mbTx = 0;
+    volatile double mbAppTx = 0;
+    volatile double mbRx = 0;
+    volatile double timeTx = 0;
+    volatile double lastCnt = 0;
     final AtomicLong msgTxCnt = new AtomicLong(1);
     final AtomicLong msgRxCnt = new AtomicLong(0);
     final AtomicLong msgTxErr = new AtomicLong(0);
     int interval = 10000;
     final AtomicInteger access = new AtomicInteger(0);
-    long txStart = 0;
-    long rxStart = 0;
-    final DecimalFormat df = new DecimalFormat("#0.00");
+    volatile long txStart = 0;
+    volatile long rxStart = 0;
 
 
     @Override
-    public void sendMessage(Member[] destination, ChannelMessage msg, InterceptorPayload payload) throws ChannelException {
-        if ( access.addAndGet(1) == 1 ) txStart = System.currentTimeMillis();
-        long bytes = XByteBuffer.getDataPackageLength(((ChannelData)msg).getDataPackageLength());
-        try {
-            super.sendMessage(destination, msg, payload);
-        }catch ( ChannelException x ) {
-            msgTxErr.addAndGet(1);
-            if ( access.get() == 1 ) access.addAndGet(-1);
-            throw x;
+    public void sendMessage(Member[] destination, ChannelMessage msg, InterceptorPayload payload)
+            throws ChannelException {
+        if (access.addAndGet(1) == 1) {
+            txStart = System.currentTimeMillis();
         }
-        mbTx += (bytes*destination.length)/(1024d*1024d);
-        mbAppTx += bytes/(1024d*1024d);
-        if ( access.addAndGet(-1) == 0 ) {
-            long stop = System.currentTimeMillis();
-            timeTx += (stop - txStart) / 1000d;
-            if ((msgTxCnt.get() / (double) interval) >= lastCnt) {
-                lastCnt++;
-                report(timeTx);
+        boolean completed = false;
+        try {
+            long bytes = XByteBuffer.getDataPackageLength(((ChannelData) msg).getDataPackageLength());
+            super.sendMessage(destination, msg, payload);
+            mbTx += (bytes * destination.length) / (1024d * 1024d);
+            mbAppTx += bytes / (1024d * 1024d);
+            completed = true;
+        } catch (ChannelException x) {
+            msgTxErr.addAndGet(1);
+            throw x;
+        } finally {
+            // Release the in-flight slot exactly once for every exit path.
+            if (access.addAndGet(-1) == 0 && completed) {
+                long stop = System.currentTimeMillis();
+                timeTx += (stop - txStart) / 1000d;
+                if ((msgTxCnt.get() / (double) interval) >= lastCnt) {
+                    lastCnt++;
+                    report(timeTx);
+                }
             }
         }
         msgTxCnt.addAndGet(1);
@@ -78,23 +99,33 @@ public class ThroughputInterceptor extends ChannelInterceptorBase
 
     @Override
     public void messageReceived(ChannelMessage msg) {
-        if ( rxStart == 0 ) rxStart = System.currentTimeMillis();
-        long bytes = XByteBuffer.getDataPackageLength(((ChannelData)msg).getDataPackageLength());
-        mbRx += bytes/(1024d*1024d);
+        if (rxStart == 0) {
+            rxStart = System.currentTimeMillis();
+        }
+        long bytes = XByteBuffer.getDataPackageLength(((ChannelData) msg).getDataPackageLength());
+        mbRx += bytes / (1024d * 1024d);
         msgRxCnt.addAndGet(1);
-        if ( msgRxCnt.get() % interval == 0 ) report(timeTx);
+        if (msgRxCnt.get() % interval == 0) {
+            report(timeTx);
+        }
         super.messageReceived(msg);
 
     }
 
     @Override
     public void report(double timeTx) {
-        if ( log.isInfoEnabled() )
-            log.info(sm.getString("throughputInterceptor.report",
-                    msgTxCnt, df.format(mbTx), df.format(mbAppTx), df.format(timeTx),
-                    df.format(mbTx/timeTx), df.format(mbAppTx/timeTx), msgTxErr, msgRxCnt,
-                    df.format(mbRx/((System.currentTimeMillis()-rxStart)/(double)1000)),
-                    df.format(mbRx)));
+        if (log.isInfoEnabled()) {
+            // Local formatter: DecimalFormat is not thread safe and this method can be
+            // entered concurrently by send and receive threads.
+            DecimalFormat df = new DecimalFormat("#0.00");
+            double txRate = timeTx > 0 ? mbTx / timeTx : 0;
+            double appTxRate = timeTx > 0 ? mbAppTx / timeTx : 0;
+            double rxElapsed = (System.currentTimeMillis() - rxStart) / 1000d;
+            double rxRate = rxElapsed > 0 ? mbRx / rxElapsed : 0;
+            log.info(sm.getString("throughputInterceptor.report", msgTxCnt, df.format(mbTx), df.format(mbAppTx),
+                    df.format(timeTx), df.format(txRate), df.format(appTxRate), msgTxErr, msgRxCnt,
+                    df.format(rxRate), df.format(mbRx)));
+        }
     }
 
     @Override

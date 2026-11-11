@@ -20,15 +20,52 @@ import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+/**
+ * Rewrite condition.
+ */
 public class RewriteCond {
 
+    /**
+     * Default constructor.
+     */
+    public RewriteCond() {
+    }
+
+    /**
+     * Abstract condition interface.
+     */
     public abstract static class Condition {
+
+        /**
+         * Default constructor.
+         */
+        public Condition() {
+        }
+        /**
+         * Evaluate the condition.
+         *
+         * @param value The value to evaluate
+         * @param resolver The resolver
+         * @return {@code true} if the condition is met
+         */
         public abstract boolean evaluate(String value, Resolver resolver);
     }
 
+    /**
+     * Pattern-based condition.
+     */
     public static class PatternCondition extends Condition {
+        /**
+         * The compiled pattern for matching.
+         */
         public Pattern pattern;
-        private ThreadLocal<Matcher> matcher = new ThreadLocal<>();
+        private final ThreadLocal<Matcher> matcher = new ThreadLocal<>();
+
+        /**
+         * Default constructor.
+         */
+        public PatternCondition() {
+        }
 
         @Override
         public boolean evaluate(String value, Resolver resolver) {
@@ -37,46 +74,78 @@ public class RewriteCond {
                 matcher.set(m);
                 return true;
             } else {
+                matcher.set(null);
                 return false;
             }
         }
 
+        /**
+         * Returns the last matcher used for evaluation.
+         *
+         * @return the matcher
+         */
         public Matcher getMatcher() {
             return matcher.get();
         }
     }
 
+    /**
+     * Lexical comparison condition.
+     */
     public static class LexicalCondition extends Condition {
         /**
+         * Comparison type.
+         * <pre>
          * -1: &lt;
-         * 0: =
-         * 1: &gt;
+         *  0: =
+         *  1: &gt;
+         * </pre>
          */
         public int type = 0;
+
+        /**
+         * The condition value for comparison.
+         */
         public String condition;
+
+        /**
+         * Default constructor.
+         */
+        public LexicalCondition() {
+        }
 
         @Override
         public boolean evaluate(String value, Resolver resolver) {
             int result = value.compareTo(condition);
             switch (type) {
-            case -1:
-                return (result < 0);
-            case 0:
-                return (result == 0);
-            case 1:
-                return (result > 0);
-            default:
-                return false;
+                case -1:
+                    return (result < 0);
+                case 0:
+                    return (result == 0);
+                case 1:
+                    return (result > 0);
+                default:
+                    return false;
             }
 
         }
     }
 
+    /**
+     * Resource existence condition.
+     */
     public static class ResourceCondition extends Condition {
         /**
+         * Default constructor.
+         */
+        public ResourceCondition() {
+        }
+        /**
+         * <pre>
          * 0: -d (is directory ?)
          * 1: -f (is regular file ?)
          * 2: -s (is regular file with size ?)
+         * </pre>
          */
         public int type = 0;
 
@@ -86,35 +155,81 @@ public class RewriteCond {
         }
     }
 
+    /**
+     * The test string.
+     */
     protected String testString = null;
+
+    /**
+     * The condition pattern.
+     */
     protected String condPattern = null;
+
+    /**
+     * The flags string.
+     */
     protected String flagsString = null;
 
+    /**
+     * Returns the condition pattern.
+     *
+     * @return the condition pattern
+     */
     public String getCondPattern() {
         return condPattern;
     }
 
+    /**
+     * Sets the condition pattern.
+     *
+     * @param condPattern the condition pattern
+     */
     public void setCondPattern(String condPattern) {
         this.condPattern = condPattern;
     }
 
+    /**
+     * Returns the test string.
+     *
+     * @return the test string
+     */
     public String getTestString() {
         return testString;
     }
 
+    /**
+     * Sets the test string.
+     *
+     * @param testString the test string
+     */
     public void setTestString(String testString) {
         this.testString = testString;
     }
 
+    /**
+     * Returns the flags string.
+     *
+     * @return the flags string
+     */
     public final String getFlagsString() {
         return flagsString;
     }
 
+    /**
+     * Sets the flags string.
+     *
+     * @param flagsString the flags string
+     */
     public final void setFlagsString(String flagsString) {
         this.flagsString = flagsString;
     }
 
-    public void parse(Map<String, RewriteMap> maps) {
+    /**
+     * Parses the condition using the provided rewrite maps.
+     *
+     * @param maps the rewrite maps
+     */
+    public void parse(Map<String,RewriteMap> maps) {
         test = new Substitution();
         test.setSub(testString);
         test.parse(maps);
@@ -151,7 +266,7 @@ public class RewriteCond {
             this.condition = ncondition;
         } else {
             PatternCondition ncondition = new PatternCondition();
-            int flags = 0;
+            int flags = Pattern.DOTALL;
             if (isNocase()) {
                 flags |= Pattern.CASE_INSENSITIVE;
             }
@@ -160,6 +275,11 @@ public class RewriteCond {
         }
     }
 
+    /**
+     * Returns the matcher for the condition, if it is a pattern-based condition.
+     *
+     * @return the matcher, or {@code null} if not a pattern condition
+     */
     public Matcher getMatcher() {
         if (condition instanceof PatternCondition) {
             return ((PatternCondition) condition).getMatcher();
@@ -167,26 +287,30 @@ public class RewriteCond {
         return null;
     }
 
-    /**
-     * String representation.
-     */
     @Override
     public String toString() {
-        return "RewriteCond " + testString + " " + condPattern
-                + ((flagsString != null) ? (" " + flagsString) : "");
+        return "RewriteCond " + testString + " " + condPattern + ((flagsString != null) ? (" " + flagsString) : "");
     }
 
 
+    /**
+     * Whether the condition is positive.
+     */
     protected boolean positive = true;
 
+    /**
+     * The test substitution.
+     */
     protected Substitution test = null;
 
+    /**
+     * The condition.
+     */
     protected Condition condition = null;
 
     /**
-     * This makes the test case-insensitive, i.e., there is no difference between
-     * 'A-Z' and 'a-z' both in the expanded TestString and the CondPattern. This
-     * flag is effective only for comparisons between TestString and CondPattern.
+     * This makes the test case-insensitive, i.e., there is no difference between 'A-Z' and 'a-z' both in the expanded
+     * TestString and the CondPattern. This flag is effective only for comparisons between TestString and CondPattern.
      * It has no effect on filesystem and subrequest checks.
      */
     public boolean nocase = false;
@@ -199,9 +323,10 @@ public class RewriteCond {
     /**
      * Evaluate the condition based on the context
      *
-     * @param rule corresponding matched rule
-     * @param cond last matched condition
+     * @param rule     corresponding matched rule
+     * @param cond     last matched condition
      * @param resolver Property resolver
+     *
      * @return <code>true</code> if the condition matches
      */
     public boolean evaluate(Matcher rule, Matcher cond, Resolver resolver) {
@@ -213,26 +338,56 @@ public class RewriteCond {
         }
     }
 
+    /**
+     * Returns whether the test is case-insensitive.
+     *
+     * @return {@code true} if case-insensitive
+     */
     public boolean isNocase() {
         return nocase;
     }
 
+    /**
+     * Sets whether the test is case-insensitive.
+     *
+     * @param nocase {@code true} if case-insensitive
+     */
     public void setNocase(boolean nocase) {
         this.nocase = nocase;
     }
 
+    /**
+     * Returns whether to combine rule conditions with a local OR.
+     *
+     * @return {@code true} if OR is used
+     */
     public boolean isOrnext() {
         return ornext;
     }
 
+    /**
+     * Sets whether to combine rule conditions with a local OR.
+     *
+     * @param ornext {@code true} if OR is used
+     */
     public void setOrnext(boolean ornext) {
         this.ornext = ornext;
     }
 
+    /**
+     * Returns whether the condition is positive.
+     *
+     * @return {@code true} if positive
+     */
     public boolean isPositive() {
         return positive;
     }
 
+    /**
+     * Sets whether the condition is positive.
+     *
+     * @param positive {@code true} if positive
+     */
     public void setPositive(boolean positive) {
         this.positive = positive;
     }

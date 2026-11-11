@@ -25,14 +25,13 @@ import javax.management.MBeanOperationInfo;
 import javax.management.MBeanParameterInfo;
 
 /**
- * <p>Internal configuration information for an <code>Operation</code>
- * descriptor.</p>
- *
- * @author Craig R. McClanahan
+ * <p>
+ * Internal configuration information for an <code>Operation</code> descriptor.
+ * </p>
  */
 public class OperationInfo extends FeatureInfo {
 
-    static final long serialVersionUID = 4418342922072614875L;
+    private static final long serialVersionUID = 4418342922072614875L;
 
     // ----------------------------------------------------------- Constructors
 
@@ -46,61 +45,87 @@ public class OperationInfo extends FeatureInfo {
 
     // ----------------------------------------------------- Instance Variables
 
+    // Instance variables for OperationInfo: impact, role, parametersLock, parameters.
+     /** Impact of the operation. */
     protected String impact = "UNKNOWN";
+    /** Role of the operation. */
     protected String role = "operation";
+    /** Lock for parameter access. */
     protected final ReadWriteLock parametersLock = new ReentrantReadWriteLock();
-    protected ParameterInfo parameters[] = new ParameterInfo[0];
+    /** Array of parameters. */
+    protected ParameterInfo[] parameters = new ParameterInfo[0];
 
 
     // ------------------------------------------------------------- Properties
 
     /**
-     * @return the "impact" of this operation, which should be
-     *  a (case-insensitive) string value "ACTION", "ACTION_INFO",
-     *  "INFO", or "UNKNOWN".
+     * Returns the "impact" of this operation, which should be a (case-insensitive) string value "ACTION",
+     * "ACTION_INFO", "INFO", or "UNKNOWN".
+     *
+     * @return The impact of this operation
      */
     public String getImpact() {
         return this.impact;
     }
 
+    /**
+     * Sets the impact of this operation.
+     *
+     * @param impact The impact value
+     */
     public void setImpact(String impact) {
-        if (impact == null)
+        if (impact == null) {
             this.impact = null;
-        else
+        } else {
             this.impact = impact.toUpperCase(Locale.ENGLISH);
+        }
     }
 
 
     /**
-     * @return the role of this operation ("getter", "setter", "operation", or
-     * "constructor").
+     * Returns the role of this operation ("getter", "setter", "operation", or "constructor").
+     *
+     * @return The role of this operation
      */
     public String getRole() {
         return this.role;
     }
 
+    /**
+     * Sets the role of this operation.
+     *
+     * @param role The role value
+     */
     public void setRole(String role) {
         this.role = role;
     }
 
 
     /**
-     * @return the fully qualified Java class name of the return type for this
-     * operation.
+     * Returns the fully qualified Java class name of the return type for this operation.
+     *
+     * @return The return type
      */
     public String getReturnType() {
-        if(type == null) {
+        if (type == null) {
             type = "void";
         }
         return type;
     }
 
+    /**
+     * Sets the return type of this operation.
+     *
+     * @param returnType The return type
+     */
     public void setReturnType(String returnType) {
         this.type = returnType;
     }
 
     /**
-     * @return the set of parameters for this operation.
+     * Returns the array of parameters for this operation.
+     *
+     * @return The parameter array
      */
     public ParameterInfo[] getSignature() {
         Lock readLock = parametersLock.readLock();
@@ -125,7 +150,7 @@ public class OperationInfo extends FeatureInfo {
         Lock writeLock = parametersLock.writeLock();
         writeLock.lock();
         try {
-            ParameterInfo results[] = new ParameterInfo[parameters.length + 1];
+            ParameterInfo[] results = new ParameterInfo[parameters.length + 1];
             System.arraycopy(parameters, 0, results, 0, parameters.length);
             results[parameters.length] = parameter;
             parameters = results;
@@ -137,8 +162,9 @@ public class OperationInfo extends FeatureInfo {
 
 
     /**
-     * Create and return a <code>ModelMBeanOperationInfo</code> object that
-     * corresponds to the attribute described by this instance.
+     * Create and return a <code>ModelMBeanOperationInfo</code> object that corresponds to the operation described by
+     * this instance.
+     *
      * @return the operation info
      */
     MBeanOperationInfo createOperationInfo() {
@@ -147,26 +173,31 @@ public class OperationInfo extends FeatureInfo {
         if (info == null) {
             // Create and return a new information object
             int impact = MBeanOperationInfo.UNKNOWN;
-            if ("ACTION".equals(getImpact()))
+            if ("ACTION".equals(getImpact())) {
                 impact = MBeanOperationInfo.ACTION;
-            else if ("ACTION_INFO".equals(getImpact()))
+            } else if ("ACTION_INFO".equals(getImpact())) {
                 impact = MBeanOperationInfo.ACTION_INFO;
-            else if ("INFO".equals(getImpact()))
+            } else if ("INFO".equals(getImpact())) {
                 impact = MBeanOperationInfo.INFO;
+            }
 
-            info = new MBeanOperationInfo(getName(), getDescription(),
-                                          getMBeanParameterInfo(),
-                                          getReturnType(), impact);
+            info = new MBeanOperationInfo(getName(), getDescription(), getMBeanParameterInfo(), getReturnType(),
+                    impact);
         }
-        return (MBeanOperationInfo)info;
+        return (MBeanOperationInfo) info;
     }
 
+    /**
+     * Creates an array of MBeanParameterInfo from the operation parameters.
+     *
+     * @return The MBean parameter info array
+     */
     protected MBeanParameterInfo[] getMBeanParameterInfo() {
-        ParameterInfo params[] = getSignature();
-        MBeanParameterInfo parameters[] =
-            new MBeanParameterInfo[params.length];
-        for (int i = 0; i < params.length; i++)
+        ParameterInfo[] params = getSignature();
+        MBeanParameterInfo[] parameters = new MBeanParameterInfo[params.length];
+        for (int i = 0; i < params.length; i++) {
             parameters[i] = params[i].createParameterInfo();
+        }
         return parameters;
     }
 }

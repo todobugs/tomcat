@@ -14,8 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
-
 package org.apache.catalina.ant;
 
 
@@ -32,13 +30,17 @@ import org.xml.sax.InputSource;
 
 
 /**
- * Task for validating a web application deployment descriptor, using XML
- * schema validation.
+ * Task for validating a web application deployment descriptor, using XML schema validation.
  *
- * @author Remy Maucherat
  * @since 5.0
  */
 public class ValidatorTask extends BaseRedirectorHelperTask {
+
+    /**
+     * Constructs a new ValidatorTask.
+     */
+    public ValidatorTask() {
+    }
 
 
     // ----------------------------------------------------- Instance Variables
@@ -52,10 +54,20 @@ public class ValidatorTask extends BaseRedirectorHelperTask {
      */
     protected String path = null;
 
+    /**
+     * Returns the path to the webapp directory.
+     *
+     * @return the path
+     */
     public String getPath() {
         return this.path;
     }
 
+    /**
+     * Sets the path to the webapp directory.
+     *
+     * @param path The path to the webapp directory
+     */
     public void setPath(String path) {
         this.path = path;
     }
@@ -64,9 +76,8 @@ public class ValidatorTask extends BaseRedirectorHelperTask {
     // --------------------------------------------------------- Public Methods
 
     /**
-     * Execute the specified command.  This logic only performs the common
-     * attribute validation required by all subclasses; it does not perform
-     * any functional logic directly.
+     * Execute the specified command. This logic only performs the common attribute validation required by all
+     * subclasses; it does not perform any functional logic directly.
      *
      * @exception BuildException if a validation error occurs
      */
@@ -83,14 +94,13 @@ public class ValidatorTask extends BaseRedirectorHelperTask {
         }
 
         // Commons-logging likes having the context classloader set
-        ClassLoader oldCL = Thread.currentThread().getContextClassLoader();
-        Thread.currentThread().setContextClassLoader
-            (ValidatorTask.class.getClassLoader());
+        Thread currentThread = Thread.currentThread();
+        ClassLoader oldCL = currentThread.getContextClassLoader();
+        currentThread.setContextClassLoader(ValidatorTask.class.getClassLoader());
 
         // Called through trusted manager interface. If running under a
         // SecurityManager assume that untrusted applications may be deployed.
-        Digester digester = DigesterFactory.newDigester(
-                true, true, null, Globals.IS_SECURITY_ENABLED);
+        Digester digester = DigesterFactory.newDigester(true, true, null, Globals.IS_SECURITY_ENABLED);
         try (InputStream stream = new BufferedInputStream(new FileInputStream(file.getCanonicalFile()))) {
             InputSource is = new InputSource(file.toURI().toURL().toExternalForm());
             is.setByteStream(stream);
@@ -103,7 +113,7 @@ public class ValidatorTask extends BaseRedirectorHelperTask {
                 handleErrorOutput("Validation failure: " + e);
             }
         } finally {
-            Thread.currentThread().setContextClassLoader(oldCL);
+            currentThread.setContextClassLoader(oldCL);
             closeRedirector();
         }
 

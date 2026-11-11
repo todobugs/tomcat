@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.el.lang;
 
 import java.lang.reflect.Method;
@@ -24,13 +23,25 @@ import javax.el.FunctionMapper;
 import org.apache.el.util.MessageFactory;
 
 /**
- * @author Jacob Hookom [jacob@hookom.net]
+ * Factory that wraps a target FunctionMapper, capturing all function mappings
+ * so that a point-in-time snapshot can be created.
  */
 public class FunctionMapperFactory extends FunctionMapper {
 
+    /**
+     * The memento that stores captured function mappings.
+     */
     protected FunctionMapperImpl memento = null;
+    /**
+     * The target function mapper being wrapped.
+     */
     protected final FunctionMapper target;
 
+    /**
+     * Creates a new factory wrapping the given function mapper.
+     *
+     * @param mapper The target function mapper to wrap
+     */
     public FunctionMapperFactory(FunctionMapper mapper) {
         if (mapper == null) {
             throw new NullPointerException(MessageFactory.get("error.noFunctionMapperTarget"));
@@ -39,9 +50,6 @@ public class FunctionMapperFactory extends FunctionMapper {
     }
 
 
-    /* (non-Javadoc)
-     * @see javax.el.FunctionMapper#resolveFunction(java.lang.String, java.lang.String)
-     */
     @Override
     public Method resolveFunction(String prefix, String localName) {
         if (this.memento == null) {
@@ -64,6 +72,13 @@ public class FunctionMapperFactory extends FunctionMapper {
     }
 
 
+    /**
+     * Creates a snapshot of all function mappings captured so far.
+     * <p>
+     * The returned mapper is a point-in-time capture; it is mutable and may be modified after it is returned.
+     *
+     * @return The captured function mappings as a FunctionMapper
+     */
     public FunctionMapper create() {
         return this.memento;
     }

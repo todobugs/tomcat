@@ -18,7 +18,11 @@ package org.apache.tomcat.util.http.parser;
 
 import java.io.IOException;
 import java.io.StringReader;
+import java.util.Locale;
 
+/**
+ * Represents a parsed Content-Range HTTP header value as defined by RFC 9110.
+ */
 public class ContentRange {
 
     private final String units;
@@ -27,29 +31,62 @@ public class ContentRange {
     private final long length;
 
 
+    /**
+     * Creates a new ContentRange with the specified values.
+     *
+     * @param units  the range units (e.g., "bytes"), lowercased
+     * @param start  the start position of the range
+     * @param end    the end position of the range
+     * @param length the total length of the resource
+     */
     public ContentRange(String units, long start, long end, long length) {
-        this.units = units;
+        // Units are lower case (RFC 9110, section 14.1)
+        if (units == null) {
+            this.units = null;
+        } else {
+            this.units = units.toLowerCase(Locale.ENGLISH);
+        }
         this.start = start;
         this.end = end;
         this.length = length;
     }
 
 
+    /**
+     * Returns the range units (e.g., "bytes") in lower case.
+     *
+     * @return the range units, or {@code null} if not set
+     */
     public String getUnits() {
         return units;
     }
 
 
+    /**
+     * Returns the start position of the content range.
+     *
+     * @return the start position
+     */
     public long getStart() {
         return start;
     }
 
 
+    /**
+     * Returns the end position of the content range.
+     *
+     * @return the end position
+     */
     public long getEnd() {
         return end;
     }
 
 
+    /**
+     * Returns the total length of the resource.
+     *
+     * @return the total resource length
+     */
     public long getLength() {
         return length;
     }
@@ -67,33 +104,41 @@ public class ContentRange {
     public static ContentRange parse(StringReader input) throws IOException {
         // Units (required)
         String units = HttpParser.readToken(input);
-        if (units == null || units.length() == 0) {
+        if (units == null || units.isEmpty()) {
             return null;
         }
 
-        // Must be followed by '='
-        if (HttpParser.skipConstant(input, "=") == SkipResult.NOT_FOUND) {
+        // Must be followed by SP. Parser is lenient and accepts any LWS here.
+        // No need for explicit check as something must have terminated the
+        // token and if that something was anything other than LWS the following
+        // call to readLong() will fail.
+
+        long start;
+        long end;
+        long length;
+        try {
+            // Start
+            start = HttpParser.readLong(input);
+
+            // Must be followed by '-'
+            if (HttpParser.skipConstant(input, "-") == SkipResult.NOT_FOUND) {
+                return null;
+            }
+
+            // End
+            end = HttpParser.readLong(input);
+
+            // Must be followed by '/'
+            if (HttpParser.skipConstant(input, "/") == SkipResult.NOT_FOUND) {
+                return null;
+            }
+
+            // Length
+            length = HttpParser.readLong(input);
+        } catch (NumberFormatException nfe) {
+            // A value that doesn't fit in a long can't be a valid content range
             return null;
         }
-
-        // Start
-        long start = HttpParser.readLong(input);
-
-        // Must be followed by '-'
-        if (HttpParser.skipConstant(input, "-") == SkipResult.NOT_FOUND) {
-            return null;
-        }
-
-        // End
-        long end = HttpParser.readLong(input);
-
-        // Must be followed by '/'
-        if (HttpParser.skipConstant(input, "/") == SkipResult.NOT_FOUND) {
-            return null;
-        }
-
-        // Length
-        long length = HttpParser.readLong(input);
 
         // Doesn't matter what we look for, result should be EOF
         SkipResult skipResult = HttpParser.skipConstant(input, "X");
@@ -103,6 +148,21 @@ public class ContentRange {
             return null;
         }
 
-        return new ContentRange(units, start, end, length);
+        ContentRange contentRange = new ContentRange(units, start, end, length);
+        if (!contentRange.isValid()) {
+            // Invalid content range
+            return null;
+        }
+        return contentRange;
+    }
+
+
+    /**
+     * Validates this content range according to RFC 9110 section 14.4.
+     *
+     * @return {@code true} if start &gt;= 0, end &gt;= start, and length &gt; end
+     */
+    public boolean isValid() {
+        return start >= 0 && end >= start && length > end;
     }
 }

@@ -29,6 +29,7 @@ import org.junit.Test;
 import org.apache.tomcat.util.net.openssl.OpenSSLConf;
 import org.apache.tomcat.util.net.openssl.OpenSSLConfCmd;
 import org.apache.tomcat.util.net.openssl.ciphers.Cipher;
+import org.apache.tomcat.util.net.openssl.ciphers.MessageDigest;
 
 public class TestSSLHostConfig {
 
@@ -40,6 +41,9 @@ public class TestSSLHostConfig {
         // Single JSSE name
         hc.setCiphers(c.getJsseNames().iterator().next());
         Assert.assertEquals(c.getOpenSSLAlias(), hc.getCiphers());
+
+        // TLS 1.3 should be using defaults
+        Assert.assertEquals(SSLHostConfig.DEFAULT_TLS_CIPHERS_13, hc.getCipherSuites());
     }
 
 
@@ -53,6 +57,9 @@ public class TestSSLHostConfig {
         hc.setCiphers(c1.getJsseNames().iterator().next() + "," +
                 c2.getJsseNames().iterator().next());
         Assert.assertEquals(c1.getOpenSSLAlias() + ":" + c2.getOpenSSLAlias(), hc.getCiphers());
+
+        // TLS 1.3 should be using defaults
+        Assert.assertEquals(SSLHostConfig.DEFAULT_TLS_CIPHERS_13, hc.getCipherSuites());
     }
 
 
@@ -62,6 +69,9 @@ public class TestSSLHostConfig {
         // Single OpenSSL alias
         hc.setCiphers("ALL");
         Assert.assertEquals("ALL", hc.getCiphers());
+
+        // TLS 1.3 should be using defaults
+        Assert.assertEquals(SSLHostConfig.DEFAULT_TLS_CIPHERS_13, hc.getCipherSuites());
     }
 
 
@@ -73,6 +83,214 @@ public class TestSSLHostConfig {
         // Single OpenSSLName name
         hc.setCiphers(c.getOpenSSLAlias());
         Assert.assertEquals(c.getOpenSSLAlias(), hc.getCiphers());
+
+        // TLS 1.3 should be using defaults
+        Assert.assertEquals(SSLHostConfig.DEFAULT_TLS_CIPHERS_13, hc.getCipherSuites());
+    }
+
+
+    @Test
+    public void testCipher05() {
+        SSLHostConfig hc = new SSLHostConfig();
+        Cipher c = Cipher.TLS_AES_128_CCM_SHA256;
+
+        // Single TLSv1.3 name - should be filtered out ...
+        hc.setCiphers(c.getOpenSSLAlias());
+        Assert.assertEquals("", hc.getCiphers());
+
+        // ... and added to cipher suite list
+        Assert.assertEquals(SSLHostConfig.DEFAULT_TLS_CIPHERS_13 + ":" + c.getOpenSSLAlias(), hc.getCipherSuites());
+    }
+
+
+    @Test
+    public void testCipher06() {
+        SSLHostConfig hc = new SSLHostConfig();
+        Cipher c1 = Cipher.TLS_AES_128_CCM_SHA256;
+        Cipher c2 = Cipher.TLS_RSA_WITH_NULL_MD5;
+
+        // TLSv1.3 then TLSv1.2 - TLSv1.3 name should be filtered out ...
+        hc.setCiphers(c1.getOpenSSLAlias() + ":" + c2.getOpenSSLAlias());
+        Assert.assertEquals(c2.getOpenSSLAlias(), hc.getCiphers());
+
+        // ... and added to cipher suite list
+        Assert.assertEquals(SSLHostConfig.DEFAULT_TLS_CIPHERS_13 + ":" + c1.getOpenSSLAlias(), hc.getCipherSuites());
+    }
+
+
+    @Test
+    public void testCipher07() {
+        SSLHostConfig hc = new SSLHostConfig();
+        Cipher c1 = Cipher.TLS_AES_128_CCM_SHA256;
+        Cipher c2 = Cipher.TLS_RSA_WITH_NULL_MD5;
+
+        // TLSv1.2 then TLSv1.3 - TLSv1.3 name should be filtered out ...
+        hc.setCiphers(c2.getOpenSSLAlias() + ":" + c1.getOpenSSLAlias());
+        Assert.assertEquals(c2.getOpenSSLAlias(), hc.getCiphers());
+
+        // ... and added to cipher suite list
+        Assert.assertEquals(SSLHostConfig.DEFAULT_TLS_CIPHERS_13 + ":" + c1.getOpenSSLAlias(), hc.getCipherSuites());
+    }
+
+
+    @Test
+    public void testCiphersuite01() {
+        SSLHostConfig hc = new SSLHostConfig();
+        Cipher c = Cipher.TLS_AES_128_CCM_SHA256;
+
+        // Single TLSv1.3 cipher suite name
+        hc.setCipherSuites(c.getOpenSSLAlias());
+        Assert.assertEquals(c.getOpenSSLAlias(), hc.getCipherSuites());
+    }
+
+
+    @Test
+    public void testCiphersuite02() {
+        SSLHostConfig hc = new SSLHostConfig();
+        Cipher c1 = Cipher.TLS_AES_128_CCM_SHA256;
+        Cipher c2 = Cipher.TLS_RSA_WITH_NULL_MD5;
+
+        // TLSv1.3 then TLSv1.2 - TLSv1.2 name should be filtered out
+        hc.setCipherSuites(c1.getOpenSSLAlias() + ":" + c2.getOpenSSLAlias());
+        Assert.assertEquals(c1.getOpenSSLAlias(), hc.getCipherSuites());
+    }
+
+
+    @Test
+    public void testCiphersuite03() {
+        SSLHostConfig hc = new SSLHostConfig();
+        Cipher c1 = Cipher.TLS_AES_128_CCM_SHA256;
+        Cipher c2 = Cipher.TLS_RSA_WITH_NULL_MD5;
+
+        // TLSv1.2 then TLSv1.3 - TLSv1.2 name should be filtered out
+        hc.setCipherSuites(c2.getOpenSSLAlias() + ":" + c1.getOpenSSLAlias());
+        Assert.assertEquals(c1.getOpenSSLAlias(), hc.getCipherSuites());
+    }
+
+
+    @Test
+    public void testCiphersuite04() {
+        SSLHostConfig hc = new SSLHostConfig();
+        Cipher c1 = Cipher.TLS_AES_128_CCM_SHA256;
+        Cipher c2 = Cipher.TLS_AES_256_GCM_SHA384;
+
+        // JSSE format (comma separated) list of JSSE names. The result should be
+        // an OpenSSL format (colon separated) list of OpenSSL names.
+        hc.setCipherSuites(c1.getJsseNames().iterator().next() + "," +
+                c2.getJsseNames().iterator().next());
+        Assert.assertEquals(c1.getOpenSSLAlias() + ":" + c2.getOpenSSLAlias(), hc.getCipherSuites());
+    }
+
+
+    @Test
+    public void testCiphersuite05() {
+        SSLHostConfig hc = new SSLHostConfig();
+
+        // Null restores the default, as it does for setCiphers()
+        hc.setCipherSuites(Cipher.TLS_AES_128_CCM_SHA256.getOpenSSLAlias());
+        hc.setCipherSuites(null);
+        Assert.assertEquals(SSLHostConfig.DEFAULT_TLS_CIPHERS_13, hc.getCipherSuites());
+        // and the derived values must be usable
+        Assert.assertFalse(hc.getJsseCipherNames().isEmpty());
+    }
+
+
+    @Test
+    public void testCiphersWithoutTls13KeepDefaultCipherSuites() {
+        // Setting ciphers that do not include any TLS 1.3 cipher suites must not remove the default TLS 1.3 cipher
+        // suites, whatever the format of the ciphers list
+        String[] ciphersLists = { Cipher.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256.getOpenSSLAlias(),
+                Cipher.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256.getOpenSSLAlias() + ":" +
+                        Cipher.TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384.getOpenSSLAlias(),
+                Cipher.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256.getOpenSSLAlias() + "," +
+                        Cipher.TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384.getOpenSSLAlias(),
+                "" };
+
+        for (String ciphersList : ciphersLists) {
+            SSLHostConfig hc = new SSLHostConfig();
+            hc.setCiphers(ciphersList);
+            Assert.assertEquals(ciphersList, SSLHostConfig.DEFAULT_TLS_CIPHERS_13, hc.getCipherSuites());
+        }
+    }
+
+
+    @Test
+    public void testCiphersWithoutTls13KeepJsseCipherSuites() {
+        SSLHostConfig hc = new SSLHostConfig();
+
+        // A single TLS 1.2 cipher, which is not in OpenSSL (colon separated) format
+        hc.setCiphers(Cipher.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256.getOpenSSLAlias());
+        String tls13Name = Cipher.TLS_AES_256_GCM_SHA384.getJsseNames().iterator().next();
+        Assert.assertTrue(hc.getJsseCipherNames().contains(tls13Name));
+    }
+
+
+    @Test
+    public void testCiphersNull() {
+        SSLHostConfig hc = new SSLHostConfig();
+
+        // Null restores the default
+        hc.setCiphers(Cipher.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256.getOpenSSLAlias());
+        hc.setCiphers(null);
+        Assert.assertEquals(SSLHostConfig.DEFAULT_TLS_CIPHERS_12, hc.getCiphers());
+        // and the derived values must be usable
+        Assert.assertFalse(hc.getCipherList().isEmpty());
+        Assert.assertFalse(hc.getJsseCipherNames().isEmpty());
+    }
+
+
+    @Test
+    public void testPreSharedKey() {
+        SSLHostConfig sslHostConfig = new SSLHostConfig();
+        SSLHostConfigPreSharedKey preSharedKey = new SSLHostConfigPreSharedKey(sslHostConfig);
+        Assert.assertEquals("SHA256", preSharedKey.getDigest());
+        Assert.assertEquals(MessageDigest.SHA256, preSharedKey.getDigestInternal());
+        preSharedKey.setIdentity("test");
+        preSharedKey.setKey("00010203");
+        preSharedKey.setDigest("SHA256");
+        sslHostConfig.addPreSharedKey(preSharedKey);
+
+        Assert.assertSame(sslHostConfig, preSharedKey.getSSLHostConfig());
+        Assert.assertEquals("test", preSharedKey.getIdentity());
+        Assert.assertEquals("00010203", preSharedKey.getKey());
+        Assert.assertArrayEquals(new byte[] { 0, 1, 2, 3 }, preSharedKey.getKeyInternal());
+        Assert.assertEquals("SHA256", preSharedKey.getDigest());
+        Assert.assertEquals(MessageDigest.SHA256, preSharedKey.getDigestInternal());
+        Assert.assertSame(preSharedKey, sslHostConfig.getPreSharedKeys().iterator().next());
+    }
+
+
+    @Test(expected = IllegalArgumentException.class)
+    public void testPreSharedKeyInvalidKey() {
+        SSLHostConfigPreSharedKey preSharedKey = new SSLHostConfigPreSharedKey(null);
+        preSharedKey.setKey("invalid");
+    }
+
+
+    @Test(expected = IllegalArgumentException.class)
+    public void testPreSharedKeyInvalidDigest() {
+        SSLHostConfigPreSharedKey preSharedKey = new SSLHostConfigPreSharedKey(null);
+        preSharedKey.setDigest("invalid");
+    }
+
+
+    @Test
+    public void testPreSharedKeyOnly() {
+        SSLHostConfig sslHostConfig = new SSLHostConfig();
+        SSLHostConfigPreSharedKey preSharedKey = new SSLHostConfigPreSharedKey(sslHostConfig);
+        sslHostConfig.addPreSharedKey(preSharedKey);
+
+        Assert.assertTrue(sslHostConfig.isPreSharedKeyOnly());
+
+        // Creating the default certificate used to hold the SSLContext must not change the result.
+        sslHostConfig.getCertificates(true);
+        Assert.assertTrue(sslHostConfig.isPreSharedKeyOnly());
+
+        SSLHostConfig withCertificate = new SSLHostConfig();
+        withCertificate.addPreSharedKey(new SSLHostConfigPreSharedKey(withCertificate));
+        withCertificate.addCertificate(
+                new SSLHostConfigCertificate(withCertificate, SSLHostConfigCertificate.Type.UNDEFINED));
+        Assert.assertFalse(withCertificate.isPreSharedKeyOnly());
     }
 
 
@@ -90,6 +308,11 @@ public class TestSSLHostConfig {
         openSSLConfCmd.setValue(value);
         openSSLConf.addCmd(openSSLConfCmd);
         sslHostConfig.setOpenSslConf(openSSLConf);
+        SSLHostConfigPreSharedKey preSharedKey = new SSLHostConfigPreSharedKey(sslHostConfig);
+        preSharedKey.setIdentity("test");
+        preSharedKey.setKey("00010203");
+        preSharedKey.setDigest("SHA256");
+        sslHostConfig.addPreSharedKey(preSharedKey);
 
         // Serialize
         ByteArrayOutputStream baos = new ByteArrayOutputStream();
@@ -108,5 +331,12 @@ public class TestSSLHostConfig {
         OpenSSLConfCmd command = commands.get(0);
         Assert.assertEquals(name, command.getName());
         Assert.assertEquals(value, command.getValue());
+        SSLHostConfigPreSharedKey outputPreSharedKey = output.getPreSharedKeys().iterator().next();
+        Assert.assertSame(output, outputPreSharedKey.getSSLHostConfig());
+        Assert.assertEquals("test", outputPreSharedKey.getIdentity());
+        Assert.assertEquals("00010203", outputPreSharedKey.getKey());
+        Assert.assertEquals("SHA256", outputPreSharedKey.getDigest());
+        Assert.assertArrayEquals(new byte[] { 0, 1, 2, 3 }, outputPreSharedKey.getKeyInternal());
+        Assert.assertEquals(MessageDigest.SHA256, outputPreSharedKey.getDigestInternal());
     }
 }

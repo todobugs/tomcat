@@ -29,8 +29,8 @@ import javax.websocket.DeploymentException;
 import org.apache.tomcat.util.res.StringManager;
 
 /**
- * Extracts path parameters from URIs used to create web socket connections
- * using the URI template defined for the associated Endpoint.
+ * Extracts path parameters from URIs used to create web socket connections using the URI template defined for the
+ * associated Endpoint.
  */
 public class UriTemplate {
 
@@ -41,11 +41,28 @@ public class UriTemplate {
     private final boolean hasParameters;
 
 
+    /**
+     * Creates a new UriTemplate from the given path.
+     *
+     * @param path the URI template path
+     * @throws DeploymentException if the path is invalid
+     */
     public UriTemplate(String path) throws DeploymentException {
+        this(path, true);
+    }
 
-        if (path == null || path.length() ==0 || !path.startsWith("/")) {
-            throw new DeploymentException(
-                    sm.getString("uriTemplate.invalidPath", path));
+    /**
+     * Creates a new UriTemplate from the given path.
+     *
+     * @param path the URI template path
+     * @param parseParameters whether to parse path parameters
+     * @throws DeploymentException if the path is invalid
+     */
+    public UriTemplate(String path, boolean parseParameters) throws DeploymentException {
+
+        if (path == null || !path.startsWith("/") || path.contains("/../") || path.contains("/./") ||
+                path.contains("//")) {
+            throw new DeploymentException(sm.getString("uriTemplate.invalidPath", path));
         }
 
         StringBuilder normalized = new StringBuilder(path.length());
@@ -58,37 +75,33 @@ public class UriTemplate {
 
         for (int i = 0; i < segments.length; i++) {
             String segment = segments[i];
-            if (segment.length() == 0) {
-                if (i == 0 || (i == segments.length - 1 && paramCount == 0)) {
-                    // Ignore the first empty segment as the path must always
-                    // start with '/'
-                    // Ending with a '/' is also OK for instances used for
-                    // matches but not for parameterised templates.
+            if (segment.isEmpty()) {
+                if (i == 0) {
+                    // Ignore the first empty segment as the path must always start with '/'.
                     continue;
-                } else {
-                    // As per EG discussion, all other empty segments are
-                    // invalid
-                    throw new IllegalArgumentException(sm.getString(
-                            "uriTemplate.emptySegment", path));
+                } else if (i == segments.length - 1) {
+                    // Ending with a '/' is allowed.
                 }
             }
             normalized.append('/');
             int index = -1;
-            if (segment.startsWith("{") && segment.endsWith("}")) {
-                index = segmentCount;
-                segment = segment.substring(1, segment.length() - 1);
-                normalized.append('{');
-                normalized.append(paramCount++);
-                normalized.append('}');
-                if (!paramNames.add(segment)) {
-                    throw new IllegalArgumentException(sm.getString(
-                            "uriTemplate.duplicateParameter", segment));
+            if (parseParameters) {
+                if (segment.startsWith("{") && segment.endsWith("}")) {
+                    index = segmentCount;
+                    segment = segment.substring(1, segment.length() - 1);
+                    normalized.append('{');
+                    normalized.append(paramCount++);
+                    normalized.append('}');
+                    if (!paramNames.add(segment)) {
+                        throw new DeploymentException(sm.getString("uriTemplate.duplicateParameter", segment));
+                    }
+                } else {
+                    if (segment.contains("{") || segment.contains("}")) {
+                        throw new DeploymentException(sm.getString("uriTemplate.invalidSegment", segment, path));
+                    }
+                    normalized.append(segment);
                 }
             } else {
-                if (segment.contains("{") || segment.contains("}")) {
-                    throw new IllegalArgumentException(sm.getString(
-                            "uriTemplate.invalidSegment", segment, path));
-                }
                 normalized.append(segment);
             }
             this.segments.add(new Segment(index, segment));
@@ -100,7 +113,18 @@ public class UriTemplate {
     }
 
 
+    /**
+     * Matches this template against a candidate URI path.
+     *
+     * @param candidate the candidate URI path
+     * @return the path parameters if matched, or null
+     */
     public Map<String,String> match(UriTemplate candidate) {
+
+        // Candidate URIs should not contain parameters.
+        if (candidate.hasParameters) {
+            throw new IllegalStateException(sm.getString("uriTemplate.candidateParameters"));
+        }
 
         Map<String,String> result = new HashMap<>();
 
@@ -109,25 +133,20 @@ public class UriTemplate {
             return null;
         }
 
-        Iterator<Segment> candidateSegments =
-                candidate.getSegments().iterator();
         Iterator<Segment> targetSegments = segments.iterator();
 
-        while (candidateSegments.hasNext()) {
-            Segment candidateSegment = candidateSegments.next();
+        for (Segment candidateSegment : candidate.getSegments()) {
             Segment targetSegment = targetSegments.next();
 
             if (targetSegment.getParameterIndex() == -1) {
                 // Not a parameter - values must match
-                if (!targetSegment.getValue().equals(
-                        candidateSegment.getValue())) {
+                if (!targetSegment.getValue().equals(candidateSegment.getValue())) {
                     // Not a match. Stop here
                     return null;
                 }
             } else {
                 // Parameter
-                result.put(targetSegment.getValue(),
-                        candidateSegment.getValue());
+                result.put(targetSegment.getValue(), candidateSegment.getValue());
             }
         }
 
@@ -135,16 +154,31 @@ public class UriTemplate {
     }
 
 
+    /**
+     * Returns whether this template contains path parameters.
+     *
+     * @return true if there are parameters
+     */
     public boolean hasParameters() {
         return hasParameters;
     }
 
 
+    /**
+     * Returns the number of path segments.
+     *
+     * @return the segment count
+     */
     public int getSegmentCount() {
         return segments.size();
     }
 
 
+    /**
+     * Returns the normalized path with numeric parameter indices.
+     *
+     * @return the normalized path
+     */
     public String getNormalizedPath() {
         return normalized;
     }
@@ -159,7 +193,7 @@ public class UriTemplate {
         private final int parameterIndex;
         private final String value;
 
-        public Segment(int parameterIndex, String value) {
+        Segment(int parameterIndex, String value) {
             this.parameterIndex = parameterIndex;
             this.value = value;
         }

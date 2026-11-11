@@ -14,21 +14,27 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
-
 package org.apache.tomcat.util.descriptor.web;
 
 import java.io.Serializable;
+import java.util.Objects;
 
 
 /**
- * <p>Representation of a security role reference for a web application, as
- * represented in a <code>&lt;security-role-ref&gt;</code> element
- * in the deployment descriptor.</p>
+ * <p>
+ * Representation of a security role reference for a web application, as represented in a
+ * <code>&lt;security-role-ref&gt;</code> element in the deployment descriptor.
+ * </p>
  *
  * @since Tomcat 5.5
  */
 public class SecurityRoleRef implements Serializable {
+
+    /**
+     * Default constructor.
+     */
+    public SecurityRoleRef() {
+    }
 
     private static final long serialVersionUID = 1L;
 
@@ -40,10 +46,20 @@ public class SecurityRoleRef implements Serializable {
      */
     private String name = null;
 
+    /**
+     * Get the role name.
+     *
+     * @return the role name
+     */
     public String getName() {
         return this.name;
     }
 
+    /**
+     * Set the role name.
+     *
+     * @param name The role name
+     */
     public void setName(String name) {
         this.name = name;
     }
@@ -54,14 +70,23 @@ public class SecurityRoleRef implements Serializable {
      */
     private String link = null;
 
+    /**
+     * Get the role link.
+     *
+     * @return the role link
+     */
     public String getLink() {
         return this.link;
     }
 
+    /**
+     * Set the role link.
+     *
+     * @param link The role link
+     */
     public void setLink(String link) {
         this.link = link;
     }
-
 
 
     // --------------------------------------------------------- Public Methods
@@ -79,9 +104,33 @@ public class SecurityRoleRef implements Serializable {
             sb.append(", link=");
             sb.append(link);
         }
-        sb.append("]");
+        sb.append(']');
         return sb.toString();
     }
 
 
+    @Override
+    public int hashCode() {
+        final int prime = 31;
+        int result = 1;
+        result = prime * result + ((link == null) ? 0 : link.hashCode());
+        result = prime * result + ((name == null) ? 0 : name.hashCode());
+        return result;
+    }
+
+
+    @Override
+    public boolean equals(Object obj) {
+        if (this == obj) {
+            return true;
+        }
+        if (!(obj instanceof SecurityRoleRef)) {
+            return false;
+        }
+        SecurityRoleRef other = (SecurityRoleRef) obj;
+        if (!Objects.equals(link, other.link)) {
+            return false;
+        }
+        return Objects.equals(name, other.name);
+    }
 }

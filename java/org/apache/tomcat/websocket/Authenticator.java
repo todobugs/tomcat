@@ -21,51 +21,197 @@ import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+import org.apache.tomcat.util.http.Method;
+import org.apache.tomcat.util.res.StringManager;
+
 /**
- * Base class for the authentication methods used by the websocket client.
+ * Base class for the authentication methods used by the WebSocket client.
  */
 public abstract class Authenticator {
-    private static final Pattern pattern = Pattern
-            .compile("(\\w+)\\s*=\\s*(\"([^\"]+)\"|([^,=\"]+))\\s*,?");
 
     /**
-     * Generate the authentication header that will be sent to the server.
-     * @param requestUri The request URI
-     * @param WWWAuthenticate The server auth challenge
-     * @param UserProperties The user information
-     * @return The auth header
+     * Constructs an Authenticator instance.
+     */
+    protected Authenticator() {
+        // NOP
+    }
+
+    private static final StringManager sm = StringManager.getManager(Authenticator.class);
+
+    private static final Pattern pattern = Pattern.compile("(\\w+)\\s*=\\s*(\"([^\"]+)\"|([^,=\"]+))\\s*,?");
+
+
+    /**
+     * Generate the authorization header value that will be sent to the server.
+     *
+     * @param requestUri         The request URI
+     * @param authenticateHeader The server authentication header received
+     * @param userProperties     The user information
+     *
+     * @return The generated authorization header value
+     *
+     * @throws AuthenticationException When an error occurs
+     *
+     * @deprecated Use {@link #getAuthorization(String, String, String, String, String)}. Will be removed in Tomcat
+     *                 10.1.x
+     */
+    @Deprecated
+    public String getAuthorization(String requestUri, String authenticateHeader, Map<String,Object> userProperties)
+            throws AuthenticationException {
+        return getAuthorization(requestUri, authenticateHeader,
+                (String) userProperties.get(Constants.WS_AUTHENTICATION_USER_NAME),
+                (String) userProperties.get(Constants.WS_AUTHENTICATION_PASSWORD),
+                (String) userProperties.get(Constants.WS_AUTHENTICATION_REALM));
+    }
+
+    /**
+     * Generate the authorization header value that will be sent to the server.
+     *
+     * @param requestUri         The request URI
+     * @param authenticateHeader The server authentication header received
+     * @param userName           The user name
+     * @param userPassword       The user password
+     * @param userRealm          The realm for which the provided username and password are valid. {@code null} to
+     *                               indicate all realms.
+     *
+     * @return The generated authorization header value
+     *
+     * @throws AuthenticationException When an error occurs
+     *
+     * @deprecated Unused. Will be removed in a future release. Use
+     *                 {@link #getAuthorization(String, String, String, String, String, String)}
+     */
+    @Deprecated
+    public String getAuthorization(String requestUri, String authenticateHeader, String userName, String userPassword,
+            String userRealm) throws AuthenticationException {
+        return getAuthorization(Method.GET, requestUri, authenticateHeader, userName, userPassword, userRealm);
+    }
+
+
+    /**
+     * Generate the authorization header value that will be sent to the server.
+     *
+     * @param method             The request method
+     * @param requestUri         The request URI
+     * @param authenticateHeader The server authentication header received
+     * @param userName           The username
+     * @param userPassword       The user password
+     * @param userRealm          The realm for which the provided username and password are valid. {@code null} to
+     *                               indicate all realms.
+     *
+     * @return The generated authorization header value
+     *
      * @throws AuthenticationException When an error occurs
      */
-    public abstract String getAuthorization(String requestUri, String WWWAuthenticate,
-            Map<String, Object> UserProperties) throws AuthenticationException;
+    public abstract String getAuthorization(String method, String requestUri, String authenticateHeader,
+            String userName, String userPassword, String userRealm) throws AuthenticationException;
+
 
     /**
      * Get the authentication method.
-     * @return the auth scheme
+     *
+     * @return the authentication scheme
      */
     public abstract String getSchemeName();
 
+
     /**
      * Utility method to parse the authentication header.
-     * @param WWWAuthenticate The server auth challenge
-     * @return the parsed header
+     *
+     * @param authenticateHeader The server authenticate header received
+     *
+     * @return a map of authentication parameter names and values
+     *
+     * @deprecated Use {@link Authenticator#parseAuthenticateHeader(String)}. Will be removed in Tomcat 10.1.x onwards
      */
-    public Map<String, String> parseWWWAuthenticateHeader(String WWWAuthenticate) {
+    @Deprecated
+    public Map<String,String> parseWWWAuthenticateHeader(String authenticateHeader) {
+        return parseAuthenticateHeader(authenticateHeader);
+    }
 
-        Matcher m = pattern.matcher(WWWAuthenticate);
-        Map<String, String> challenge = new HashMap<>();
+
+    /**
+     * Utility method to parse the authentication header.
+     *
+     * @param authenticateHeader The server authenticate header received
+     *
+     * @return a map of authentication parameter names and values
+     */
+    public Map<String,String> parseAuthenticateHeader(String authenticateHeader) {
+
+        Matcher m = pattern.matcher(authenticateHeader);
+        Map<String,String> parameterMap = new HashMap<>();
 
         while (m.find()) {
             String key = m.group(1);
             String qtedValue = m.group(3);
             String value = m.group(4);
 
-            challenge.put(key, qtedValue != null ? qtedValue : value);
+            parameterMap.put(key, qtedValue != null ? qtedValue : value.trim());
 
         }
 
-        return challenge;
-
+        return parameterMap;
     }
 
+
+    /**
+     * Validates that the user name is not {@code null}.
+     *
+     * @param userName the user name to validate
+     *
+     * @throws AuthenticationException if the user name is {@code null}
+     */
+    protected void validateUsername(String userName) throws AuthenticationException {
+        if (userName == null) {
+            throw new AuthenticationException(sm.getString("authenticator.nullUserName"));
+        }
+    }
+
+
+    /**
+     * Validates that the password is not {@code null}.
+     *
+     * @param password the password to validate
+     *
+     * @throws AuthenticationException if the password is {@code null}
+     */
+    protected void validatePassword(String password) throws AuthenticationException {
+        if (password == null) {
+            throw new AuthenticationException(sm.getString("authenticator.nullPassword"));
+        }
+    }
+
+
+    /**
+     * Validates that the configured user realm matches the server realm.
+     *
+     * @param userRealm the user-configured realm, or {@code null} to accept any realm
+     * @param serverRealm the realm from the server's authentication challenge
+     *
+     * @throws AuthenticationException if the realms do not match
+     */
+    protected void validateRealm(String userRealm, String serverRealm) throws AuthenticationException {
+        if (userRealm == null) {
+            return;
+        }
+
+        userRealm = userRealm.trim();
+        if (userRealm.isEmpty()) {
+            return;
+        }
+
+        /*
+         * User has configured a realm. Only allow authentication to proceed if the realm in the authentication
+         * challenge matches (both BASIC and DIGEST are required to include a realm).
+         */
+        if (serverRealm != null) {
+            serverRealm = serverRealm.trim();
+            if (userRealm.equals(serverRealm)) {
+                return;
+            }
+        }
+
+        throw new AuthenticationException(sm.getString("authenticator.realmMismatch", userRealm, serverRealm));
+    }
 }

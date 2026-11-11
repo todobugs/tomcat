@@ -16,10 +16,13 @@
  */
 package org.apache.catalina.startup;
 
+import org.apache.juli.logging.Log;
+import org.apache.juli.logging.LogFactory;
 import org.apache.tomcat.util.digester.Rule;
 import org.apache.tomcat.util.net.SSLHostConfig;
 import org.apache.tomcat.util.net.SSLHostConfigCertificate;
 import org.apache.tomcat.util.net.SSLHostConfigCertificate.Type;
+import org.apache.tomcat.util.res.StringManager;
 import org.xml.sax.Attributes;
 
 /**
@@ -27,33 +30,48 @@ import org.xml.sax.Attributes;
  */
 public class CertificateCreateRule extends Rule {
 
+    private static final Log log = LogFactory.getLog(CertificateCreateRule.class);
+    private static final StringManager sm = StringManager.getManager(CertificateCreateRule.class);
+
+    /**
+     * Default constructor.
+     */
+    public CertificateCreateRule() {
+    }
+
     @Override
     public void begin(String namespace, String name, Attributes attributes) throws Exception {
-        SSLHostConfig sslHostConfig = (SSLHostConfig)digester.peek();
+        SSLHostConfig sslHostConfig = (SSLHostConfig) digester.peek();
 
         Type type;
         String typeValue = attributes.getValue("type");
-        if (typeValue == null || typeValue.length() == 0) {
+        if (typeValue == null || typeValue.isEmpty()) {
             type = Type.UNDEFINED;
         } else {
-            type = Type.valueOf(typeValue);
+            try {
+                type = Type.valueOf(typeValue);
+            } catch (IllegalArgumentException e) {
+                log.warn(sm.getString("certificate.unknownType", typeValue));
+                type = Type.UNDEFINED;
+            }
         }
 
         SSLHostConfigCertificate certificate = new SSLHostConfigCertificate(sslHostConfig, type);
 
         digester.push(certificate);
+
+        StringBuilder code = digester.getGeneratedCode();
+        if (code != null) {
+            code.append(SSLHostConfigCertificate.class.getName()).append(' ')
+                    .append(digester.toVariableName(certificate));
+            code.append(" = new ").append(SSLHostConfigCertificate.class.getName());
+            code.append('(').append(digester.toVariableName(sslHostConfig));
+            code.append(", ").append(Type.class.getName().replace('$', '.')).append('.').append(type).append(");");
+            code.append(System.lineSeparator());
+        }
     }
 
 
-    /**
-     * Process the end of this element.
-     *
-     * @param namespace the namespace URI of the matching element, or an
-     *   empty string if the parser is not namespace aware or the element has
-     *   no namespace
-     * @param name the local name if the parser is namespace aware, or just
-     *   the element name otherwise
-     */
     @Override
     public void end(String namespace, String name) throws Exception {
         digester.pop();

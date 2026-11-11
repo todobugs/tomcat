@@ -22,18 +22,21 @@ import org.apache.tomcat.util.net.NioChannel;
 import org.apache.tomcat.util.net.NioEndpoint;
 
 /**
- * This the NIO based protocol handler implementation for AJP.
+ * This is the NIO based protocol handler implementation for AJP.
  */
 public class AjpNioProtocol extends AbstractAjpProtocol<NioChannel> {
 
     private static final Log log = LogFactory.getLog(AjpNioProtocol.class);
 
     @Override
-    protected Log getLog() { return log; }
+    protected Log getLog() {
+        return log;
+    }
 
 
     // ------------------------------------------------------------ Constructor
 
+    /** Constructs a new AjpNioProtocol. */
     public AjpNioProtocol() {
         super(new NioEndpoint());
     }

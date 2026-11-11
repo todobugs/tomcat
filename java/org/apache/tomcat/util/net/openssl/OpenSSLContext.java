@@ -16,17 +16,20 @@
  */
 package org.apache.tomcat.util.net.openssl;
 
+import java.io.BufferedReader;
+import java.io.FileInputStream;
+import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
+import java.security.KeyManagementException;
 import java.security.PrivateKey;
 import java.security.SecureRandom;
 import java.security.cert.CertificateException;
 import java.security.cert.CertificateFactory;
 import java.security.cert.X509Certificate;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Base64;
-import java.util.Iterator;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import javax.net.ssl.KeyManager;
@@ -41,8 +44,9 @@ import javax.net.ssl.X509TrustManager;
 
 import org.apache.juli.logging.Log;
 import org.apache.juli.logging.LogFactory;
-import org.apache.tomcat.jni.CertificateVerifier;
+import org.apache.tomcat.jni.Library;
 import org.apache.tomcat.jni.Pool;
+import org.apache.tomcat.jni.PreSharedKeySelector;
 import org.apache.tomcat.jni.SSL;
 import org.apache.tomcat.jni.SSLConf;
 import org.apache.tomcat.jni.SSLContext;
@@ -52,8 +56,12 @@ import org.apache.tomcat.util.net.SSLHostConfig;
 import org.apache.tomcat.util.net.SSLHostConfig.CertificateVerification;
 import org.apache.tomcat.util.net.SSLHostConfigCertificate;
 import org.apache.tomcat.util.net.SSLHostConfigCertificate.Type;
+import org.apache.tomcat.util.net.SSLHostConfigPreSharedKey;
 import org.apache.tomcat.util.res.StringManager;
 
+/**
+ * OpenSSL implementation of the SSL context.
+ */
 public class OpenSSLContext implements org.apache.tomcat.util.net.SSLContext {
 
     private static final Log log = LogFactory.getLog(OpenSSLContext.class);
@@ -64,38 +72,13 @@ public class OpenSSLContext implements org.apache.tomcat.util.net.SSLContext {
 
     private static final String defaultProtocol = "TLS";
 
-    private final SSLHostConfig sslHostConfig;
-    private final SSLHostConfigCertificate certificate;
-    private OpenSSLSessionContext sessionContext;
-    private X509TrustManager x509TrustManager;
-
-    private final List<String> negotiableProtocols;
-
-    private String enabledProtocol;
-
-    public String getEnabledProtocol() {
-        return enabledProtocol;
-    }
-
-    public void setEnabledProtocol(String protocol) {
-        enabledProtocol = (protocol == null) ? defaultProtocol : protocol;
-    }
-
-    private final long aprPool;
-    private final AtomicInteger aprPoolDestroyed = new AtomicInteger(0);
-
-    // OpenSSLConfCmd context
-    protected final long cctx;
-    // SSL context
-    protected final long ctx;
-
-    static final CertificateFactory X509_CERT_FACTORY;
-
     private static final String BEGIN_KEY = "-----BEGIN PRIVATE KEY-----\n";
+    private static final String END_KEY = "\n-----END PRIVATE KEY-----";
 
-    private static final Object END_KEY = "\n-----END PRIVATE KEY-----";
-    private boolean initialized = false;
-
+    /**
+     * X509 certificate factory instance.
+     */
+    static final CertificateFactory X509_CERT_FACTORY;
     static {
         try {
             X509_CERT_FACTORY = CertificateFactory.getInstance("X.509");
@@ -104,24 +87,75 @@ public class OpenSSLContext implements org.apache.tomcat.util.net.SSLContext {
         }
     }
 
-    public OpenSSLContext(SSLHostConfigCertificate certificate, List<String> negotiableProtocols)
+    private final SSLHostConfig sslHostConfig;
+    private final SSLHostConfigCertificate certificate;
+    private final List<String> negotiableProtocols;
+    private final boolean clientMode;
+    private final long aprPool;
+    private final long aprGeneration;
+    private final AtomicInteger aprPoolDestroyed = new AtomicInteger(0);
+    // OpenSSLConfCmd context
+    protected final long cctx;
+    // SSL context
+    protected final long ctx;
+
+    private OpenSSLSessionContext sessionContext;
+    private X509TrustManager x509TrustManager;
+    private String enabledProtocol;
+    private boolean initialized = false;
+
+
+    /**
+     * Constructs an OpenSSLContext for the given certificate and protocols.
+     *
+     * @param certificate The SSL host config certificate
+     * @param negotiableProtocols The list of negotiable protocols
+     * @throws SSLException if initialization fails
+     */
+    public OpenSSLContext(SSLHostConfigCertificate certificate, List<String> negotiableProtocols) throws SSLException {
+        this(certificate, negotiableProtocols, false);
+    }
+
+    /**
+     * Constructs an OpenSSLContext for the given certificate, protocols and client/server mode.
+     *
+     * @param certificate The SSL host config certificate
+     * @param negotiableProtocols The list of negotiable protocols
+     * @param clientMode {@code true} for client mode, otherwise server mode
+     * @throws SSLException if initialization fails
+     */
+    public OpenSSLContext(SSLHostConfigCertificate certificate, List<String> negotiableProtocols, boolean clientMode)
             throws SSLException {
         this.sslHostConfig = certificate.getSSLHostConfig();
         this.certificate = certificate;
+        this.clientMode = clientMode;
         aprPool = Pool.create(0);
+        aprGeneration = Library.getGeneration();
         boolean success = false;
         try {
             // Create OpenSSLConfCmd context if used
-            OpenSSLConf openSslConf = sslHostConfig.getOpenSslConf();
-            if (openSslConf != null) {
+            if (sslHostConfig.getOpenSslConf() == null && sslHostConfig.getTrustManagerClassName() == null &&
+                    sslHostConfig.getTruststore() == null) {
+                /*
+                 * If an instance of OpenSSLConf is required, it must be created here so the reference can be placed in
+                 * the (immutable) OpenSSLState record.
+                 *
+                 * If OpenSSL managed trust is used, an instance of OpenSSLConf is required to pass OCSP configuration
+                 * parameters to Tomcat Native. Create one if one hasn't already been created.
+                 */
+                sslHostConfig.setOpenSslConf(new OpenSSLConf());
+            }
+            // Groups list is also passed via OpenSSLConf
+            if (sslHostConfig.getOpenSslConf() == null && sslHostConfig.getGroupList() != null) {
+                sslHostConfig.setOpenSslConf(new OpenSSLConf());
+            }
+            if (sslHostConfig.getOpenSslConf() != null) {
                 try {
-                    if (log.isDebugEnabled())
-                        log.debug(sm.getString("openssl.makeConf"));
-                    cctx = SSLConf.make(aprPool,
-                                        SSL.SSL_CONF_FLAG_FILE |
-                                        SSL.SSL_CONF_FLAG_SERVER |
-                                        SSL.SSL_CONF_FLAG_CERTIFICATE |
-                                        SSL.SSL_CONF_FLAG_SHOW_ERRORS);
+                    if (log.isTraceEnabled()) {
+                        log.trace(sm.getString("openssl.makeConf"));
+                    }
+                    cctx = SSLConf.make(aprPool, SSL.SSL_CONF_FLAG_FILE | SSL.SSL_CONF_FLAG_SERVER |
+                            SSL.SSL_CONF_FLAG_CERTIFICATE | SSL.SSL_CONF_FLAG_SHOW_ERRORS);
                 } catch (Exception e) {
                     throw new SSLException(sm.getString("openssl.errMakeConf"), e);
                 }
@@ -135,8 +169,6 @@ public class OpenSSLContext implements org.apache.tomcat.util.net.SSLContext {
             for (String protocol : sslHostConfig.getEnabledProtocols()) {
                 if (Constants.SSL_PROTO_SSLv2Hello.equalsIgnoreCase(protocol)) {
                     // NO-OP. OpenSSL always supports SSLv2Hello
-                } else if (Constants.SSL_PROTO_SSLv2.equalsIgnoreCase(protocol)) {
-                    value |= SSL.SSL_PROTOCOL_SSLV2;
                 } else if (Constants.SSL_PROTO_SSLv3.equalsIgnoreCase(protocol)) {
                     value |= SSL.SSL_PROTOCOL_SSLV3;
                 } else if (Constants.SSL_PROTO_TLSv1.equalsIgnoreCase(protocol)) {
@@ -152,26 +184,24 @@ public class OpenSSLContext implements org.apache.tomcat.util.net.SSLContext {
                 } else {
                     // Should not happen since filtering to build
                     // enabled protocols removes invalid values.
-                    throw new Exception(netSm.getString(
-                            "endpoint.apr.invalidSslProtocol", protocol));
+                    throw new Exception(netSm.getString("endpoint.apr.invalidSslProtocol", protocol));
                 }
             }
 
             // Create SSL Context
             try {
-                ctx = SSLContext.make(aprPool, value, SSL.SSL_MODE_SERVER);
+                ctx = SSLContext.make(aprPool, value, clientMode ? SSL.SSL_MODE_CLIENT : SSL.SSL_MODE_SERVER);
             } catch (Exception e) {
                 // If the sslEngine is disabled on the AprLifecycleListener
                 // there will be an Exception here but there is no way to check
                 // the AprLifecycleListener settings from here
-                throw new Exception(
-                        netSm.getString("endpoint.apr.failSslContextMake"), e);
+                throw new Exception(netSm.getString("endpoint.apr.failSslContextMake"), e);
             }
 
             this.negotiableProtocols = negotiableProtocols;
 
             success = true;
-        } catch(Exception e) {
+        } catch (Exception e) {
             throw new SSLException(sm.getString("openssl.errorSSLCtxInit"), e);
         } finally {
             if (!success) {
@@ -180,152 +210,317 @@ public class OpenSSLContext implements org.apache.tomcat.util.net.SSLContext {
         }
     }
 
+
+    /**
+     * Returns the currently enabled SSL/TLS protocol.
+     *
+     * @return The enabled protocol
+     */
+    public String getEnabledProtocol() {
+        return enabledProtocol;
+    }
+
+
+    /**
+     * Sets the enabled SSL/TLS protocol.
+     *
+     * @param protocol The protocol to enable, or null for the default
+     */
+    public void setEnabledProtocol(String protocol) {
+        enabledProtocol = (protocol == null) ? defaultProtocol : protocol;
+    }
+
+
     @Override
     public synchronized void destroy() {
         // Guard against multiple destroyPools() calls triggered by construction exception and finalize() later
         if (aprPoolDestroyed.compareAndSet(0, 1)) {
-            if (ctx != 0) {
-                SSLContext.free(ctx);
-            }
-            if (cctx != 0) {
-                SSLConf.free(cctx);
-            }
-            if (aprPool != 0) {
-                Pool.destroy(aprPool);
+            if (Library.tryCleanUpLock(aprGeneration)) {
+                try {
+                    if (ctx != 0) {
+                        SSLContext.free(ctx);
+                    }
+                    if (cctx != 0) {
+                        SSLConf.free(cctx);
+                    }
+                    if (aprPool != 0) {
+                        Pool.destroy(aprPool);
+                    }
+                } finally {
+                    Library.returnCleanUpLock();
+                }
             }
         }
+    }
+
+
+    /**
+     * Checks the OpenSSL configuration commands against the given context.
+     *
+     * @param conf The OpenSSL configuration
+     * @param cctx The OpenSSL context
+     * @return true if all commands are valid
+     * @throws Exception if an error occurs
+     */
+    protected static boolean checkConf(OpenSSLConf conf, long cctx) throws Exception {
+        boolean result = true;
+        OpenSSLConfCmd cmd;
+        String name;
+        String value;
+        int rc;
+        for (OpenSSLConfCmd command : conf.getCommands()) {
+            cmd = command;
+            name = cmd.getName();
+            value = cmd.getValue();
+            if (name == null) {
+                log.error(sm.getString("opensslconf.noCommandName", value));
+                result = false;
+                continue;
+            }
+            if (log.isTraceEnabled()) {
+                log.trace(sm.getString("opensslconf.checkCommand", name, value));
+            }
+            try {
+                rc = SSLConf.check(cctx, name, value);
+            } catch (Exception e) {
+                log.error(sm.getString("opensslconf.checkFailed"));
+                return false;
+            }
+            if (rc <= 0) {
+                log.error(sm.getString("opensslconf.failedCommand", name, value, Integer.toString(rc)));
+                result = false;
+            } else if (log.isTraceEnabled()) {
+                log.trace(sm.getString("opensslconf.resultCommand", name, value, Integer.toString(rc)));
+            }
+        }
+        if (!result) {
+            log.error(sm.getString("opensslconf.checkFailed"));
+        }
+        return result;
+    }
+
+    /**
+     * Applies the OpenSSL configuration commands to the given context.
+     *
+     * @param conf The OpenSSL configuration
+     * @param cctx The OpenSSL context
+     * @param ctx The SSL context
+     * @return true if all commands were applied successfully
+     * @throws Exception if an error occurs
+     */
+    protected static boolean applyConf(OpenSSLConf conf, long cctx, long ctx) throws Exception {
+        boolean result = true;
+        SSLConf.assign(cctx, ctx);
+        OpenSSLConfCmd cmd;
+        String name;
+        String value;
+        int rc;
+        for (OpenSSLConfCmd command : conf.getCommands()) {
+            cmd = command;
+            name = cmd.getName();
+            value = cmd.getValue();
+            if (name == null) {
+                log.error(sm.getString("opensslconf.noCommandName", value));
+                result = false;
+                continue;
+            }
+            if (log.isTraceEnabled()) {
+                log.trace(sm.getString("opensslconf.applyCommand", name, value));
+            }
+            try {
+                rc = SSLConf.apply(cctx, name, value);
+            } catch (Exception e) {
+                log.error(sm.getString("opensslconf.applyFailed"));
+                return false;
+            }
+            if (rc <= 0) {
+                log.error(sm.getString("opensslconf.failedCommand", name, value, Integer.toString(rc)));
+                result = false;
+            } else if (log.isTraceEnabled()) {
+                log.trace(sm.getString("opensslconf.resultCommand", name, value, Integer.toString(rc)));
+            }
+        }
+        rc = SSLConf.finish(cctx);
+        if (rc <= 0) {
+            log.error(sm.getString("opensslconf.finishFailed", Integer.toString(rc)));
+            result = false;
+        }
+        if (!result) {
+            log.error(sm.getString("opensslconf.applyFailed"));
+        }
+        return result;
     }
 
     /**
      * Setup the SSL_CTX.
      *
-     * @param kms Must contain a KeyManager of the type
-     *            {@code OpenSSLKeyManager}
-     * @param tms Must contain a TrustManager of the type
-     *            {@code X509TrustManager}
-     * @param sr Is not used for this implementation.
+     * @param kms Must contain a KeyManager of the type {@code OpenSSLKeyManager}
+     * @param tms Must contain a TrustManager of the type {@code X509TrustManager}
+     * @param sr  Is not used for this implementation.
+     *
+     * @throws KeyManagementException if an error occurs
      */
     @Override
-    public synchronized void init(KeyManager[] kms, TrustManager[] tms, SecureRandom sr) {
+    public synchronized void init(KeyManager[] kms, TrustManager[] tms, SecureRandom sr) throws KeyManagementException {
         if (initialized) {
             log.warn(sm.getString("openssl.doubleInit"));
             return;
         }
         try {
             if (sslHostConfig.getInsecureRenegotiation()) {
-                SSLContext.setOptions(ctx, SSL.SSL_OP_ALLOW_UNSAFE_LEGACY_RENEGOTIATION);
+                SSLContext.setOptionsLong(ctx, SSL.SSL_OP_ALLOW_UNSAFE_LEGACY_RENEGOTIATION);
             } else {
-                SSLContext.clearOptions(ctx, SSL.SSL_OP_ALLOW_UNSAFE_LEGACY_RENEGOTIATION);
+                SSLContext.clearOptionsLong(ctx, SSL.SSL_OP_ALLOW_UNSAFE_LEGACY_RENEGOTIATION);
             }
 
             // Use server's preference order for ciphers (rather than
             // client's)
             if (sslHostConfig.getHonorCipherOrder()) {
-                SSLContext.setOptions(ctx, SSL.SSL_OP_CIPHER_SERVER_PREFERENCE);
+                SSLContext.setOptionsLong(ctx, SSL.SSL_OP_CIPHER_SERVER_PREFERENCE);
             } else {
-                SSLContext.clearOptions(ctx, SSL.SSL_OP_CIPHER_SERVER_PREFERENCE);
+                SSLContext.clearOptionsLong(ctx, SSL.SSL_OP_CIPHER_SERVER_PREFERENCE);
             }
 
             // Disable compression if requested
             if (sslHostConfig.getDisableCompression()) {
-                SSLContext.setOptions(ctx, SSL.SSL_OP_NO_COMPRESSION);
+                SSLContext.setOptionsLong(ctx, SSL.SSL_OP_NO_COMPRESSION);
             } else {
-                SSLContext.clearOptions(ctx, SSL.SSL_OP_NO_COMPRESSION);
+                SSLContext.clearOptionsLong(ctx, SSL.SSL_OP_NO_COMPRESSION);
             }
 
             // Disable TLS Session Tickets (RFC4507) to protect perfect forward secrecy
             if (sslHostConfig.getDisableSessionTickets()) {
-                SSLContext.setOptions(ctx, SSL.SSL_OP_NO_TICKET);
+                SSLContext.setOptionsLong(ctx, SSL.SSL_OP_NO_TICKET);
             } else {
-                SSLContext.clearOptions(ctx, SSL.SSL_OP_NO_TICKET);
+                SSLContext.clearOptionsLong(ctx, SSL.SSL_OP_NO_TICKET);
             }
 
-            // List the ciphers that the client is permitted to negotiate
+            // Configure the ciphers that the client is permitted to negotiate
             SSLContext.setCipherSuite(ctx, sslHostConfig.getCiphers());
+            SSLContext.setCipherSuitesEx(ctx, sslHostConfig.getCipherSuites());
 
-            if (certificate.getCertificateFile() == null) {
-                certificate.setCertificateKeyManager(OpenSSLUtil.chooseKeyManager(kms));
+            if (!sslHostConfig.isPreSharedKeyOnly()) {
+                // If there is no certificate file must be using a KeyStore so a KeyManager is required.
+                // If there is a certificate file a KeyManager is helpful but not strictly necessary.
+                certificate.setCertificateKeyManager(
+                        OpenSSLUtil.chooseKeyManager(kms, certificate.getCertificateFile() == null));
+
+                addCertificate(certificate);
             }
-
-            addCertificate(certificate);
 
             // Client certificate verification
             int value = 0;
             switch (sslHostConfig.getCertificateVerification()) {
-            case NONE:
-                value = SSL.SSL_CVERIFY_NONE;
-                break;
-            case OPTIONAL:
-                value = SSL.SSL_CVERIFY_OPTIONAL;
-                break;
-            case OPTIONAL_NO_CA:
-                value = SSL.SSL_CVERIFY_OPTIONAL_NO_CA;
-                break;
-            case REQUIRED:
-                value = SSL.SSL_CVERIFY_REQUIRE;
-                break;
+                case NONE:
+                    value = SSL.SSL_CVERIFY_NONE;
+                    break;
+                case OPTIONAL:
+                    value = SSL.SSL_CVERIFY_OPTIONAL;
+                    break;
+                case OPTIONAL_NO_CA:
+                    value = SSL.SSL_CVERIFY_OPTIONAL_NO_CA;
+                    break;
+                case REQUIRED:
+                    value = SSL.SSL_CVERIFY_REQUIRE;
+                    break;
             }
             SSLContext.setVerify(ctx, value, sslHostConfig.getCertificateVerificationDepth());
 
             if (tms != null) {
                 // Client certificate verification based on custom trust managers
                 x509TrustManager = chooseTrustManager(tms);
-                SSLContext.setCertVerifyCallback(ctx, new CertificateVerifier() {
-                    @Override
-                    public boolean verify(long ssl, byte[][] chain, String auth) {
-                        X509Certificate[] peerCerts = certificates(chain);
-                        try {
-                            x509TrustManager.checkClientTrusted(peerCerts, auth);
-                            return true;
-                        } catch (Exception e) {
-                            log.debug(sm.getString("openssl.certificateVerificationFailed"), e);
-                        }
-                        return false;
-                    }
-                });
+                SSLContext.setCertVerifyCallback(ctx, new OpenSSLCertificateVerifier(x509TrustManager));
                 // Pass along the DER encoded certificates of the accepted client
                 // certificate issuers, so that their subjects can be presented
                 // by the server during the handshake to allow the client choosing
                 // an acceptable certificate
                 for (X509Certificate caCert : x509TrustManager.getAcceptedIssuers()) {
                     SSLContext.addClientCACertificateRaw(ctx, caCert.getEncoded());
-                    if (log.isDebugEnabled())
+                    if (log.isDebugEnabled()) {
                         log.debug(sm.getString("openssl.addedClientCaCert", caCert.toString()));
+                    }
                 }
             } else {
                 // Client certificate verification based on trusted CA files and dirs
-                SSLContext.setCACertificate(ctx,
-                        SSLHostConfig.adjustRelativePath(sslHostConfig.getCaCertificateFile()),
+                SSLContext.setCACertificate(ctx, SSLHostConfig.adjustRelativePath(sslHostConfig.getCaCertificateFile()),
                         SSLHostConfig.adjustRelativePath(sslHostConfig.getCaCertificatePath()));
+                boolean foundOcspConfig = false;
+                for (OpenSSLConfCmd command : sslHostConfig.getOpenSslConf().getCommands()) {
+                    if (OpenSSLConfCmd.NO_OCSP_CHECK.equals(command.getName())) {
+                        foundOcspConfig = true;
+                        break;
+                    }
+                }
+                if (!foundOcspConfig) {
+                    sslHostConfig.getOpenSslConf().addCmd(new OpenSSLConfCmd(OpenSSLConfCmd.NO_OCSP_CHECK,
+                            Boolean.toString(!sslHostConfig.getOcspEnabled())));
+                    sslHostConfig.getOpenSslConf().addCmd(new OpenSSLConfCmd(OpenSSLConfCmd.OCSP_SOFT_FAIL,
+                            Boolean.toString(sslHostConfig.getOcspSoftFail())));
+                    sslHostConfig.getOpenSslConf().addCmd(new OpenSSLConfCmd(OpenSSLConfCmd.OCSP_TIMEOUT,
+                            Integer.toString(sslHostConfig.getOcspTimeout())));
+                    sslHostConfig.getOpenSslConf().addCmd(new OpenSSLConfCmd(OpenSSLConfCmd.OCSP_VERIFY_FLAGS,
+                            Integer.toString(sslHostConfig.getOcspVerifyFlags())));
+                }
             }
 
-            if (negotiableProtocols != null && negotiableProtocols.size() > 0) {
-                List<String> protocols = new ArrayList<>();
-                protocols.addAll(negotiableProtocols);
+            if (sslHostConfig.getGroupList() != null) {
+                boolean foundGroupsConfig = false;
+                for (OpenSSLConfCmd command : sslHostConfig.getOpenSslConf().getCommands()) {
+                    if (OpenSSLConfCmd.GROUPS.equals(command.getName())) {
+                        foundGroupsConfig = true;
+                        break;
+                    }
+                }
+                if (!foundGroupsConfig) {
+                    sslHostConfig.getOpenSslConf().addCmd(new OpenSSLConfCmd(OpenSSLConfCmd.GROUPS,
+                            sslHostConfig.getGroups().replace(',', ':')));
+                }
+            }
+
+            Set<SSLHostConfigPreSharedKey> psks = sslHostConfig.getPreSharedKeys();
+            if (!psks.isEmpty()) {
+                PreSharedKeySelector selector = new OpenSSLPreSharedKeySelector(psks);
+
+                for (String protocol : sslHostConfig.getEnabledProtocols()) {
+                    if (Constants.SSL_PROTO_TLSv1_2.equals(protocol) && clientMode) {
+                        SSLContext.setPskClientCallback(ctx, selector);
+                    } else if (Constants.SSL_PROTO_TLSv1_3.equals(protocol) && clientMode) {
+                        SSLContext.setPskUseSessionCallback(ctx, selector);
+                    } else if (Constants.SSL_PROTO_TLSv1_2.equals(protocol) && !clientMode) {
+                        SSLContext.setPskServerCallback(ctx, selector);
+                    } else if (Constants.SSL_PROTO_TLSv1_3.equals(protocol) && !clientMode) {
+                        SSLContext.setPskFindSessionCallback(ctx, selector);
+                    }
+                }
+            }
+
+            if (negotiableProtocols != null && !negotiableProtocols.isEmpty()) {
+                List<String> protocols = new ArrayList<>(negotiableProtocols);
                 protocols.add("http/1.1");
                 String[] protocolsArray = protocols.toArray(new String[0]);
                 SSLContext.setAlpnProtos(ctx, protocolsArray, SSL.SSL_SELECTOR_FAILURE_NO_ADVERTISE);
-                SSLContext.setNpnProtos(ctx, protocolsArray, SSL.SSL_SELECTOR_FAILURE_NO_ADVERTISE);
             }
 
             // Apply OpenSSLConfCmd if used
             OpenSSLConf openSslConf = sslHostConfig.getOpenSslConf();
             if (openSslConf != null && cctx != 0) {
                 // Check OpenSSLConfCmd if used
-                if (log.isDebugEnabled())
-                    log.debug(sm.getString("openssl.checkConf"));
+                if (log.isTraceEnabled()) {
+                    log.trace(sm.getString("openssl.checkConf"));
+                }
                 try {
-                    if (!openSslConf.check(cctx)) {
+                    if (!checkConf(openSslConf, cctx)) {
                         log.error(sm.getString("openssl.errCheckConf"));
                         throw new Exception(sm.getString("openssl.errCheckConf"));
                     }
                 } catch (Exception e) {
                     throw new Exception(sm.getString("openssl.errCheckConf"), e);
                 }
-                if (log.isDebugEnabled())
-                    log.debug(sm.getString("openssl.applyConf"));
+                if (log.isTraceEnabled()) {
+                    log.trace(sm.getString("openssl.applyConf"));
+                }
                 try {
-                    if (!openSslConf.apply(cctx, ctx)) {
+                    if (!applyConf(openSslConf, cctx, ctx)) {
                         log.error(sm.getString("openssl.errApplyConf"));
                         throw new SSLException(sm.getString("openssl.errApplyConf"));
                     }
@@ -333,7 +528,7 @@ public class OpenSSLContext implements org.apache.tomcat.util.net.SSLContext {
                     throw new SSLException(sm.getString("openssl.errApplyConf"), e);
                 }
                 // Reconfigure the enabled protocols
-                int opts = SSLContext.getOptions(ctx);
+                long opts = SSLContext.getOptionsLong(ctx);
                 List<String> enabled = new ArrayList<>();
                 // Seems like there is no way to explicitly disable SSLv2Hello
                 // in OpenSSL so it is always enabled
@@ -347,14 +542,13 @@ public class OpenSSLContext implements org.apache.tomcat.util.net.SSLContext {
                 if ((opts & SSL.SSL_OP_NO_TLSv1_2) == 0) {
                     enabled.add(Constants.SSL_PROTO_TLSv1_2);
                 }
-                if ((opts & SSL.SSL_OP_NO_SSLv2) == 0) {
-                    enabled.add(Constants.SSL_PROTO_SSLv2);
+                if ((opts & SSL.SSL_OP_NO_TLSv1_3) == 0) {
+                    enabled.add(Constants.SSL_PROTO_TLSv1_3);
                 }
                 if ((opts & SSL.SSL_OP_NO_SSLv3) == 0) {
                     enabled.add(Constants.SSL_PROTO_SSLv3);
                 }
-                sslHostConfig.setEnabledProtocols(
-                        enabled.toArray(new String[enabled.size()]));
+                sslHostConfig.setEnabledProtocols(enabled.toArray(new String[0]));
                 // Reconfigure the enabled ciphers
                 sslHostConfig.setEnabledCiphers(SSLContext.getCiphers(ctx));
             }
@@ -367,51 +561,60 @@ public class OpenSSLContext implements org.apache.tomcat.util.net.SSLContext {
             sslHostConfig.setOpenSslContext(Long.valueOf(ctx));
             initialized = true;
         } catch (Exception e) {
-            log.warn(sm.getString("openssl.errorSSLCtxInit"), e);
             destroy();
+            throw new KeyManagementException(sm.getString("openssl.errorSSLCtxInit"), e);
         }
     }
 
 
+    /**
+     * Adds a certificate to this SSL context.
+     *
+     * @param certificate The certificate to add
+     * @throws Exception if an error occurs
+     */
     public void addCertificate(SSLHostConfigCertificate certificate) throws Exception {
         // Load Server key and certificate
         if (certificate.getCertificateFile() != null) {
             // Set certificate
-            SSLContext.setCertificate(ctx,
-                    SSLHostConfig.adjustRelativePath(certificate.getCertificateFile()),
-                    SSLHostConfig.adjustRelativePath(certificate.getCertificateKeyFile()),
-                    certificate.getCertificateKeyPassword(), getCertificateIndex(certificate));
+            String passwordToUse;
+            if (certificate.getCertificateKeyPasswordFile() != null) {
+                try (BufferedReader reader = new BufferedReader(new InputStreamReader(
+                        new FileInputStream(
+                                SSLHostConfig.adjustRelativePath(certificate.getCertificateKeyPasswordFile())),
+                        StandardCharsets.UTF_8))) {
+                    passwordToUse = reader.readLine();
+                }
+            } else {
+                passwordToUse = certificate.getCertificateKeyPassword();
+            }
+            SSLContext.setCertificate(ctx, SSLHostConfig.adjustRelativePath(certificate.getCertificateFile()),
+                    SSLHostConfig.adjustRelativePath(certificate.getCertificateKeyFile()), passwordToUse,
+                    getCertificateIndex(certificate));
             // Set certificate chain file
             SSLContext.setCertificateChainFile(ctx,
                     SSLHostConfig.adjustRelativePath(certificate.getCertificateChainFile()), false);
-            // Set revocation
-            SSLContext.setCARevocation(ctx,
-                    SSLHostConfig.adjustRelativePath(
-                            sslHostConfig.getCertificateRevocationListFile()),
-                    SSLHostConfig.adjustRelativePath(
-                            sslHostConfig.getCertificateRevocationListPath()));
         } else {
-            String alias = certificate.getCertificateKeyAlias();
             X509KeyManager x509KeyManager = certificate.getCertificateKeyManager();
-            if (alias == null) {
-                alias = "tomcat";
-            }
+            String alias = getServedAlias(certificate);
             X509Certificate[] chain = x509KeyManager.getCertificateChain(alias);
-            if (chain == null) {
-                alias = findAlias(x509KeyManager, certificate);
-                chain = x509KeyManager.getCertificateChain(alias);
-            }
             PrivateKey key = x509KeyManager.getPrivateKey(alias);
+            if (key == null || key.getEncoded() == null || chain == null || chain.length == 0) {
+                throw new SSLException(sm.getString("openssl.errorLoadingCertificate", alias));
+            }
             StringBuilder sb = new StringBuilder(BEGIN_KEY);
-            sb.append(Base64.getMimeEncoder(64, new byte[] {'\n'}).encodeToString(key.getEncoded()));
+            sb.append(Base64.getMimeEncoder(64, new byte[] { '\n' }).encodeToString(key.getEncoded()));
             sb.append(END_KEY);
-            SSLContext.setCertificateRaw(ctx, chain[0].getEncoded(),
-                    sb.toString().getBytes(StandardCharsets.US_ASCII),
+            SSLContext.setCertificateRaw(ctx, chain[0].getEncoded(), sb.toString().getBytes(StandardCharsets.US_ASCII),
                     getCertificateIndex(certificate));
             for (int i = 1; i < chain.length; i++) {
                 SSLContext.addChainCertificateRaw(ctx, chain[i].getEncoded());
             }
         }
+        // Set revocation
+        SSLContext.setCARevocation(ctx,
+                SSLHostConfig.adjustRelativePath(sslHostConfig.getCertificateRevocationListFile()),
+                SSLHostConfig.adjustRelativePath(sslHostConfig.getCertificateRevocationListPath()));
     }
 
 
@@ -423,7 +626,7 @@ public class OpenSSLContext implements org.apache.tomcat.util.net.SSLContext {
             result = SSL.SSL_AIDX_RSA;
         } else if (certificate.getType() == Type.EC) {
             result = SSL.SSL_AIDX_ECC;
-        } else if (certificate.getType() == Type.DSA) {
+        } else if (certificate.getType() == Type.DSA || certificate.getType() == Type.MLDSA) {
             result = SSL.SSL_AIDX_DSA;
         } else {
             result = SSL.SSL_AIDX_MAX;
@@ -432,33 +635,6 @@ public class OpenSSLContext implements org.apache.tomcat.util.net.SSLContext {
     }
 
 
-    /*
-     * Find a valid alias when none was specified in the config.
-     */
-    private static String findAlias(X509KeyManager keyManager,
-            SSLHostConfigCertificate certificate) {
-
-        Type type = certificate.getType();
-        String result = null;
-
-        List<Type> candidateTypes = new ArrayList<>();
-        if (Type.UNDEFINED.equals(type)) {
-            // Try all types to find an suitable alias
-            candidateTypes.addAll(Arrays.asList(Type.values()));
-            candidateTypes.remove(Type.UNDEFINED);
-        } else {
-            // Look for the specific type to find a suitable alias
-            candidateTypes.add(type);
-        }
-
-        Iterator<Type> iter = candidateTypes.iterator();
-        while (result == null && iter.hasNext()) {
-            result = keyManager.chooseServerAlias(iter.next().toString(),  null,  null);
-        }
-
-        return result;
-    }
-
     private static X509TrustManager chooseTrustManager(TrustManager[] managers) {
         for (TrustManager m : managers) {
             if (m instanceof X509TrustManager) {
@@ -466,14 +642,6 @@ public class OpenSSLContext implements org.apache.tomcat.util.net.SSLContext {
             }
         }
         throw new IllegalStateException(sm.getString("openssl.trustManagerMissing"));
-    }
-
-    private static X509Certificate[] certificates(byte[][] chain) {
-        X509Certificate[] peerCerts = new X509Certificate[chain.length];
-        for (int i = 0; i < peerCerts.length; i++) {
-            peerCerts[i] = new OpenSSLX509Certificate(chain[i]);
-        }
-        return peerCerts;
     }
 
 
@@ -489,10 +657,18 @@ public class OpenSSLContext implements org.apache.tomcat.util.net.SSLContext {
 
     @Override
     public SSLEngine createSSLEngine() {
-        return new OpenSSLEngine(ctx, defaultProtocol, false, sessionContext,
-                (negotiableProtocols != null && negotiableProtocols.size() > 0), initialized,
+        return new OpenSSLEngine(ctx, defaultProtocol, clientMode, sessionContext,
+                (negotiableProtocols != null && !negotiableProtocols.isEmpty()), initialized,
                 sslHostConfig.getCertificateVerificationDepth(),
                 sslHostConfig.getCertificateVerification() == CertificateVerification.OPTIONAL_NO_CA);
+    }
+
+    @Override
+    public SSLEngine createSSLEngine(boolean clientMode) {
+        if (clientMode != this.clientMode) {
+            throw new IllegalArgumentException();
+        }
+        return createSSLEngine();
     }
 
     @Override
@@ -507,20 +683,17 @@ public class OpenSSLContext implements org.apache.tomcat.util.net.SSLContext {
 
     @Override
     public X509Certificate[] getCertificateChain(String alias) {
-        X509Certificate[] chain = null;
         X509KeyManager x509KeyManager = certificate.getCertificateKeyManager();
-        if (x509KeyManager != null) {
-            if (alias == null) {
-                alias = "tomcat";
-            }
-            chain = x509KeyManager.getCertificateChain(alias);
-            if (chain == null) {
-                alias = findAlias(x509KeyManager, certificate);
-                chain = x509KeyManager.getCertificateChain(alias);
-            }
+        if (x509KeyManager == null) {
+            return null;
         }
+        return x509KeyManager.getCertificateChain(alias);
+    }
 
-        return chain;
+    @Override
+    public X509KeyManager[] getServerKeyManagers(SSLHostConfigCertificate certificate) {
+        X509KeyManager x509KeyManager = certificate.getCertificateKeyManager();
+        return x509KeyManager == null ? new X509KeyManager[0] : new X509KeyManager[] { x509KeyManager };
     }
 
     @Override
@@ -535,15 +708,12 @@ public class OpenSSLContext implements org.apache.tomcat.util.net.SSLContext {
     @Override
     protected void finalize() throws Throwable {
         /*
-         * When an SSLHostConfig is replaced at runtime, it is not possible to
-         * call destroy() on the associated OpenSSLContext since it is likely
-         * that there will be in-progress connections using the OpenSSLContext.
-         * A reference chain has been deliberately established (see
-         * OpenSSLSessionContext) to ensure that the OpenSSLContext remains
-         * ineligible for GC while those connections are alive. Once those
-         * connections complete, the OpenSSLContext will become eligible for GC
-         * and this method will ensure that the associated native resources are
-         * cleaned up.
+         * When an SSLHostConfig is replaced at runtime, it is not possible to call destroy() on the associated
+         * OpenSSLContext since it is likely that there will be in-progress connections using the OpenSSLContext. A
+         * reference chain has been deliberately established (see OpenSSLSessionContext) to ensure that the
+         * OpenSSLContext remains ineligible for GC while those connections are alive. Once those connections complete,
+         * the OpenSSLContext will become eligible for GC and this method will ensure that the associated native
+         * resources are cleaned up.
          */
         try {
             destroy();

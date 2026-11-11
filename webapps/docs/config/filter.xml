@@ -136,8 +136,8 @@
       <attribute name="cors.allowed.origins" required="false">
         <p>A list of <a href="https://tools.ietf.org/html/rfc6454">origins</a>
         that are allowed to access the resource. A <code>*</code> can be
-        specified to enable access to resource from any origin. Otherwise, a
-        whitelist of comma separated origins can be provided. Eg: <code>
+        specified to enable access to resource from any origin. Otherwise, an
+        allow list of comma separated origins can be provided. Eg: <code>
         https://www.w3.org, https://www.apache.org</code>.
         <strong>Defaults:</strong> The empty String. (No origin is allowed to
         access the resource).</p>
@@ -291,6 +291,13 @@
         request. The default value is <code>403</code>.</p>
       </attribute>
 
+      <attribute name="enforce" required="false">
+        <p>A flag to enable or disable enforcement. When enforcement is
+        disabled, the CsrfPreventionFilter will <i>allow all requests</i> and
+        log CSRF failures as DEBUG messages. The default is <b>true</b>,
+        enabling the enforcement of CSRF protection.</p>
+      </attribute>
+
       <attribute name="entryPoints" required="false">
         <p>A comma separated list of URLs that will not be tested for the
         presence of a valid nonce. They are used to provide a way to navigate
@@ -307,12 +314,53 @@
         value of 5 will be used.</p>
       </attribute>
 
+      <attribute name="nonceRequestParameterName" required="false">
+        <p>The name of the request parameter used for the nonce. If not set, the
+        default value of <code>org.apache.catalina.filters.CSRF_NONCE</code>
+        will be used.</p>
+      </attribute>
+
       <attribute name="randomClass" required="false">
         <p>The name of the class to use to generate nonces. The class must be an
         instance of <code>java.util.Random</code>. If not set, the default value
         of <code>java.security.SecureRandom</code> will be used.</p>
       </attribute>
 
+      <attribute name="noNonceURLPatterns" required="false">
+        <p>A list of URL patterns that will <i>not</i> have CSRF nonces added
+        to them. You may not want to add nonces to certain URLs to avoid
+        creating unique URLs which may defeat resource caching, etc.</p>
+
+        <p>There are several types of patterns supported:</p>
+
+        <ul>
+          <li>Prefix matches using a pattern that ends with a <code>*</code>.
+          For example, <code>/images/*</code>.</li>
+
+          <li>Suffix matches using a pattern that begins with a <code>*</code>.
+          For example, <code>*.css</code>.</li>
+
+          <li>Mime-type matches which begin with <code>mime:</code> and specify
+          one of the above matches which will be checked against the MIME type
+          of the URL filename. For example, <code>mime:image/*</code>.
+          Note that the MIME-type will be determined using
+          <code>ServletContext.getMimeType</code>.</li>
+
+          <li>A single complete regular expression pattern which begins and
+          ends with <code>/</code> (slash / solidus) symbols. For example
+          <code>//images/.*|/scripts/.*/</code>. The leading and trailing
+          <code>/</code> characters will be removed from the pattern before
+          being compiled. Note that there can be only a single pattern,
+          but that pattern can of course have as many alternatives as desired
+          by using the regular expression <code>|</code> (<code>OR</code>)
+          operator. The regular expression will be matched against the entire
+          URL (i.e. <i>match</i> not <i>find</i> semantics), and the regex
+          dialect is Java (<code>java.util.regex.Pattern</code>).
+          </li>
+        </ul>
+
+        <p>The default is <code>*.css, *.js, *.gif, *.png, *.jpg, *.svg, *.ico, *.jpeg, *.mjs</code>.</p>
+      </attribute>
     </attributes>
 
   </subsection>
@@ -508,7 +556,7 @@ HTTP/1.1 200 OK
   <subsection name="Basic configuration sample">
     <p>
     Basic configuration to add '<code>Expires</code>' and '<code>Cache-Control: max-age=</code>'
-    headers to images, css and javascript.
+    headers to images, CSS and JavaScript.
     </p>
 
     <source><![CDATA[<filter>
@@ -523,7 +571,7 @@ HTTP/1.1 200 OK
     <param-value>access plus 10 minutes</param-value>
  </init-param>
  <init-param>
-    <param-name>ExpiresByType application/javascript</param-name>
+    <param-name>ExpiresByType text/javascript</param-name>
     <param-value>access plus 10 minutes</param-value>
  </init-param>
 </filter>
@@ -865,10 +913,32 @@ FINE: Request "/docs/config/manager.html" with response status "200"
 
   <subsection name="Introduction">
 
-    <p>There are a number of HTTP headers that can be added to the response to
-    improve the security of the connection. This filter provides a mechanism for
-    adding those headers. Note that security related headers with more complex
-    requirements, like CORS, are implemented as separate Filters.</p>
+    <p>The HTTP Header Security Filter adds security-related HTTP response
+      headers to help protect against common web vulnerabilities. It supports
+      three independent protections, each of which can be enabled or disabled
+      individually:</p>
+
+    <ul>
+      <li><strong>HTTP Strict Transport Security (HSTS)</strong> - instructs
+        browsers to only access the site over HTTPS, preventing protocol
+        downgrade attacks and cookie hijacking. The
+        <code>Strict-Transport-Security</code> header is only added to responses
+        for secure (HTTPS) requests. See
+        <a href="https://tools.ietf.org/html/rfc6797">RFC 6797</a> for further
+        details.</li>
+      <li><strong>Click-jacking protection</strong> - sets the
+        <code>X-Frame-Options</code> header to control whether the page can be
+        rendered in a frame, iframe, or object, preventing click-jacking
+        attacks.</li>
+      <li><strong>Content-Type sniffing protection</strong> - sets the
+        <code>X-Content-Type-Options</code> header to <code>nosniff</code>,
+        preventing browsers from MIME-sniffing the response away from the
+        declared content type.</li>
+    </ul>
+
+    <p>Note that security-related headers with more complex requirements, such
+      as CORS, are implemented as separate filters.</p>
+
 
   </subsection>
 
@@ -880,6 +950,39 @@ FINE: Request "/docs/config/manager.html" with response status "200"
 
   </subsection>
 
+  <subsection name="Basic configuration sample">
+
+    <p>To enable the filter with a one-year HSTS policy including subdomains,
+      click-jacking protection allowing same-origin framing, and content-type
+      sniffing protection:</p>
+
+    <source><![CDATA[<filter>
+  <filter-name>httpHeaderSecurity</filter-name>
+  <filter-class>
+    org.apache.catalina.filters.HttpHeaderSecurityFilter
+  </filter-class>
+  <async-supported>true</async-supported>
+  <init-param>
+    <param-name>hstsMaxAgeSeconds</param-name>
+    <param-value>31536000</param-value>
+  </init-param>
+  <init-param>
+    <param-name>hstsIncludeSubDomains</param-name>
+    <param-value>true</param-value>
+  </init-param>
+  <init-param>
+    <param-name>antiClickJackingOption</param-name>
+    <param-value>SAMEORIGIN</param-value>
+  </init-param>
+</filter>
+<filter-mapping>
+  <filter-name>httpHeaderSecurity</filter-name>
+  <url-pattern>/*</url-pattern>
+</filter-mapping>]]></source>
+
+  </subsection>
+
+
   <subsection name="Initialisation parameters">
 
     <p>The HTTP Header Security Filter supports the following initialization
@@ -888,66 +991,72 @@ FINE: Request "/docs/config/manager.html" with response status "200"
     <attributes>
 
       <attribute name="hstsEnabled" required="false">
-        <p>Will an HTTP Strict Transport Security (HSTS) header
-        (<code>Strict-Transport-Security</code>) be set on the response for
-        secure requests. Any HSTS header already present will be replaced. See
-        <a href="https://tools.ietf.org/html/rfc6797">RFC 6797</a> for further
-        details of HSTS. If not specified, the default value of
-        <code>true</code> will be used.</p>
+        <p>Should the <code>Strict-Transport-Security</code> header be set on
+          the response for secure requests? The header is only added when the
+          request is secure (HTTPS). Any HSTS header already present will be
+          replaced. If not specified, the default value of <code>true</code>
+          will be used.</p>
       </attribute>
 
       <attribute name="hstsMaxAgeSeconds" required="false">
-        <p>The max age value that should be used in the HSTS header. Negative
-        values will be treated as zero. If not specified, the default value of
-        <code>0</code> will be used.</p>
+        <p>The max age value (in seconds) to use in the HSTS header. This
+          tells the browser how long to remember that the site should only be
+          accessed over HTTPS. Negative values will be treated as zero. If not
+          specified, the default value of <code>0</code> will be used.</p>
       </attribute>
 
       <attribute name="hstsIncludeSubDomains" required="false">
-        <p>Should the includeSubDomains parameter be included in the HSTS
-        header. If not specified, the default value of <code>false</code> will
-        be used.</p>
+        <p>Should the <code>includeSubDomains</code> directive be included in
+          the HSTS header? When enabled, the HSTS policy applies to all
+          subdomains as well. If not specified, the default value of
+          <code>false</code> will be used.</p>
       </attribute>
 
       <attribute name="hstsPreload" required="false">
-        <p>Should the preload parameter be included in the HSTS header. If not
-        specified, the default value of <code>false</code> will be used. See
-        <a href="https://hstspreload.org/">https://hstspreload.org</a> for
-        important information about this parameter.</p>
+        <p>Should the <code>preload</code> directive be included in the HSTS
+          header? This signals to browser vendors that the domain should be
+          included in built-in HSTS preload lists. If not specified, the default
+          value of <code>false</code> will be used. See
+          <a href="https://hstspreload.org/">https://hstspreload.org</a> for
+          requirements and important information about this parameter.</p>
       </attribute>
 
       <attribute name="antiClickJackingEnabled" required="false">
-        <p>Should the anti click-jacking header (<code>X-Frame-Options</code>)
-        be set on the response. Any anti click-jacking header already present
-        will be replaced. If not specified, the default value of
-        <code>true</code> will be used.</p>
+        <p>Should the <code>X-Frame-Options</code> header be set on the
+          response? Any existing header with the same name will be replaced. If
+          not specified, the default value of <code>true</code> will be used.</p>
       </attribute>
 
       <attribute name="antiClickJackingOption" required="false">
-        <p>What value should be used for the anticlick-jacking header? Must be
-        one of <code>DENY</code>, <code>SAMEORIGIN</code>,
-        <code>ALLOW-FROM </code> (case-insensitive). If not specified, the
-        default value of <code>DENY</code> will be used.</p>
+        <p>The value to use for the <code>X-Frame-Options</code> header. Must
+          be one of <code>DENY</code>, <code>SAMEORIGIN</code>, or
+          <code>ALLOW-FROM</code> (case-insensitive). If not specified, the
+          default value of <code>DENY</code> will be used.</p>
       </attribute>
 
       <attribute name="antiClickJackingUri" required="false">
-        <p>If ALLOW-FROM is used for <strong>antiClickJackingOption</strong>,
-        what URI should be allowed? If not specified, the default value of an
-        empty string will be used.</p>
+        <p>When <code>ALLOW-FROM</code> is used for
+          <strong>antiClickJackingOption</strong>, this specifies the URI that is
+          permitted to frame the page. Must be a valid URI. If not specified, the
+          default value of an empty string will be used.</p>
       </attribute>
 
       <attribute name="blockContentTypeSniffingEnabled" required="false">
-        <p>Should the header that blocks content type sniffing
-        (<code>X-Content-Type-Options</code>) be set on every response. If
-        already present, the header will be replaced. If not specified, the
-        default value of <code>true</code> will be used.</p>
+        <p>Should the <code>X-Content-Type-Options: nosniff</code> header be
+          set on every response? Any existing header with the same name will be
+          replaced. If not specified, the default value of <code>true</code>
+          will be used.</p>
       </attribute>
 
       <attribute name="xssProtectionEnabled" required="false">
+        <p><strong>Note: This setting is deprecated as support for the HTTP
+        header has been removed from all major browsers. The setting has been
+        removed in Tomcat 11.0.x onwards.</strong></p>
         <p>Should the header that enables the browser's cross-site scripting
         filter protection (<code>X-XSS-Protection: 1; mode=block</code>)
         be set on every response. If already present, the header
         will be replaced. If not specified, the default value of
-        <code>true</code> will be used.</p>
+        <code>false</code> will be used.</p>
       </attribute>
 
     </attributes>
@@ -955,6 +1064,164 @@ FINE: Request "/docs/config/manager.html" with response status "200"
   </subsection>
 
 </section>
+
+
+<section name="Rate Limit Filter">
+
+  <subsection name="Introduction">
+
+    <p>The <strong>Rate Limit Filter</strong> can help mitigate Denial of Service
+    (DoS) and Brute Force attacks by limiting the number of a requests that are
+    allowed from a single IP address within a time window (also referred
+    to as a time bucket), e.g. 300 Requests per 60 seconds.</p>
+
+    <p>The filter works by incrementing a counter in a time bucket for each IP
+    address, and if the counter exceeds the allowed limit then further requests
+    from that IP are dropped with a &quot;429 Too many requests&quot; response
+    until the bucket time ends and a new bucket starts.</p>
+
+    <p>The RateLimiter implementation can be set via the <code>rateLimitClassName</code>
+    init param. The default implementation,
+    <code>org.apache.catalina.util.FastRateLimiter</code>, is optimized for
+    efficiency and low overhead so it converts some configured values to more
+    efficient values. For example, a configuration of a 60 seconds time bucket
+    is converted to 65.536 seconds. That allows for very fast bucket calculation
+    using bit shift arithmetic. In order to remain true to the user intent, the
+    configured number of requests is then multiplied by the same ratio, so a
+    configuration of 100 Requests per 60 seconds, has the real values of 109
+    Requests per 65 seconds. Because of this conversion, the default
+    implementation rejects a configured duration of more than 1073741 seconds
+    (about 12 days). An alternative implementation,
+    <code>org.apache.catalina.util.ExactRateLimiter</code>, is intended to
+    provide a less efficient but more accurate control, whose effective duration
+    in seconds and number of requests allowed are consist with the configured
+    values and does not have that limit on the duration. You can specify a
+    different class as long as it implements the
+    <code>org.apache.catalina.util.RateLimiter</code> interface.</p>
+
+    <p>It is common to set up different restrictions for different URIs.
+    For example, a login page or authentication script is typically expected
+    to get far less requests than the rest of the application, so you can add
+    a filter definition that would allow only 5 requests per 15 seconds and map
+    those URIs to it.</p>
+
+    <p>You can set <code>enforce</code> to <code>false</code>
+    to disable the termination of requests that exceed the allowed limit. Then
+    your application code can inspect the Request Attribute
+    <code>org.apache.catalina.filters.RateLimitFilter.Count</code> and decide
+    how to handle the request based on other information that it has, e.g. allow
+    more requests to certain users based on roles, etc.</p>
+
+    <p><code>exposeHeaders</code> enables the output of the rate limiter
+    configuration and state via an HTTP response header as per <a
+    href="https://datatracker.ietf.org/doc/draft-ietf-httpapi-ratelimit-headers">RateLimit
+    header fields for HTTP (draft)</a>.</p>
+
+    <p><strong>WARNING:</strong> if Tomcat is behind a reverse proxy then you must
+    make sure that the Rate Limit Filter sees the client IP address, so if for
+    example you are using the <a href="#Remote_IP_Filter">Remote IP Filter</a>,
+    then the filter mapping for the Rate Limit Filter must come <em>after</em>
+    the mapping of the Remote IP Filter to ensure that each request has its IP
+    address resolved before the Rate Limit Filter is applied. Failure to do so
+    will count requests from different IPs in the same bucket and will result in
+    a self inflicted DoS attack.</p>
+
+  </subsection>
+
+  <subsection name="Filter Class Name">
+
+    <p>The filter class name for the Remote Address Filter is
+    <strong><code>org.apache.catalina.filters.RateLimitFilter</code>
+    </strong>.</p>
+
+  </subsection>
+
+  <subsection name="Initialisation parameters">
+
+    <p>The <strong>Rate Limit Filter</strong> supports the following
+    initialisation parameters:</p>
+
+    <attributes>
+
+      <attribute name="bucketDuration" required="false">
+        <p>The number of seconds in a time bucket. Default is <code>60</code>.</p>
+      </attribute>
+
+      <attribute name="bucketRequests" required="false">
+        <p>The number of requests that are allowed in a time bucket.
+        Default is <code>300</code>.</p>
+      </attribute>
+
+      <attribute name="enforce" required="false">
+        <p>Set to false to allow requests through even when they exceed
+        the maximum allowed per time window. Your application code can
+        still inspect the Request Attribute
+        org.apache.catalina.filters.RateLimitFilter.Count to retrieve
+        the number of Requests made from that IP within the time window.
+        Default is <code>true</code>.</p>
+      </attribute>
+
+      <attribute name="exposeHeaders" required="false">
+        <p>Set to true to expose the configuration and state of the rate limiter
+        via an HTTP response header as per <a
+        href="https://datatracker.ietf.org/doc/draft-ietf-httpapi-ratelimit-headers">RateLimit
+        header fields for HTTP (draft)</a>. Default is <code>false</code>.</p>
+      </attribute>
+
+      <attribute name="rateLimitClassName" required="false">
+        <p>The full class name of an implementation of the RateLimiter
+        interface. Default is
+        &quot;org.apache.catalina.util.FastRateLimiter&quot;, which is optimized
+        for efficiency. If you need exact rate limiting and can accept a small
+        decrease in efficiency, you can use
+        &quot;org.apache.catalina.util.ExactRateLimiter&quot; instead.</p>
+      </attribute>
+
+      <attribute name="statusCode" required="false">
+        <p>The status code to return when a request is dropped.
+        Default is <code>429</code>.</p>
+      </attribute>
+
+      <attribute name="statusMessage" required="false">
+        <p>The status message to return when a request is dropped.
+        Default is &quot;Too many requests&quot;.</p>
+      </attribute>
+
+    </attributes>
+
+  </subsection>
+
+  <subsection name="Example">
+    <p>Set the site rate limit to 300 Requests per minute (default):</p>
+<source><![CDATA[    <filter>
+        <filter-name>RateLimitFilter Global</filter-name>
+        <filter-class>org.apache.catalina.filters.RateLimitFilter</filter-class>
+    </filter>
+
+    <filter-mapping>
+        <filter-name>RateLimitFilter Global</filter-name>
+        <url-pattern>*</url-pattern>
+    </filter-mapping>]]></source>
+
+    <p>Set the /auth/* scripts rate limit to 20 Requests per minute:</p>
+<source><![CDATA[    <filter>
+        <filter-name>RateLimitFilter Login</filter-name>
+        <filter-class>org.apache.catalina.filters.RateLimitFilter</filter-class>
+        <init-param>
+            <param-name>bucketRequests</param-name>
+            <param-value>20</param-value>
+        </init-param>
+    </filter>
+
+    <filter-mapping>
+        <filter-name>RateLimitFilter Login</filter-name>
+        <url-pattern>/auth/*</url-pattern>
+    </filter-mapping>]]></source>
+
+  </subsection>
+
+</section>
+
 
 <section name="Remote Address Filter">
 
@@ -979,6 +1246,11 @@ FINE: Request "/docs/config/manager.html" with response status "200"
     <code>::1</code>. Consult your access logs for the actual value.</p>
 
     <p>See also: <a href="#Remote_Host_Filter">Remote Host Filter</a>.</p>
+
+    <p><strong>Note:</strong> This Filter is deprecated and will be removed in
+    Tomcat 12. Use the <a href="#Remote_CIDR_Filter">Remote CIDR Filter</a>
+    instead.</p>
+
   </subsection>
 
   <subsection name="Filter Class Name">
@@ -1120,7 +1392,7 @@ FINE: Request "/docs/config/manager.html" with response status "200"
       IPv6 are both fully supported.
     </p>
 
-    <p>This filter mimicks Apache httpd's <code>Order</code>,
+    <p>This filter mimics Apache httpd's <code>Order</code>,
       <code>Allow from</code> and <code>Deny from</code> directives,
       with the following limitations:
     </p>
@@ -1193,21 +1465,20 @@ FINE: Request "/docs/config/manager.html" with response status "200"
   </subsection>
 
   <subsection name="Example">
-    <p>To allow access only for the clients connecting from localhost:</p>
-    <pre>
-      &lt;filter>
-      &lt;filter-name>Remote CIDR Filter&lt;/filter-name>
-      &lt;filter-class>org.apache.catalina.filters.RemoteCIDRFilter&lt;/filter-class>
-      &lt;init-param>
-      &lt;param-name>allow&lt;/param-name>
-      &lt;param-value>127.0.0.0/8, ::1&lt;/param-value>
-      &lt;/init-param>
-      &lt;/filter>
-      &lt;filter-mapping>
-      &lt;filter-name>Remote CIDR Filter&lt;/filter-name>
-      &lt;url-pattern>/*&lt;/url-pattern>
-      &lt;/filter-mapping>
-    </pre>
+    <p>To allow access only for the clients connecting from localhost and from local network 192.68.0.*:</p>
+    <source><![CDATA[      <filter>
+        <filter-name>Remote CIDR Filter</filter-name>
+        <filter-class>org.apache.catalina.filters.RemoteCIDRFilter</filter-class>
+        <init-param>
+          <param-name>allow</param-name>
+          <param-value>127.0.0.1, ::1, 192.68.0.0/24</param-value>
+        </init-param>
+      </filter>
+
+      <filter-mapping>
+        <filter-name>Remote CIDR Filter</filter-name>
+        <url-pattern>/*</url-pattern>
+      </filter-mapping>]]></source>
   </subsection>
 
 </section>
@@ -1263,36 +1534,42 @@ FINE: Request "/docs/config/manager.html" with response status "200"
 
   </subsection>
 
-  <subsection name="Basic configuration to handle &#x27;x-forwarded-for&#x27;">
+  <subsection name="Security">
+
+    <p>The filter changes security sensitive properties of the request based on
+       values provided in HTTP headers. It is essential that Tomcat is able to
+       trust these values for secure operation. Therefore, the first proxy
+       (trusted or internal) must ensure that any of the HTTP headers used by
+       the filter are removed from the untrusted request received.</p>
+    <p>Only the HTTP headers used by the filter need to be removed. The names of
+       those headers will vary depending on configuration. Assuming default
+       header names (adjust as necessary if non-default header names are used),
+       the headers that need to be removed are:</p>
+       <ul>
+         <li><code>x-forwarded-for</code></li>
+         <li><code>x-forwarded-by</code></li>
+         <li><code>x-forwarded-proto</code></li>
+         <li><code>x-forwarded-host</code></li>
+         <li><code>x-forwarded-port</code></li>
+       </ul>
+     <p>Note that HTTP header names are case-insensitive.</p>
+
+     <p>The default value for <code>internalProxies</code> assumes that all
+        local networks are trusted. If this is not the case, adjust the value
+        accordingly.</p>
+
+  </subsection>
+
+  <subsection name="Basic configuration">
     <p>
-    The filter will process the <code>x-forwarded-for</code> http header.
+    The filter will process <code>x-forwarded-for</code> and
+    <code>x-forwarded-proto</code> HTTP headers. Expected value for the
+    <code>x-forwarded-proto</code> header in case of SSL connections is
+    <code>https</code> (case insensitive).
     </p>
     <source><![CDATA[      <filter>
         <filter-name>RemoteIpFilter</filter-name>
         <filter-class>org.apache.catalina.filters.RemoteIpFilter</filter-class>
-      </filter>
-
-      <filter-mapping>
-        <filter-name>RemoteIpFilter</filter-name>
-        <url-pattern>/*</url-pattern>
-        <dispatcher>REQUEST</dispatcher>
-      </filter-mapping>]]></source>
-  </subsection>
-
-  <subsection name="Basic configuration to handle &#x27;x-forwarded-for&#x27; and &#x27;x-forwarded-proto&#x27;">
-
-    <p>
-    The filter will process <code>x-forwarded-for</code> and
-    <code>x-forwarded-proto</code> http headers. Expected value for the
-    <code>x-forwarded-proto</code> header in case of SSL connections is
-    <code>https</code> (case insensitive). </p>
-    <source><![CDATA[      <filter>
-        <filter-name>RemoteIpFilter</filter-name>
-        <filter-class>org.apache.catalina.filters.RemoteIpFilter</filter-class>
-        <init-param>
-          <param-name>protocolHeader</param-name>
-          <param-value>x-forwarded-proto</param-value>
-        </init-param>
       </filter>
 
       <filter-mapping>
@@ -1308,7 +1585,7 @@ FINE: Request "/docs/config/manager.html" with response status "200"
        <filter-name>RemoteIpFilter</filter-name>
        <filter-class>org.apache.catalina.filters.RemoteIpFilter</filter-class>
        <init-param>
-         <param-name>allowedInternalProxies</param-name>
+         <param-name>internalProxies</param-name>
          <param-value>192\.168\.0\.10|192\.168\.0\.11</param-value>
        </init-param>
        <init-param>
@@ -1323,7 +1600,13 @@ FINE: Request "/docs/config/manager.html" with response status "200"
          <param-name>protocolHeader</param-name>
          <param-value>x-forwarded-proto</param-value>
        </init-param>
-     </filter>]]></source>
+     </filter>
+
+     <filter-mapping>
+       <filter-name>RemoteIpFilter</filter-name>
+       <url-pattern>/*</url-pattern>
+       <dispatcher>REQUEST</dispatcher>
+     </filter-mapping>]]></source>
     <p>Request values:</p>
     <table class="defaultTable">
       <tr>
@@ -1383,7 +1666,7 @@ FINE: Request "/docs/config/manager.html" with response status "200"
        <filter-name>RemoteIpFilter</filter-name>
        <filter-class>org.apache.catalina.filters.RemoteIpFilter</filter-class>
        <init-param>
-         <param-name>allowedInternalProxies</param-name>
+         <param-name>internalProxies</param-name>
          <param-value>192\.168\.0\.10|192\.168\.0\.11</param-value>
        </init-param>
        <init-param>
@@ -1398,7 +1681,13 @@ FINE: Request "/docs/config/manager.html" with response status "200"
          <param-name>trustedProxies</param-name>
          <param-value>proxy1|proxy2</param-value>
        </init-param>
-     </filter>]]></source>
+     </filter>
+
+     <filter-mapping>
+       <filter-name>RemoteIpFilter</filter-name>
+       <url-pattern>/*</url-pattern>
+       <dispatcher>REQUEST</dispatcher>
+     </filter-mapping>]]></source>
     <p>Request values:</p>
     <table class="defaultTable">
       <tr>
@@ -1437,7 +1726,7 @@ FINE: Request "/docs/config/manager.html" with response status "200"
        <filter-name>RemoteIpFilter</filter-name>
        <filter-class>org.apache.catalina.filters.RemoteIpFilter</filter-class>
        <init-param>
-         <param-name>allowedInternalProxies</param-name>
+         <param-name>internalProxies</param-name>
          <param-value>192\.168\.0\.10|192\.168\.0\.11</param-value>
        </init-param>
        <init-param>
@@ -1452,7 +1741,13 @@ FINE: Request "/docs/config/manager.html" with response status "200"
          <param-name>trustedProxies</param-name>
          <param-value>proxy1|proxy2</param-value>
        </init-param>
-     </filter>]]></source>
+     </filter>
+
+     <filter-mapping>
+       <filter-name>RemoteIpFilter</filter-name>
+       <url-pattern>/*</url-pattern>
+       <dispatcher>REQUEST</dispatcher>
+     </filter-mapping>]]></source>
     <p>Request values:</p>
     <table class="defaultTable">
       <tr>
@@ -1494,7 +1789,7 @@ FINE: Request "/docs/config/manager.html" with response status "200"
        <filter-name>RemoteIpFilter</filter-name>
        <filter-class>org.apache.catalina.filters.RemoteIpFilter</filter-class>
        <init-param>
-         <param-name>allowedInternalProxies</param-name>
+         <param-name>internalProxies</param-name>
          <param-value>192\.168\.0\.10|192\.168\.0\.11</param-value>
        </init-param>
        <init-param>
@@ -1509,7 +1804,13 @@ FINE: Request "/docs/config/manager.html" with response status "200"
          <param-name>trustedProxies</param-name>
          <param-value>proxy1|proxy2</param-value>
        </init-param>
-     </filter>]]></source>
+     </filter>
+
+     <filter-mapping>
+       <filter-name>RemoteIpFilter</filter-name>
+       <url-pattern>/*</url-pattern>
+       <dispatcher>REQUEST</dispatcher>
+     </filter-mapping>]]></source>
     <p>Request values:</p>
     <table class="defaultTable">
       <tr>
@@ -1551,6 +1852,12 @@ FINE: Request "/docs/config/manager.html" with response status "200"
 
     <attributes>
 
+      <attribute name="enableLookups" required="false">
+        <p>Should a DNS lookup be performed to provide a host name when calling
+        <code>ServletRequest#getRemoteHost()</code>. If not specified, the
+        default of <code>false</code> is used.</p>
+      </attribute>
+
       <attribute name="remoteIpHeader" required="false">
         <p>Name of the HTTP Header read by this valve that holds the list of
         traversed IP addresses starting from the requesting client. If not
@@ -1563,7 +1870,7 @@ FINE: Request "/docs/config/manager.html" with response status "200"
         Internal proxies that appear in the <strong>remoteIpHeader</strong> will
         be trusted and will not appear in the <strong>proxiesHeader</strong>
         value. If not specified the default value of <code>
-        10\.\d{1,3}\.\d{1,3}\.\d{1,3}|192\.168\.\d{1,3}\.\d{1,3}|169\.254\.\d{1,3}\.\d{1,3}|127\.\d{1,3}\.\d{1,3}\.\d{1,3}|172\.1[6-9]{1}\.\d{1,3}\.\d{1,3}|172\.2[0-9]{1}\.\d{1,3}\.\d{1,3}|172\.3[0-1]{1}\.\d{1,3}\.\d{1,3}|0:0:0:0:0:0:0:1
+        10\.\d{1,3}\.\d{1,3}\.\d{1,3}|192\.168\.\d{1,3}\.\d{1,3}|169\.254\.\d{1,3}\.\d{1,3}|127\.\d{1,3}\.\d{1,3}\.\d{1,3}|100\.6[4-9]{1}\.\d{1,3}\.\d{1,3}|100\.[7-9]{1}\d{1}\.\d{1,3}\.\d{1,3}|100\.1[0-1]{1}\d{1}\.\d{1,3}\.\d{1,3}|100\.12[0-7]{1}\.\d{1,3}\.\d{1,3}|172\.1[6-9]{1}\.\d{1,3}\.\d{1,3}|172\.2[0-9]{1}\.\d{1,3}\.\d{1,3}|172\.3[0-1]{1}\.\d{1,3}\.\d{1,3}|0:0:0:0:0:0:0:1|::1|fe[89ab]\p{XDigit}:.*|"f[cd]\p{XDigit}{2}+:.*
         </code> will be used.</p>
       </attribute>
 
@@ -1592,9 +1899,14 @@ FINE: Request "/docs/config/manager.html" with response status "200"
       </attribute>
 
       <attribute name="protocolHeader" required="false">
-        <p>Name of the HTTP Header read by this valve that holds the protocol
-        used by the client to connect to the proxy. If not specified, the
-        default of <code>X-Forwarded-Proto</code> is used.</p>
+        <p>Name of the HTTP Header read by this filter that holds the protocol
+        used by the client to connect to the proxy. Multiple headers with the
+        same name will be merged as per RFC 9110, section 5.2. If multiple
+        values are present they must all match
+        <code>protocolHeaderHttpsValue</code> for the request to be treated as
+        an HTTPS request else it will be treated as HTTP. If not specified, the
+        default of <code>X-Forwarded-Proto</code> is used. To disable this
+        feature set the value to the empty string.</p>
       </attribute>
 
       <attribute name="hostHeader" required="false">
@@ -1720,12 +2032,12 @@ org.apache.catalina.filters.RequestDumperFilter.handlers = \
 <section name="Session Initializer Filter">
 
   <subsection name="Introduction">
-    <p>The Session Initializer Filter initializes the <code>javax.servlet.http.HttpSession</code>
+    <p>The Session Initializer Filter initializes the <code>jakarta.servlet.http.HttpSession</code>
     before the Request is processed.  This is required for JSR-356 compliant WebSocket implementations,
     if the <code>HttpSession</code> is needed during the HandShake phase.</p>
 
     <p>The Java API for WebSocket does not mandate that an <code>HttpSession</code> would
-    be initialized upon request, and thus <code>javax.servlet.http.HttpServletRequest</code>'s
+    be initialized upon request, and thus <code>jakarta.servlet.http.HttpServletRequest</code>'s
     <code>getSession()</code> returns <code>null</code> if the <code>HttpSession</code> was not
     initialized in advance.</p>
 
@@ -1815,12 +2127,12 @@ org.apache.catalina.filters.RequestDumperFilter.handlers = \
 
   <subsection name="Introduction">
 
-    <p>Microsoft operating systems have two WebDAV clients. One is used with
-    port 80, the other is used for all other ports. The implementation used with
-    port 80 does not adhere to the WebDAV specification and fails when trying to
-    communicate with the Tomcat WebDAV Servlet. This Filter provides a fix for
-    this by forcing the use of the WebDAV implementation that works, even when
-    connecting via port 80.</p>
+    <p>This filter was written for Windows NT era Microsoft operating systems
+    that shipped with WebDAV clients that were not compliant with the RFC. This
+    filter is no longer required for current WebDAV clients provided by current
+    (Windows 10 / Windows Server 2012 onwards) Windows operating systems. It has
+    been deprecated and will be removed in Tomcat 11 onwards.
+    </p>
 
   </subsection>
 

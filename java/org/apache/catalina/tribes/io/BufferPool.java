@@ -21,20 +21,17 @@ import org.apache.catalina.tribes.util.StringManager;
 import org.apache.juli.logging.Log;
 import org.apache.juli.logging.LogFactory;
 
-/**
- *
- *
- * @version 1.0
- */
+/** Pool for reusing byte buffers in Tribes messaging. */
 public class BufferPool {
     private static final Log log = LogFactory.getLog(BufferPool.class);
 
-    public static final int DEFAULT_POOL_SIZE = 100*1024*1024; //100MB
+    /** Default maximum pool size in bytes (100 MiB). */
+    public static final int DEFAULT_POOL_SIZE = 100 * 1024 * 1024; // 100 MiB
 
+    /** String manager for internationalized messages. */
     protected static final StringManager sm = StringManager.getManager(BufferPool.class);
 
-
-
+    /** Singleton instance of the buffer pool. */
     protected static volatile BufferPool instance = null;
     protected final BufferPoolAPI pool;
 
@@ -43,28 +40,40 @@ public class BufferPool {
     }
 
     public XByteBuffer getBuffer(int minSize, boolean discard) {
-        if ( pool != null ) return pool.getBuffer(minSize, discard);
-        else return new XByteBuffer(minSize,discard);
+        if (pool != null) {
+            return pool.getBuffer(minSize, discard);
+        } else {
+            return new XByteBuffer(minSize, discard);
+        }
     }
 
     public void returnBuffer(XByteBuffer buffer) {
-        if ( pool != null ) pool.returnBuffer(buffer);
+        if (pool != null) {
+            pool.returnBuffer(buffer);
+        }
     }
 
     public void clear() {
-        if ( pool != null ) pool.clear();
+        if (pool != null) {
+            pool.clear();
+        }
     }
 
 
+    /**
+     * Returns the singleton buffer pool instance.
+     *
+     * @return the buffer pool
+     */
     public static BufferPool getBufferPool() {
         if (instance == null) {
             synchronized (BufferPool.class) {
                 if (instance == null) {
-                   BufferPoolAPI pool = new BufferPool15Impl();
-                   pool.setMaxSize(DEFAULT_POOL_SIZE);
-                   log.info(sm.getString("bufferPool.created",
-                           Integer.toString(DEFAULT_POOL_SIZE), pool.getClass().getName()));
-                   instance = new BufferPool(pool);
+                    BufferPoolAPI pool = new BufferPool15Impl();
+                    pool.setMaxSize(DEFAULT_POOL_SIZE);
+                    log.info(sm.getString("bufferPool.created", Integer.toString(DEFAULT_POOL_SIZE),
+                            pool.getClass().getName()));
+                    instance = new BufferPool(pool);
                 }
             }
         }
@@ -72,13 +81,13 @@ public class BufferPool {
     }
 
 
-    public static interface BufferPoolAPI {
-        public void setMaxSize(int bytes);
+    public interface BufferPoolAPI {
+        void setMaxSize(int bytes);
 
-        public XByteBuffer getBuffer(int minSize, boolean discard);
+        XByteBuffer getBuffer(int minSize, boolean discard);
 
-        public void returnBuffer(XByteBuffer buffer);
+        void returnBuffer(XByteBuffer buffer);
 
-        public void clear();
+        void clear();
     }
 }

@@ -23,6 +23,14 @@ import java.net.SocketTimeoutException;
 import java.nio.ByteBuffer;
 import java.nio.channels.CompletionHandler;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.LinkOption;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.nio.file.attribute.BasicFileAttributes;
+import java.nio.file.attribute.FileAttribute;
+import java.nio.file.attribute.PosixFilePermission;
+import java.nio.file.attribute.PosixFilePermissions;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Map;
@@ -56,6 +64,7 @@ import org.apache.tomcat.jni.Status;
 import org.apache.tomcat.util.ExceptionUtils;
 import org.apache.tomcat.util.buf.ByteBufferUtils;
 import org.apache.tomcat.util.collections.SynchronizedStack;
+import org.apache.tomcat.util.compat.JrePlatform;
 import org.apache.tomcat.util.net.AbstractEndpoint.Handler.SocketState;
 import org.apache.tomcat.util.net.Acceptor.AcceptorState;
 import org.apache.tomcat.util.net.openssl.OpenSSLContext;
@@ -71,17 +80,18 @@ import org.apache.tomcat.util.net.openssl.OpenSSLUtil;
  * <li>Worker threads pool</li>
  * </ul>
  *
- * When switching to Java 5, there's an opportunity to use the virtual
- * machine's thread pool.
- *
- * @author Mladen Turk
- * @author Remy Maucherat
+ * @deprecated The APR/Native Connector will be removed in Tomcat 9.1.x onwards and has been removed from Tomcat 10.1.x
+ *                 onwards.
  */
+@Deprecated
 public class AprEndpoint extends AbstractEndpoint<Long,Long> implements SNICallBack {
 
     // -------------------------------------------------------------- Constants
 
     private static final Log log = LogFactory.getLog(AprEndpoint.class);
+    private static final Log logCertificate = LogFactory.getLog(AprEndpoint.class.getName() + ".certificate");
+
+    private static final ThreadLocal<SocketWrapperBase<Long>> localWrapper = new ThreadLocal<>();
 
     // ----------------------------------------------------------------- Fields
 
@@ -104,9 +114,14 @@ public class AprEndpoint extends AbstractEndpoint<Long,Long> implements SNICallB
 
 
     /**
-     * SSL context.
+     * Default SSL context. SNI callback may select a different SSL context.
      */
-    protected long sslContext = 0;
+    protected volatile long sslContext = 0;
+
+
+    private int previousAcceptedPort = -1;
+    private String previousAcceptedAddress = null;
+    private long previousAcceptedSocketNanoTime = 0;
 
 
     // ------------------------------------------------------------ Constructor
@@ -119,53 +134,80 @@ public class AprEndpoint extends AbstractEndpoint<Long,Long> implements SNICallB
         setUseAsyncIO(false);
     }
 
-    // ------------------------------------------------------------- Properties
 
+    // ------------------------------------------------------------- Properties
 
     /**
      * Defer accept.
      */
     protected boolean deferAccept = true;
-    public void setDeferAccept(boolean deferAccept) { this.deferAccept = deferAccept; }
+
+    public void setDeferAccept(boolean deferAccept) {
+        this.deferAccept = deferAccept;
+    }
+
     @Override
-    public boolean getDeferAccept() { return deferAccept; }
+    public boolean getDeferAccept() {
+        return deferAccept;
+    }
 
 
     private boolean ipv6v6only = false;
-    public void setIpv6v6only(boolean ipv6v6only) { this.ipv6v6only = ipv6v6only; }
-    public boolean getIpv6v6only() { return ipv6v6only; }
+
+    public void setIpv6v6only(boolean ipv6v6only) {
+        this.ipv6v6only = ipv6v6only;
+    }
+
+    public boolean getIpv6v6only() {
+        return ipv6v6only;
+    }
 
 
     /**
      * Size of the sendfile (= concurrent files which can be served).
      */
     protected int sendfileSize = 1 * 1024;
-    public void setSendfileSize(int sendfileSize) { this.sendfileSize = sendfileSize; }
-    public int getSendfileSize() { return sendfileSize; }
+
+    public void setSendfileSize(int sendfileSize) {
+        this.sendfileSize = sendfileSize;
+    }
+
+    public int getSendfileSize() {
+        return sendfileSize;
+    }
 
 
     /**
-     * Poll interval, in microseconds. The smaller the value, the more CPU the poller
-     * will use, but the more responsive to activity it will be.
+     * Poll interval, in microseconds. The smaller the value, the more CPU the poller will use, but the more responsive
+     * to activity it will be.
      */
     protected int pollTime = 2000;
-    public int getPollTime() { return pollTime; }
-    public void setPollTime(int pollTime) { if (pollTime > 0) { this.pollTime = pollTime; } }
+
+    public int getPollTime() {
+        return pollTime;
+    }
+
+    public void setPollTime(int pollTime) {
+        if (pollTime > 0) {
+            this.pollTime = pollTime;
+        }
+    }
 
 
     /*
-     * When the endpoint is created and configured, the APR library will not
-     * have been initialised. This flag is used to determine if the default
-     * value of useSendFile should be changed if the APR library indicates it
-     * supports send file once it has been initialised. If useSendFile is set
-     * by configuration, that configuration will always take priority.
+     * When the endpoint is created and configured, the APR library will not have been initialised. This flag is used to
+     * determine if the default value of useSendFile should be changed if the APR library indicates it supports send
+     * file once it has been initialised. If useSendFile is set by configuration, that configuration will always take
+     * priority.
      */
     private boolean useSendFileSet = false;
+
     @Override
     public void setUseSendfile(boolean useSendfile) {
         useSendFileSet = true;
         super.setUseSendfile(useSendfile);
     }
+
     /*
      * For internal use to avoid setting the useSendFileSet flag
      */
@@ -178,6 +220,7 @@ public class AprEndpoint extends AbstractEndpoint<Long,Long> implements SNICallB
      * The socket poller.
      */
     protected Poller poller = null;
+
     public Poller getPoller() {
         return poller;
     }
@@ -187,6 +230,7 @@ public class AprEndpoint extends AbstractEndpoint<Long,Long> implements SNICallB
      * The static file sender.
      */
     protected Sendfile sendfile = null;
+
     public Sendfile getSendfile() {
         return sendfile;
     }
@@ -223,24 +267,135 @@ public class AprEndpoint extends AbstractEndpoint<Long,Long> implements SNICallB
 
 
     /**
-     * This endpoint does not support <code>-1</code> for unlimited connections,
-     * nor does it support setting this attribute while the endpoint is running.
-     *
-     * {@inheritDoc}
+     * This endpoint does not support <code>-1</code> for unlimited connections, nor does it support setting this
+     * attribute while the endpoint is running. {@inheritDoc}
      */
     @Override
     public void setMaxConnections(int maxConnections) {
         if (maxConnections == -1) {
-            log.warn(sm.getString("endpoint.apr.maxConnections.unlimited",
-                    Integer.valueOf(getMaxConnections())));
+            log.warn(sm.getString("endpoint.apr.maxConnections.unlimited", Integer.valueOf(getMaxConnections())));
             return;
         }
         if (running) {
-            log.warn(sm.getString("endpoint.apr.maxConnections.running",
-                    Integer.valueOf(getMaxConnections())));
+            log.warn(sm.getString("endpoint.apr.maxConnections.running", Integer.valueOf(getMaxConnections())));
             return;
         }
         super.setMaxConnections(maxConnections);
+    }
+
+
+    /**
+     * Path for the Unix Domain Socket, used to create the socket address.
+     */
+    private String unixDomainSocketPath = null;
+
+    public String getUnixDomainSocketPath() {
+        return this.unixDomainSocketPath;
+    }
+
+    public void setUnixDomainSocketPath(String unixDomainSocketPath) {
+        this.unixDomainSocketPath = unixDomainSocketPath;
+    }
+
+
+    /**
+     * Permissions which will be set on the Unix Domain Socket if it is created.
+     */
+    private String unixDomainSocketPathPermissions = null;
+
+    public String getUnixDomainSocketPathPermissions() {
+        return this.unixDomainSocketPathPermissions;
+    }
+
+    public void setUnixDomainSocketPathPermissions(String unixDomainSocketPathPermissions) {
+        this.unixDomainSocketPathPermissions = unixDomainSocketPathPermissions;
+    }
+
+
+    /**
+     * Permissions which will be checked for / set on the parent directory of the Unix Domain Socket path before the
+     * Unix Domain Socket is created.
+     */
+    private String unixDomainSocketParentPermissions = null;
+
+    /**
+     * Sets the permissions that will be checked for / set on the parent directory of the Unix Domain Socket path
+     * before the Unix Domain Socket is created.
+     *
+     * @param unixDomainSocketParentPermissions the permissions string
+     */
+    public void setUnixDomainSocketParentPermissions(String unixDomainSocketParentPermissions) {
+        this.unixDomainSocketParentPermissions = unixDomainSocketParentPermissions;
+    }
+
+    /**
+     * Returns the permissions that will be checked for / set on the parent directory of the Unix Domain Socket path
+     * before the Unix Domain Socket is created.
+     *
+     * @return the permissions string
+     */
+    public String getUnixDomainSocketParentPermissions() {
+        return unixDomainSocketParentPermissions;
+    }
+
+    private Set<PosixFilePermission> getUnixDomainSocketParentPermissionsInternal() {
+        String permissionString = getUnixDomainSocketParentPermissions();
+        boolean derivePermissions = false;
+
+        if (permissionString == null) {
+            permissionString = getUnixDomainSocketPathPermissions();
+            /*
+             * UDS permissions will be file permissions which will be missing the execute bit required at the directory
+             * level and may include write permissions which are not required so set flag to derive a sensible default.
+             */
+            derivePermissions = true;
+        }
+
+        if (permissionString == null || permissionString.length() == 0) {
+            return null;
+        }
+
+        Set<PosixFilePermission> result = PosixFilePermissions.fromString(permissionString);
+        if (derivePermissions) {
+            // Add execute before removing write
+            if (result.contains(PosixFilePermission.OWNER_READ) || result.contains(PosixFilePermission.OWNER_WRITE)) {
+                result.add(PosixFilePermission.OWNER_EXECUTE);
+            }
+            if (result.contains(PosixFilePermission.GROUP_READ) || result.contains(PosixFilePermission.GROUP_WRITE)) {
+                result.add(PosixFilePermission.GROUP_EXECUTE);
+            }
+            if (result.contains(PosixFilePermission.OTHERS_READ) || result.contains(PosixFilePermission.OTHERS_WRITE)) {
+                result.add(PosixFilePermission.OTHERS_EXECUTE);
+            }
+            result.remove(PosixFilePermission.GROUP_WRITE);
+            result.remove(PosixFilePermission.OTHERS_WRITE);
+        }
+
+        return result;
+    }
+
+
+    /**
+     * If the parent directory for the UDS already exists, the name of the expected owner.
+     */
+    private String unixDomainSocketParentOwner = null;
+
+    /**
+     * Returns the expected name of the owner of the parent directory for the UDS if it already exists.
+     *
+     * @return the owner name
+     */
+    public String getUnixDomainSocketParentOwner() {
+        return unixDomainSocketParentOwner;
+    }
+
+    /**
+     * Sets the expected name of the owner of the parent directory for the UDS if it already exists.
+     *
+     * @param unixDomainSocketParentOwner the expected owner name
+     */
+    public void setUnixDomainSocketParentOwner(String unixDomainSocketParentOwner) {
+        this.unixDomainSocketParentOwner = unixDomainSocketParentOwner;
     }
 
 
@@ -274,6 +429,16 @@ public class AprEndpoint extends AbstractEndpoint<Long,Long> implements SNICallB
     }
 
 
+    @Override
+    public String getId() {
+        if (getUnixDomainSocketPath() != null) {
+            return getUnixDomainSocketPath();
+        } else {
+            return null;
+        }
+    }
+
+
     // ----------------------------------------------- Public Lifecycle Methods
 
 
@@ -282,6 +447,9 @@ public class AprEndpoint extends AbstractEndpoint<Long,Long> implements SNICallB
      */
     @Override
     public void bind() throws Exception {
+
+        int family;
+        String hostname = null;
 
         // Create the root APR memory pool
         try {
@@ -292,52 +460,143 @@ public class AprEndpoint extends AbstractEndpoint<Long,Long> implements SNICallB
 
         // Create the pool for the server socket
         serverSockPool = Pool.create(rootPool);
-        // Create the APR address that will be bound
-        String addressStr = null;
-        if (getAddress() != null) {
-            addressStr = getAddress().getHostAddress();
-        }
-        int family = Socket.APR_INET;
-        if (Library.APR_HAVE_IPV6) {
-            if (addressStr == null) {
-                if (!OS.IS_BSD) {
-                    family = Socket.APR_UNSPEC;
-                }
-            } else if (addressStr.indexOf(':') >= 0) {
-                family = Socket.APR_UNSPEC;
-            }
-         }
 
-        long inetAddress = Address.info(addressStr, family, getPortWithOffset(), 0, rootPool);
-        // Create the APR server socket
-        serverSock = Socket.create(Address.getInfo(inetAddress).family,
-                Socket.SOCK_STREAM,
-                Socket.APR_PROTO_TCP, rootPool);
-        if (OS.IS_UNIX) {
-            Socket.optSet(serverSock, Socket.APR_SO_REUSEADDR, 1);
-        }
-        if (Library.APR_HAVE_IPV6) {
-            if (getIpv6v6only()) {
-                Socket.optSet(serverSock, Socket.APR_IPV6_V6ONLY, 1);
+        // Create the APR address that will be bound
+        if (getUnixDomainSocketPath() != null) {
+            if (Library.APR_HAVE_UNIX) {
+                hostname = getUnixDomainSocketPath();
+                family = Socket.APR_UNIX;
             } else {
-                Socket.optSet(serverSock, Socket.APR_IPV6_V6ONLY, 0);
+                throw new Exception(sm.getString("endpoint.init.unixnotavail"));
             }
+
+            /*
+             * If permissions are configured, need to create the parent folder first with the correct permissions to
+             * avoid a TOCTOU issue with the Unix Domain Socket.
+             */
+            Set<PosixFilePermission> parentPosixPermissions = getUnixDomainSocketParentPermissionsInternal();
+            if (parentPosixPermissions != null) {
+                Path udsPath = Paths.get(getUnixDomainSocketPath()).toAbsolutePath();
+                Path parentPath = udsPath.getParent();
+                java.io.File parentFile = parentPath.toFile();
+
+                boolean posixSupported = parentPath.getFileSystem().supportedFileAttributeViews().contains("posix");
+
+                if (!Files.exists(parentPath, LinkOption.NOFOLLOW_LINKS) || !Files.readAttributes(
+                        parentPath, BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS).isDirectory()) {
+                    if (posixSupported) {
+                        /*
+                         * The immediate parent will be configured with the requested permissions. If other parents are
+                         * created, they will be created with the specified permissions masked as per the current
+                         * process's UMASK.
+                         */
+                        Files.createDirectories(parentPath, PosixFilePermissions.asFileAttribute(parentPosixPermissions));
+                        FileAttribute<Set<PosixFilePermission>> attrs = PosixFilePermissions.asFileAttribute(parentPosixPermissions);
+                        Files.setAttribute(parentPath, attrs.name(), attrs.value());
+                    } else {
+                        Files.createDirectories(parentPath);
+                    }
+                }
+
+                // Directory should exist now
+                if (posixSupported) {
+                    // Check permissions are at least as restrictive as those specified.
+                    Set<PosixFilePermission> currentPosixPermissions =
+                            Files.getPosixFilePermissions(parentPath, LinkOption.NOFOLLOW_LINKS);
+                    currentPosixPermissions.removeAll(parentPosixPermissions);
+                    if (!currentPosixPermissions.isEmpty()) {
+                        throw new IllegalStateException(sm.getString("endpoint.nio.uds.parentLaxPermissions",
+                                parentPath, currentPosixPermissions));
+                    }
+                } else {
+                    log.warn(sm.getString("endpoint.nio.uds.parentNotPosix", parentPath));
+                    setPermissionsForNonPosixFile(parentFile, parentPosixPermissions);
+                }
+
+                /*
+                 * Check the owner - should either be the current user (if created above) or the expected owner (if
+                 * pre-created).
+                 */
+                String expectedOwner = getUnixDomainSocketParentOwner();
+                if (expectedOwner == null || !expectedOwner.isEmpty()) {
+                    String owner;
+                    try {
+                        owner = Files.getOwner(parentPath, LinkOption.NOFOLLOW_LINKS).getName();
+                    } catch (Throwable t) {
+                        ExceptionUtils.handleThrowable(t);
+                        throw new IllegalStateException(sm.getString("endpoint.nio.uds.noOwner", parentPath), t);
+                    }
+                    if (!owner.equals(expectedOwner)) {
+                        String currentUser = System.getProperty("user.name");
+                        if (!owner.equals(currentUser)) {
+                            throw new IllegalStateException(sm.getString("endpoint.nio.uds.parentOwner",
+                                    parentPath, owner, expectedOwner, currentUser));
+
+                        }
+                    }
+                }
+            }
+        } else {
+
+            if (getAddress() != null) {
+                hostname = getAddress().getHostAddress();
+            }
+            family = Socket.APR_UNSPEC;
         }
-        // Deal with the firewalls that tend to drop the inactive sockets
-        Socket.optSet(serverSock, Socket.APR_SO_KEEPALIVE, 1);
+
+        long sockAddress = Address.info(hostname, family, getPortWithOffset(), 0, rootPool);
+
+        // Create the APR server socket
+        if (family == Socket.APR_UNIX) {
+            serverSock = Socket.create(family, Socket.SOCK_STREAM, 0, rootPool);
+        } else {
+            int saFamily = Address.getInfo(sockAddress).family;
+            serverSock = Socket.create(saFamily, Socket.SOCK_STREAM, Socket.APR_PROTO_TCP, rootPool);
+            if (OS.IS_UNIX) {
+                Socket.optSet(serverSock, Socket.APR_SO_REUSEADDR, 1);
+            }
+            if (Library.APR_HAVE_IPV6 && saFamily == Socket.APR_INET6) {
+                if (getIpv6v6only()) {
+                    Socket.optSet(serverSock, Socket.APR_IPV6_V6ONLY, 1);
+                } else {
+                    Socket.optSet(serverSock, Socket.APR_IPV6_V6ONLY, 0);
+                }
+            }
+            // Deal with the firewalls that tend to drop the inactive sockets
+            Socket.optSet(serverSock, Socket.APR_SO_KEEPALIVE, 1);
+        }
+
         // Bind the server socket
-        int ret = Socket.bind(serverSock, inetAddress);
+        int ret = Socket.bind(serverSock, sockAddress);
         if (ret != 0) {
             throw new Exception(sm.getString("endpoint.init.bind", "" + ret, Error.strerror(ret)));
         }
+
         // Start listening on the server socket
         ret = Socket.listen(serverSock, getAcceptCount());
         if (ret != 0) {
             throw new Exception(sm.getString("endpoint.init.listen", "" + ret, Error.strerror(ret)));
         }
-        if (OS.IS_WIN32 || OS.IS_WIN64) {
-            // On Windows set the reuseaddr flag after the bind/listen
-            Socket.optSet(serverSock, Socket.APR_SO_REUSEADDR, 1);
+
+        if (family == Socket.APR_UNIX) {
+            if (getUnixDomainSocketPathPermissions() != null) {
+                Path path = Paths.get(getUnixDomainSocketPath());
+                Set<PosixFilePermission> permissions =
+                        PosixFilePermissions.fromString(getUnixDomainSocketPathPermissions());
+                if (path.getFileSystem().supportedFileAttributeViews().contains("posix")) {
+                    FileAttribute<Set<PosixFilePermission>> attrs = PosixFilePermissions.asFileAttribute(permissions);
+                    Files.setAttribute(path, attrs.name(), attrs.value());
+                } else {
+                    log.warn(sm.getString("endpoint.nio.uds.notPosix", path));
+                    java.io.File file = path.toFile();
+                    setPermissionsForNonPosixFile(file, permissions);
+                }
+            }
+        } else {
+            if (OS.IS_WIN32 || OS.IS_WIN64) {
+                // On Windows set the reuseaddr flag after the bind/listen
+                Socket.optSet(serverSock, Socket.APR_SO_REUSEADDR, 1);
+            }
         }
 
         // Enable Sendfile by default if it has not been configured but usage on
@@ -364,12 +623,10 @@ public class AprEndpoint extends AbstractEndpoint<Long,Long> implements SNICallB
             }
             SSLHostConfig defaultSSLHostConfig = sslHostConfigs.get(getDefaultSSLHostConfigName());
             if (defaultSSLHostConfig == null) {
-                throw new IllegalArgumentException(sm.getString("endpoint.noSslHostConfig",
-                        getDefaultSSLHostConfigName(), getName()));
+                throw new IllegalArgumentException(
+                        sm.getString("endpoint.noSslHostConfig", getDefaultSSLHostConfigName(), getName()));
             }
-            Long defaultSSLContext = defaultSSLHostConfig.getOpenSslContext();
-            sslContext = defaultSSLContext.longValue();
-            SSLContext.registerDefault(defaultSSLContext, this);
+            setDefaultSslHostConfig(defaultSSLHostConfig);
 
             // For now, sendfile is not supported with SSL
             if (getUseSendfile()) {
@@ -381,6 +638,15 @@ public class AprEndpoint extends AbstractEndpoint<Long,Long> implements SNICallB
         }
     }
 
+
+    private void setPermissionsForNonPosixFile(java.io.File file, Set<PosixFilePermission> permissions) {
+        if (permissions.contains(PosixFilePermission.OTHERS_READ) && !file.setReadable(true, false)) {
+            log.warn(sm.getString("endpoint.nio.perms.readFail", file.getAbsolutePath()));
+        }
+        if (permissions.contains(PosixFilePermission.OTHERS_WRITE) && !file.setWritable(true, false)) {
+            log.warn(sm.getString("endpoint.nio.perms.writeFail", file.getAbsolutePath()));
+        }
+    }
 
 
     @Override
@@ -398,6 +664,12 @@ public class AprEndpoint extends AbstractEndpoint<Long,Long> implements SNICallB
                 } catch (Exception e) {
                     throw new IllegalArgumentException(e.getMessage(), e);
                 }
+                try {
+                    KeyManager[] kms = sslUtil.getKeyManagers();
+                    certificate.setCertificateKeyManager(OpenSSLUtil.chooseKeyManager(kms));
+                } catch (Exception e) {
+                    log.debug(sm.getString("endpoint.apr.keyManagerError"), e);
+                }
             } else {
                 SSLUtil sslUtil = new OpenSSLUtil(certificate);
                 KeyManager[] kms = sslUtil.getKeyManagers();
@@ -405,7 +677,8 @@ public class AprEndpoint extends AbstractEndpoint<Long,Long> implements SNICallB
                 sslContext.addCertificate(certificate);
             }
 
-            certificate.setSslContext(sslContext);
+            certificate.setSslContextGenerated(sslContext);
+            logCertificate(certificate);
         }
 
         if (certificates.size() > 2) {
@@ -417,6 +690,10 @@ public class AprEndpoint extends AbstractEndpoint<Long,Long> implements SNICallB
 
     @Override
     public long getSslContext(String sniHostName) {
+        SocketWrapperBase<Long> socketWrapper = localWrapper.get();
+        if (socketWrapper != null) {
+            socketWrapper.setSniHostName(sniHostName);
+        }
         SSLHostConfig sslHostConfig = getSSLHostConfig(sniHostName);
         Long ctx = sslHostConfig.getOpenSslContext();
         if (ctx != null) {
@@ -426,6 +703,13 @@ public class AprEndpoint extends AbstractEndpoint<Long,Long> implements SNICallB
         return 0;
     }
 
+
+    @Override
+    protected void setDefaultSslHostConfig(SSLHostConfig sslHostConfig) {
+        Long ctx = sslHostConfig.getOpenSslContext();
+        sslContext = ctx.longValue();
+        SSLContext.registerDefault(ctx, this);
+    }
 
 
     @Override
@@ -448,8 +732,8 @@ public class AprEndpoint extends AbstractEndpoint<Long,Long> implements SNICallB
             paused = false;
 
             if (socketProperties.getProcessorCache() != 0) {
-                processorCache = new SynchronizedStack<>(SynchronizedStack.DEFAULT_SIZE,
-                        socketProperties.getProcessorCache());
+                processorCache =
+                        new SynchronizedStack<>(SynchronizedStack.DEFAULT_SIZE, socketProperties.getProcessorCache());
             }
 
             // Create worker collection
@@ -486,24 +770,19 @@ public class AprEndpoint extends AbstractEndpoint<Long,Long> implements SNICallB
         }
         if (running) {
             running = false;
+            // Stop new connections being accepted.
+            acceptor.stop(10);
+
+            // Stop the Poller calling select
             poller.stop();
-            for (SocketWrapperBase<Long> socketWrapper : connections.values()) {
-                socketWrapper.close();
+
+            if (getUseSendfile()) {
+                sendfile.stop();
             }
-            long waitLeft = 10000;
-            while (waitLeft > 0 &&
-                    acceptor.getState() != AcceptorState.ENDED &&
-                    serverSock != 0) {
-                try {
-                    Thread.sleep(50);
-                } catch (InterruptedException e) {
-                    // Ignore
-                }
-                waitLeft -= 50;
-            }
-            if (waitLeft == 0) {
-                log.warn(sm.getString("endpoint.warn.unlockAcceptorFailed",
-                        acceptor.getThreadName()));
+
+            // Wait for the acceptor to shutdown
+            if (acceptor.getState() != AcceptorState.ENDED && !getBindOnInit()) {
+                log.warn(sm.getString("endpoint.warn.unlockAcceptorFailed", acceptor.getThreadName()));
                 // If the Acceptor is still running force
                 // the hard socket close.
                 if (serverSock != 0) {
@@ -511,12 +790,63 @@ public class AprEndpoint extends AbstractEndpoint<Long,Long> implements SNICallB
                     serverSock = 0;
                 }
             }
-            // Close any sockets not in the poller performing blocking
-            // read/writes. Need to do this before destroying the poller since
-            // that will also destroy the root pool for these sockets.
-            for (Long s : connections.keySet()) {
-                Socket.shutdown(s.longValue(), Socket.APR_SHUTDOWN_READWRITE);
+
+            // Wait for Poller to stop
+            int waitMillis = 0;
+            try {
+                while (poller.pollerThread.isAlive() && waitMillis < 10000) {
+                    waitMillis++;
+                    Thread.sleep(1);
+                }
+            } catch (InterruptedException e) {
+                // Ignore
             }
+
+            if (getUseSendfile()) {
+                try {
+                    // Wait for the sendfile thread to exit, otherwise parallel
+                    // destruction of sockets which are still in the poller can cause
+                    // problems.
+                    waitMillis = 0;
+                    try {
+                        while (sendfile.sendfileThread.isAlive() && waitMillis < 10000) {
+                            waitMillis++;
+                            Thread.sleep(1);
+                        }
+                    } catch (InterruptedException e) {
+                        // Ignore
+                    }
+
+                    if (sendfile.sendfileThread.isAlive()) {
+                        log.warn(sm.getString("endpoint.sendfileThreadStop"));
+                    }
+                } catch (Exception e) {
+                    // Ignore
+                }
+            }
+
+            // Close the SocketWrapper for each open connection - this should
+            // trigger a IOException when the app (or container) tries to write.
+            for (SocketWrapperBase<Long> socketWrapper : connections.values()) {
+                socketWrapper.close();
+            }
+
+            for (Long socket : connections.keySet()) {
+                // Close the APR Socket. Need to do this before destroying the
+                // poller since that will also destroy the root pool for these
+                // sockets.
+                Socket.shutdown(socket.longValue(), Socket.APR_SHUTDOWN_READWRITE);
+            }
+
+            if (getUseSendfile()) {
+                try {
+                    sendfile.destroy();
+                } catch (Exception e) {
+                    // Ignore
+                }
+                sendfile = null;
+            }
+
             try {
                 poller.destroy();
             } catch (Exception e) {
@@ -524,15 +854,6 @@ public class AprEndpoint extends AbstractEndpoint<Long,Long> implements SNICallB
             }
             poller = null;
             connections.clear();
-            if (getUseSendfile()) {
-                try {
-                    sendfile.stop();
-                    sendfile.destroy();
-                } catch (Exception e) {
-                    // Ignore
-                }
-                sendfile = null;
-            }
             if (processorCache != null) {
                 processorCache.clear();
                 processorCache = null;
@@ -584,10 +905,11 @@ public class AprEndpoint extends AbstractEndpoint<Long,Long> implements SNICallB
 
     /**
      * Process the specified connection.
+     *
      * @param socketWrapper The socket wrapper
-     * @return <code>true</code> if the socket was correctly configured
-     *  and processing may continue, <code>false</code> if the socket needs to be
-     *  close immediately
+     *
+     * @return <code>true</code> if the socket was correctly configured and processing may continue, <code>false</code>
+     *             if the socket needs to be close immediately
      */
     protected boolean setSocketOptions(SocketWrapperBase<Long> socketWrapper) {
         long socket = socketWrapper.getSocket().longValue();
@@ -596,28 +918,46 @@ public class AprEndpoint extends AbstractEndpoint<Long,Long> implements SNICallB
         try {
 
             // 1: Set socket options: timeout, linger, etc
-            if (socketProperties.getSoLingerOn() && socketProperties.getSoLingerTime() >= 0)
+            if (socketProperties.getSoLingerOn() && socketProperties.getSoLingerTime() >= 0) {
                 Socket.optSet(socket, Socket.APR_SO_LINGER, socketProperties.getSoLingerTime());
-            if (socketProperties.getTcpNoDelay())
+            }
+            if (socketProperties.getTcpNoDelay()) {
                 Socket.optSet(socket, Socket.APR_TCP_NODELAY, (socketProperties.getTcpNoDelay() ? 1 : 0));
+            }
             Socket.timeoutSet(socket, socketProperties.getSoTimeout() * 1000);
 
             // 2: SSL handshake
             step = 2;
             if (sslContext != 0) {
-                SSLSocket.attach(sslContext, socket);
-                if (SSLSocket.handshake(socket) != 0) {
-                    if (log.isDebugEnabled()) {
-                        log.debug(sm.getString("endpoint.err.handshake") + ": " + SSL.getLastError());
-                    }
+                int rv = SSLSocket.attach(sslContext, socket);
+                if (rv != Status.APR_SUCCESS) {
+                    log.warn(sm.getString("endpoint.err.attach", Integer.valueOf(rv)));
                     return false;
+                }
+
+                // Need to make sure the socket doesn't get closed while the
+                // handshake is in progress as that could trigger a JVM crash.
+                // Like stopInternal(), use the blocking status write lock as a
+                // proxy for a lock on writing to the socket.
+                WriteLock wl = ((AprSocketWrapper) socketWrapper).getBlockingStatusWriteLock();
+                wl.lock();
+                try {
+                    localWrapper.set(socketWrapper);
+                    if (SSLSocket.handshake(socket) != 0) {
+                        if (log.isDebugEnabled()) {
+                            log.debug(sm.getString("endpoint.err.handshake") + ": " + SSL.getLastError());
+                        }
+                        return false;
+                    }
+                } finally {
+                    localWrapper.set(null);
+                    wl.unlock();
                 }
 
                 if (negotiableProtocols.size() > 0) {
                     byte[] negotiated = new byte[256];
                     int len = SSLSocket.getALPN(socket, negotiated);
-                    String negotiatedProtocol =
-                            new String(negotiated, 0, len, StandardCharsets.UTF_8);
+                    String negotiatedProtocol = new String(negotiated, 0, len, StandardCharsets.UTF_8);
                     if (negotiatedProtocol.length() > 0) {
                         socketWrapper.setNegotiatedProtocol(negotiatedProtocol);
                         if (log.isDebugEnabled()) {
@@ -644,9 +984,11 @@ public class AprEndpoint extends AbstractEndpoint<Long,Long> implements SNICallB
 
     /**
      * Allocate a new poller of the specified size.
-     * @param size The size
-     * @param pool The pool from which the poller will be allocated
+     *
+     * @param size    The size
+     * @param pool    The pool from which the poller will be allocated
      * @param timeout The timeout
+     *
      * @return the poller pointer
      */
     protected long allocatePoller(int size, long pool, int timeout) {
@@ -655,21 +997,21 @@ public class AprEndpoint extends AbstractEndpoint<Long,Long> implements SNICallB
         } catch (Error e) {
             if (Status.APR_STATUS_IS_EINVAL(e.getError())) {
                 log.info(sm.getString("endpoint.poll.limitedpollsize", "" + size));
-                return 0;
+                throw new RuntimeException(e);
             } else {
                 log.error(sm.getString("endpoint.poll.initfail"), e);
-                return -1;
+                throw new RuntimeException(e);
             }
         }
     }
 
     /**
-     * Process given socket. This is called when the socket has been
-     * accepted.
+     * Process given socket. This is called when the socket has been accepted.
+     *
      * @param socket The socket
-     * @return <code>true</code> if the socket was correctly configured
-     *  and processing may continue, <code>false</code> if the socket needs to be
-     *  close immediately
+     *
+     * @return <code>true</code> if the socket was correctly configured and processing may continue, <code>false</code>
+     *             if the socket needs to be close immediately
      */
     @Override
     protected boolean setSocketOptions(Long socket) {
@@ -677,10 +1019,27 @@ public class AprEndpoint extends AbstractEndpoint<Long,Long> implements SNICallB
             if (log.isDebugEnabled()) {
                 log.debug(sm.getString("endpoint.debug.socket", socket));
             }
+
+            // Do the duplicate accept check here rather than in serverSocketaccept()
+            // so we can cache the results in the SocketWrapper
             AprSocketWrapper wrapper = new AprSocketWrapper(socket, this);
+            // Bug does not affect Windows platform and Unix Domain Socket. Skip the check.
+            if (!JrePlatform.IS_WINDOWS && getUnixDomainSocketPath() == null) {
+                long currentNanoTime = System.nanoTime();
+                if (wrapper.getRemotePort() == previousAcceptedPort) {
+                    if (wrapper.getRemoteAddr().equals(previousAcceptedAddress)) {
+                        if (currentNanoTime - previousAcceptedSocketNanoTime < 1000) {
+                            throw new IOException(sm.getString("endpoint.err.duplicateAccept"));
+                        }
+                    }
+                }
+                previousAcceptedPort = wrapper.getRemotePort();
+                previousAcceptedAddress = wrapper.getRemoteAddr();
+                previousAcceptedSocketNanoTime = currentNanoTime;
+            }
+
             connections.put(socket, wrapper);
             wrapper.setKeepAliveLeft(getMaxKeepAliveRequests());
-            wrapper.setSecure(isSSLEnabled());
             wrapper.setReadTimeout(getConnectionTimeout());
             wrapper.setWriteTimeout(getConnectionTimeout());
             getExecutor().execute(new SocketWithOptionsProcessor(wrapper));
@@ -699,13 +1058,15 @@ public class AprEndpoint extends AbstractEndpoint<Long,Long> implements SNICallB
 
     @Override
     protected Long serverSocketAccept() throws Exception {
+        // See setSocketOptions(Long) for duplicate accept check
         long socket = Socket.accept(serverSock);
+        if (socket == 0) {
+            throw new IOException(sm.getString("endpoint.err.accept", getName()));
+        }
         if (log.isDebugEnabled()) {
             long sa = Address.get(Socket.APR_REMOTE, socket);
             Sockaddr addr = Address.getInfo(sa);
-            log.debug(sm.getString("endpoint.apr.remoteport",
-                    Long.valueOf(socket),
-                    Long.valueOf(addr.port)));
+            log.debug(sm.getString("endpoint.apr.remoteport", Long.valueOf(socket), Long.valueOf(addr.port)));
         }
         return Long.valueOf(socket);
     }
@@ -714,15 +1075,19 @@ public class AprEndpoint extends AbstractEndpoint<Long,Long> implements SNICallB
     /**
      * Process the given socket. Typically keep alive or upgraded protocol.
      *
-     * @param socket    The socket to process
-     * @param event     The event to process
+     * @param socket The socket to process
+     * @param event  The event to process
      *
-     * @return <code>true</code> if the processing completed normally otherwise
-     *         <code>false</code> which indicates an error occurred and that the
-     *         socket should be closed
+     * @return <code>true</code> if the processing completed normally otherwise <code>false</code> which indicates an
+     *             error occurred and that the socket should be closed
      */
     protected boolean processSocket(long socket, SocketEvent event) {
         SocketWrapperBase<Long> socketWrapper = connections.get(Long.valueOf(socket));
+        if (socketWrapper == null) {
+            // Socket probably closed from another thread. Triggering another
+            // close in case won't cause an issue.
+            return false;
+        }
         if (event == SocketEvent.OPEN_READ && socketWrapper.readOperation != null) {
             return socketWrapper.readOperation.process();
         } else if (event == SocketEvent.OPEN_WRITE && socketWrapper.writeOperation != null) {
@@ -734,8 +1099,8 @@ public class AprEndpoint extends AbstractEndpoint<Long,Long> implements SNICallB
 
 
     @Override
-    protected SocketProcessorBase<Long> createSocketProcessor(
-            SocketWrapperBase<Long> socketWrapper, SocketEvent event) {
+    protected SocketProcessorBase<Long> createSocketProcessor(SocketWrapperBase<Long> socketWrapper,
+            SocketEvent event) {
         return new SocketProcessor(socketWrapper, event);
     }
 
@@ -773,22 +1138,32 @@ public class AprEndpoint extends AbstractEndpoint<Long,Long> implements SNICallB
         return log;
     }
 
+    @Override
+    protected Log getLogCertificate() {
+        return logCertificate;
+    }
+
+
     // -------------------------------------------------- SocketInfo Inner Class
 
     public static class SocketInfo {
         public long socket;
         public long timeout;
         public int flags;
+
         public boolean read() {
             return (flags & Poll.APR_POLLIN) == Poll.APR_POLLIN;
         }
+
         public boolean write() {
             return (flags & Poll.APR_POLLOUT) == Poll.APR_POLLOUT;
         }
+
         public static int merge(int flag1, int flag2) {
-            return ((flag1 & Poll.APR_POLLIN) | (flag2 & Poll.APR_POLLIN))
-                | ((flag1 & Poll.APR_POLLOUT) | (flag2 & Poll.APR_POLLOUT));
+            return ((flag1 & Poll.APR_POLLIN) | (flag2 & Poll.APR_POLLIN)) |
+                    ((flag1 & Poll.APR_POLLOUT) | (flag2 & Poll.APR_POLLOUT));
         }
+
         @Override
         public String toString() {
             StringBuilder sb = new StringBuilder();
@@ -829,8 +1204,7 @@ public class AprEndpoint extends AbstractEndpoint<Long,Long> implements SNICallB
          *
          * @param socket The socket to remove
          *
-         * @return The configured timeout for the socket or zero if the socket
-         *         was not in the list of socket timeouts
+         * @return The configured timeout for the socket or zero if the socket was not in the list of socket timeouts
          */
         public long remove(long socket) {
             long result = 0;
@@ -928,7 +1302,7 @@ public class AprEndpoint extends AbstractEndpoint<Long,Long> implements SNICallB
                 if (sockets[i] == socket) {
                     sockets[i] = sockets[size - 1];
                     timeouts[i] = timeouts[size - 1];
-                    flags[size] = flags[size -1];
+                    flags[size] = flags[size - 1];
                     size--;
                     return true;
                 }
@@ -973,7 +1347,7 @@ public class AprEndpoint extends AbstractEndpoint<Long,Long> implements SNICallB
         /**
          * List of sockets to be added to the poller.
          */
-        private SocketList addList = null;  // Modifications guarded by this
+        private SocketList addList = null; // Modifications guarded by this
 
 
         /**
@@ -989,24 +1363,24 @@ public class AprEndpoint extends AbstractEndpoint<Long,Long> implements SNICallB
 
 
         /**
-         * Last run of maintain. Maintain will run approximately once every one
-         * second (may be slightly longer between runs).
+         * Last run of maintain. Maintain will run approximately once every one second (may be slightly longer between
+         * runs).
          */
         private long lastMaintain = System.currentTimeMillis();
 
 
         /**
-         * The number of connections currently inside this Poller. The correct
-         * operation of the Poller depends on this figure being correct. If it
-         * is not, it is possible that the Poller will enter a wait loop where
-         * it waits for the next connection to be added to the Poller before it
-         * calls poll when it should still be polling existing connections.
-         * Although not necessary at the time of writing this comment, it has
-         * been implemented as an AtomicInteger to ensure that it remains
-         * thread-safe.
+         * The number of connections currently inside this Poller. The correct operation of the Poller depends on this
+         * figure being correct. If it is not, it is possible that the Poller will enter a wait loop where it waits for
+         * the next connection to be added to the Poller before it calls poll when it should still be polling existing
+         * connections. Although not necessary at the time of writing this comment, it has been implemented as an
+         * AtomicInteger to ensure that it remains thread-safe.
          */
         private AtomicInteger connectionCount = new AtomicInteger(0);
-        public int getConnectionCount() { return connectionCount.get(); }
+
+        public int getConnectionCount() {
+            return connectionCount.get();
+        }
 
         private volatile Thread pollerThread;
         private volatile boolean pollerRunning = true;
@@ -1026,11 +1400,9 @@ public class AprEndpoint extends AbstractEndpoint<Long,Long> implements SNICallB
             aprPoller = allocatePoller(pollerSize, pool, -1);
 
             /*
-             * x2 - One descriptor for the socket, one for the event(s).
-             * x2 - Some APR implementations return multiple events for the
-             *      same socket as different entries. Each socket is registered
-             *      for a maximum of two events (read and write) at any one
-             *      time.
+             * x2 - One descriptor for the socket, one for the event(s). x2 - Some APR implementations return multiple
+             * events for the same socket as different entries. Each socket is registered for a maximum of two events
+             * (read and write) at any one time.
              *
              * Therefore size is poller size *4.
              */
@@ -1050,8 +1422,8 @@ public class AprEndpoint extends AbstractEndpoint<Long,Long> implements SNICallB
 
 
         /*
-         * This method is synchronized so that it is not possible for a socket
-         * to be added to the Poller's addList once this method has completed.
+         * This method is synchronized so that it is not possible for a socket to be added to the Poller's addList once
+         * this method has completed.
          */
         protected synchronized void stop() {
             pollerRunning = false;
@@ -1109,8 +1481,8 @@ public class AprEndpoint extends AbstractEndpoint<Long,Long> implements SNICallB
             int rv = Poll.pollset(aprPoller, desc);
             if (rv > 0) {
                 for (int n = 0; n < rv; n++) {
-                    closeSocketInternal(desc[n*2+1]);
-                    destroySocketInternal(desc[n*2+1]);
+                    closeSocketInternal(desc[n * 2 + 1]);
+                    destroySocketInternal(desc[n * 2 + 1]);
                 }
             }
             Pool.destroy(pool);
@@ -1119,23 +1491,19 @@ public class AprEndpoint extends AbstractEndpoint<Long,Long> implements SNICallB
 
 
         /**
-         * Add specified socket and associated pool to the poller. The socket
-         * will be added to a temporary array, and polled first after a maximum
-         * amount of time equal to pollTime (in most cases, latency will be much
-         * lower, however). Note: If both read and write are false, the socket
-         * will only be checked for timeout; if the socket was already present
-         * in the poller, a callback event will be generated and the socket will
-         * be removed from the poller.
+         * Add specified socket and associated pool to the poller. The socket will be added to a temporary array, and
+         * polled first after a maximum amount of time equal to pollTime (in most cases, latency will be much lower,
+         * however). Note: If both read and write are false, the socket will only be checked for timeout; if the socket
+         * was already present in the poller, a callback event will be generated and the socket will be removed from the
+         * poller.
          *
-         * @param socket to add to the poller
+         * @param socket  to add to the poller
          * @param timeout to use for this connection in milliseconds
-         * @param flags Events to poll for (Poll.APR_POLLIN and/or
-         *              Poll.APR_POLLOUT)
+         * @param flags   Events to poll for (Poll.APR_POLLIN and/or Poll.APR_POLLOUT)
          */
         private void add(long socket, long timeout, int flags) {
             if (log.isDebugEnabled()) {
-                String msg = sm.getString("endpoint.debug.pollerAdd",
-                        Long.valueOf(socket), Long.valueOf(timeout),
+                String msg = sm.getString("endpoint.debug.pollerAdd", Long.valueOf(socket), Long.valueOf(timeout),
                         Integer.valueOf(flags));
                 if (log.isTraceEnabled()) {
                     log.trace(msg, new Exception());
@@ -1159,8 +1527,7 @@ public class AprEndpoint extends AbstractEndpoint<Long,Long> implements SNICallB
 
 
         /**
-         * Add specified socket to one of the pollers. Must only be called from
-         * {@link Poller#run()}.
+         * Add specified socket to one of the pollers. Must only be called from {@link Poller#run()}.
          */
         private boolean addToPoller(long socket, int events) {
             int rv = Poll.add(aprPoller, socket, events);
@@ -1173,9 +1540,8 @@ public class AprEndpoint extends AbstractEndpoint<Long,Long> implements SNICallB
 
 
         /*
-         * This is only called from the SocketWrapper to ensure that it is only
-         * called once per socket. Calling it more than once typically results
-         * in the JVM crash.
+         * This is only called from the SocketWrapper to ensure that it is only called once per socket. Calling it more
+         * than once typically results in the JVM crash.
          */
         private synchronized void close(long socket) {
             closeList.add(socket, 0, 0);
@@ -1185,20 +1551,17 @@ public class AprEndpoint extends AbstractEndpoint<Long,Long> implements SNICallB
 
 
         /**
-         * Remove specified socket from the pollers. Must only be called from
-         * {@link Poller#run()}.
+         * Remove specified socket from the pollers. Must only be called from {@link Poller#run()}.
          */
         private void removeFromPoller(long socket) {
             if (log.isDebugEnabled()) {
-                log.debug(sm.getString("endpoint.debug.pollerRemove",
-                        Long.valueOf(socket)));
+                log.debug(sm.getString("endpoint.debug.pollerRemove", Long.valueOf(socket)));
             }
             int rv = Poll.remove(aprPoller, socket);
             if (rv != Status.APR_NOTFOUND) {
                 connectionCount.decrementAndGet();
                 if (log.isDebugEnabled()) {
-                    log.debug(sm.getString("endpoint.debug.pollerRemoved",
-                            Long.valueOf(socket)));
+                    log.debug(sm.getString("endpoint.debug.pollerRemoved", Long.valueOf(socket)));
                 }
             }
             timeouts.remove(socket);
@@ -1220,8 +1583,7 @@ public class AprEndpoint extends AbstractEndpoint<Long,Long> implements SNICallB
             long socket = timeouts.check(date);
             while (socket != 0) {
                 if (log.isDebugEnabled()) {
-                    log.debug(sm.getString("endpoint.debug.socketTimeout",
-                            Long.valueOf(socket)));
+                    log.debug(sm.getString("endpoint.debug.socketTimeout", Long.valueOf(socket)));
                 }
                 SocketWrapperBase<Long> socketWrapper = connections.get(Long.valueOf(socket));
                 if (socketWrapper != null) {
@@ -1246,22 +1608,21 @@ public class AprEndpoint extends AbstractEndpoint<Long,Long> implements SNICallB
          */
         @Override
         public String toString() {
-            StringBuffer buf = new StringBuffer();
+            StringBuilder buf = new StringBuilder();
             buf.append("Poller");
             long[] res = new long[pollerSize * 2];
             int count = Poll.pollset(aprPoller, res);
             buf.append(" [ ");
             for (int j = 0; j < count; j++) {
-                buf.append(desc[2*j+1]).append(" ");
+                buf.append(desc[2 * j + 1]).append(' ');
             }
-            buf.append("]");
+            buf.append(']');
             return buf.toString();
         }
 
         /**
-         * The background thread that adds sockets to the Poller, checks the
-         * poller for triggered events and hands the associated socket off to an
-         * appropriate processor as events occur.
+         * The background thread that adds sockets to the Poller, checks the poller for triggered events and hands the
+         * associated socket off to an appropriate processor as events occur.
          */
         @Override
         public void run() {
@@ -1273,8 +1634,7 @@ public class AprEndpoint extends AbstractEndpoint<Long,Long> implements SNICallB
             while (pollerRunning) {
 
                 // Check timeouts if the poller is empty.
-                while (pollerRunning && connectionCount.get() < 1 &&
-                        addList.size() < 1 && closeList.size() < 1) {
+                while (pollerRunning && connectionCount.get() < 1 && addList.size() < 1 && closeList.size() < 1) {
                     try {
                         if (getConnectionTimeout() > 0 && pollerRunning) {
                             maintain();
@@ -1344,17 +1704,13 @@ public class AprEndpoint extends AbstractEndpoint<Long,Long> implements SNICallB
                         SocketInfo info = localAddList.get();
                         while (info != null) {
                             if (log.isDebugEnabled()) {
-                                log.debug(sm.getString(
-                                        "endpoint.debug.pollerAddDo",
-                                        Long.valueOf(info.socket)));
+                                log.debug(sm.getString("endpoint.debug.pollerAddDo", Long.valueOf(info.socket)));
                             }
                             timeouts.remove(info.socket);
-                            AprSocketWrapper wrapper =
-                                    (AprSocketWrapper) connections.get(Long.valueOf(info.socket));
+                            AprSocketWrapper wrapper = (AprSocketWrapper) connections.get(Long.valueOf(info.socket));
                             if (wrapper != null) {
                                 if (info.read() || info.write()) {
-                                    wrapper.pollerFlags = wrapper.pollerFlags |
-                                            (info.read() ? Poll.APR_POLLIN : 0) |
+                                    wrapper.pollerFlags = wrapper.pollerFlags | (info.read() ? Poll.APR_POLLIN : 0) |
                                             (info.write() ? Poll.APR_POLLOUT : 0);
                                     // A socket can only be added to the poller
                                     // once. Adding it twice will return an error
@@ -1365,15 +1721,12 @@ public class AprEndpoint extends AbstractEndpoint<Long,Long> implements SNICallB
                                     if (!addToPoller(info.socket, wrapper.pollerFlags)) {
                                         wrapper.close();
                                     } else {
-                                        timeouts.add(info.socket,
-                                                System.currentTimeMillis() +
-                                                        info.timeout);
+                                        timeouts.add(info.socket, System.currentTimeMillis() + info.timeout);
                                     }
                                 } else {
                                     // Should never happen.
                                     wrapper.close();
-                                    getLog().warn(sm.getString(
-                                            "endpoint.apr.pollAddInvalid", info));
+                                    getLog().warn(sm.getString("endpoint.apr.pollAddInvalid", info));
                                 }
                             }
                             info = localAddList.get();
@@ -1389,57 +1742,55 @@ public class AprEndpoint extends AbstractEndpoint<Long,Long> implements SNICallB
                         connectionCount.addAndGet(-rv);
                         for (int n = 0; n < rv; n++) {
                             if (getLog().isDebugEnabled()) {
-                                log.debug(sm.getString(
-                                        "endpoint.debug.pollerProcess",
-                                        Long.valueOf(desc[n*2+1]),
-                                        Long.valueOf(desc[n*2])));
+                                log.debug(sm.getString("endpoint.debug.pollerProcess", Long.valueOf(desc[n * 2 + 1]),
+                                        Long.valueOf(desc[n * 2])));
                             }
-                            long timeout = timeouts.remove(desc[n*2+1]);
-                            AprSocketWrapper wrapper = (AprSocketWrapper)
-                                    connections.get(Long.valueOf(desc[n*2+1]));
+                            long timeout = timeouts.remove(desc[n * 2 + 1]);
+                            AprSocketWrapper wrapper =
+                                    (AprSocketWrapper) connections.get(Long.valueOf(desc[n * 2 + 1]));
                             if (wrapper == null) {
                                 // Socket was closed in another thread while still in
                                 // the Poller but wasn't removed from the Poller before
                                 // new data arrived.
                                 continue;
                             }
-                            wrapper.pollerFlags = wrapper.pollerFlags & ~((int) desc[n*2]);
+                            wrapper.pollerFlags = wrapper.pollerFlags & ~((int) desc[n * 2]);
                             // Check for failed sockets and hand this socket off to a worker
-                            if (((desc[n*2] & Poll.APR_POLLHUP) == Poll.APR_POLLHUP)
-                                    || ((desc[n*2] & Poll.APR_POLLERR) == Poll.APR_POLLERR)
-                                    || ((desc[n*2] & Poll.APR_POLLNVAL) == Poll.APR_POLLNVAL)) {
+                            if (((desc[n * 2] & Poll.APR_POLLHUP) == Poll.APR_POLLHUP) ||
+                                    ((desc[n * 2] & Poll.APR_POLLERR) == Poll.APR_POLLERR) ||
+                                    ((desc[n * 2] & Poll.APR_POLLNVAL) == Poll.APR_POLLNVAL)) {
                                 // Need to trigger error handling. Poller may return error
                                 // codes plus the flags it was waiting for or it may just
                                 // return an error code. We could handle the error here but
                                 // if we do, there will be no exception associated with the
-                                // error in application code. By signaling read/write is
+                                // error in application code. By signalling read/write is
                                 // possible, a read/write will be attempted, fail and that
                                 // will trigger an exception the application will see.
                                 // Check the return flags first, followed by what the socket
                                 // was registered for
-                                if ((desc[n*2] & Poll.APR_POLLIN) == Poll.APR_POLLIN) {
+                                if ((desc[n * 2] & Poll.APR_POLLIN) == Poll.APR_POLLIN) {
                                     // Error probably occurred during a non-blocking read
-                                    if (!processSocket(desc[n*2+1], SocketEvent.OPEN_READ)) {
+                                    if (!processSocket(desc[n * 2 + 1], SocketEvent.OPEN_READ)) {
                                         // Close socket and clear pool
                                         wrapper.close();
                                     }
-                                } else if ((desc[n*2] & Poll.APR_POLLOUT) == Poll.APR_POLLOUT) {
+                                } else if ((desc[n * 2] & Poll.APR_POLLOUT) == Poll.APR_POLLOUT) {
                                     // Error probably occurred during a non-blocking write
-                                    if (!processSocket(desc[n*2+1], SocketEvent.OPEN_WRITE)) {
+                                    if (!processSocket(desc[n * 2 + 1], SocketEvent.OPEN_WRITE)) {
                                         // Close socket and clear pool
                                         wrapper.close();
                                     }
                                 } else if ((wrapper.pollerFlags & Poll.APR_POLLIN) == Poll.APR_POLLIN) {
                                     // Can't tell what was happening when the error occurred but the
                                     // socket is registered for non-blocking read so use that
-                                    if (!processSocket(desc[n*2+1], SocketEvent.OPEN_READ)) {
+                                    if (!processSocket(desc[n * 2 + 1], SocketEvent.OPEN_READ)) {
                                         // Close socket and clear pool
                                         wrapper.close();
                                     }
                                 } else if ((wrapper.pollerFlags & Poll.APR_POLLOUT) == Poll.APR_POLLOUT) {
                                     // Can't tell what was happening when the error occurred but the
                                     // socket is registered for non-blocking write so use that
-                                    if (!processSocket(desc[n*2+1], SocketEvent.OPEN_WRITE)) {
+                                    if (!processSocket(desc[n * 2 + 1], SocketEvent.OPEN_WRITE)) {
                                         // Close socket and clear pool
                                         wrapper.close();
                                     }
@@ -1447,18 +1798,17 @@ public class AprEndpoint extends AbstractEndpoint<Long,Long> implements SNICallB
                                     // Close socket and clear pool
                                     wrapper.close();
                                 }
-                            } else if (((desc[n*2] & Poll.APR_POLLIN) == Poll.APR_POLLIN)
-                                    || ((desc[n*2] & Poll.APR_POLLOUT) == Poll.APR_POLLOUT)) {
+                            } else if (((desc[n * 2] & Poll.APR_POLLIN) == Poll.APR_POLLIN) ||
+                                    ((desc[n * 2] & Poll.APR_POLLOUT) == Poll.APR_POLLOUT)) {
                                 boolean error = false;
-                                if (((desc[n*2] & Poll.APR_POLLIN) == Poll.APR_POLLIN) &&
-                                        !processSocket(desc[n*2+1], SocketEvent.OPEN_READ)) {
+                                if (((desc[n * 2] & Poll.APR_POLLIN) == Poll.APR_POLLIN) &&
+                                        !processSocket(desc[n * 2 + 1], SocketEvent.OPEN_READ)) {
                                     error = true;
                                     // Close socket and clear pool
                                     wrapper.close();
                                 }
-                                if (!error &&
-                                        ((desc[n*2] & Poll.APR_POLLOUT) == Poll.APR_POLLOUT) &&
-                                        !processSocket(desc[n*2+1], SocketEvent.OPEN_WRITE)) {
+                                if (!error && ((desc[n * 2] & Poll.APR_POLLOUT) == Poll.APR_POLLOUT) &&
+                                        !processSocket(desc[n * 2 + 1], SocketEvent.OPEN_WRITE)) {
                                     // Close socket and clear pool
                                     error = true;
                                     wrapper.close();
@@ -1485,13 +1835,11 @@ public class AprEndpoint extends AbstractEndpoint<Long,Long> implements SNICallB
                                     if (timeout > Integer.MAX_VALUE) {
                                         timeout = Integer.MAX_VALUE;
                                     }
-                                    add(desc[n*2+1], (int) timeout, wrapper.pollerFlags);
+                                    add(desc[n * 2 + 1], (int) timeout, wrapper.pollerFlags);
                                 }
                             } else {
                                 // Unknown event
-                                getLog().warn(sm.getString(
-                                        "endpoint.apr.pollUnknownEvent",
-                                        Long.valueOf(desc[n*2])));
+                                getLog().warn(sm.getString("endpoint.apr.pollUnknownEvent", Long.valueOf(desc[n * 2])));
                                 // Close socket and clear pool
                                 wrapper.close();
                             }
@@ -1500,12 +1848,10 @@ public class AprEndpoint extends AbstractEndpoint<Long,Long> implements SNICallB
                         int errn = -rv;
                         // Any non timeup or interrupted error is critical
                         if ((errn != Status.TIMEUP) && (errn != Status.EINTR)) {
-                            if (errn >  Status.APR_OS_START_USERERR) {
-                                errn -=  Status.APR_OS_START_USERERR;
+                            if (errn > Status.APR_OS_START_USERERR) {
+                                errn -= Status.APR_OS_START_USERERR;
                             }
-                            getLog().error(sm.getString(
-                                    "endpoint.apr.pollError",
-                                    Integer.valueOf(errn),
+                            getLog().error(sm.getString("endpoint.apr.pollError", Integer.valueOf(errn),
                                     Error.strerror(errn)));
                             // Destroy and reallocate the poller
                             reset = true;
@@ -1546,23 +1892,21 @@ public class AprEndpoint extends AbstractEndpoint<Long,Long> implements SNICallB
 
         private int mergeDescriptors(long[] desc, int startCount) {
             /*
-             * https://bz.apache.org/bugzilla/show_bug.cgi?id=57653#c6 suggests
-             * this merging is only necessary on OSX and BSD.
+             * https://bz.apache.org/bugzilla/show_bug.cgi?id=57653#c6 suggests this merging is only necessary on OSX
+             * and BSD.
              *
-             * https://bz.apache.org/bugzilla/show_bug.cgi?id=56313 suggests the
-             * same, or a similar, issue is happening on Windows.
-             * Notes: Only the first startCount * 2 elements of the array
-             *        are populated.
-             *        The array is event, socket, event, socket etc.
+             * https://bz.apache.org/bugzilla/show_bug.cgi?id=56313 suggests the same, or a similar, issue is happening
+             * on Windows. Notes: Only the first startCount * 2 elements of the array are populated. The array is event,
+             * socket, event, socket etc.
              */
             Map<Long,Long> merged = new HashMap<>(startCount);
             for (int n = 0; n < startCount; n++) {
-                Long newValue = merged.merge(Long.valueOf(desc[2*n+1]), Long.valueOf(desc[2*n]),
+                Long newValue = merged.merge(Long.valueOf(desc[2 * n + 1]), Long.valueOf(desc[2 * n]),
                         (v1, v2) -> Long.valueOf(v1.longValue() | v2.longValue()));
                 if (log.isDebugEnabled()) {
-                    if (newValue.longValue() != desc[2*n]) {
-                        log.debug(sm.getString("endpoint.apr.pollMergeEvents",
-                                Long.valueOf(desc[2*n+1]), Long.valueOf(desc[2*n]), newValue));
+                    if (newValue.longValue() != desc[2 * n]) {
+                        log.debug(sm.getString("endpoint.apr.pollMergeEvents", Long.valueOf(desc[2 * n + 1]),
+                                Long.valueOf(desc[2 * n]), newValue));
                     }
                 }
             }
@@ -1601,10 +1945,13 @@ public class AprEndpoint extends AbstractEndpoint<Long,Long> implements SNICallB
         protected long sendfilePollset = 0;
         protected long pool = 0;
         protected long[] desc;
-        protected HashMap<Long, SendfileData> sendfileData;
+        protected HashMap<Long,SendfileData> sendfileData;
 
         protected int sendfileCount;
-        public int getSendfileCount() { return sendfileCount; }
+
+        public int getSendfileCount() {
+            return sendfileCount;
+        }
 
         protected ArrayList<SendfileData> addS;
 
@@ -1637,22 +1984,6 @@ public class AprEndpoint extends AbstractEndpoint<Long,Long> implements SNICallB
             sendfileRunning = false;
             // In case the sendfile thread is in the idle wait
             this.notify();
-
-            // Wait for the sendfile thread to exit, otherwise parallel
-            // destruction of sockets which are still in the poller can cause
-            // problems.
-            int loops = 50;
-            while (loops > 0 && sendfileThread.isAlive()) {
-                try {
-                    this.wait(pollTime / 1000);
-                } catch (InterruptedException e) {
-                    // Ignore
-                }
-                loops--;
-            }
-            if (sendfileThread.isAlive()) {
-                log.warn(sm.getString("endpoint.sendfileThreadStop"));
-            }
         }
 
         /**
@@ -1668,7 +1999,7 @@ public class AprEndpoint extends AbstractEndpoint<Long,Long> implements SNICallB
             int rv = Poll.pollset(sendfilePollset, desc);
             if (rv > 0) {
                 for (int n = 0; n < rv; n++) {
-                    closeSocketInternal(desc[n*2+1]);
+                    closeSocketInternal(desc[n * 2 + 1]);
                 }
             }
             Pool.destroy(pool);
@@ -1676,28 +2007,33 @@ public class AprEndpoint extends AbstractEndpoint<Long,Long> implements SNICallB
         }
 
         /**
-         * Add the sendfile data to the sendfile poller. Note that in most cases,
-         * the initial non blocking calls to sendfile will return right away, and
-         * will be handled asynchronously inside the kernel. As a result,
-         * the poller will never be used.
+         * Add the sendfile data to the sendfile poller. Note that in most cases, the initial non blocking calls to
+         * sendfile will return right away, and will be handled asynchronously inside the kernel. As a result, the
+         * poller will never be used.
          *
-         * @param data containing the reference to the data which should be snet
-         * @return true if all the data has been sent right away, and false
-         *              otherwise
+         * @param data containing the reference to the data which should be sent
+         *
+         * @return true if all the data has been sent right away, and false otherwise
          */
         public SendfileState add(SendfileData data) {
+
+            SocketWrapperBase<Long> socketWrapper = connections.get(Long.valueOf(data.socket));
+
+            // Use the blocking status write lock as a proxy for a lock on
+            // writing to the socket. Don't want it to close in another thread
+            // while this thread is writing as that could trigger a JVM crash.
+            WriteLock wl = ((AprSocketWrapper) socketWrapper).getBlockingStatusWriteLock();
+            wl.lock();
+
             // Initialize fd from data given
             try {
                 data.fdpool = Socket.pool(data.socket);
-                data.fd = File.open
-                    (data.fileName, File.APR_FOPEN_READ
-                     | File.APR_FOPEN_SENDFILE_ENABLED | File.APR_FOPEN_BINARY,
-                     0, data.fdpool);
+                data.fd = File.open(data.fileName,
+                        File.APR_FOPEN_READ | File.APR_FOPEN_SENDFILE_ENABLED | File.APR_FOPEN_BINARY, 0, data.fdpool);
                 // Set the socket to nonblocking mode
                 Socket.timeoutSet(data.socket, 0);
                 while (sendfileRunning) {
-                    long nw = Socket.sendfilen(data.socket, data.fd,
-                                               data.pos, data.length, 0);
+                    long nw = Socket.sendfilen(data.socket, data.fd, data.pos, data.length, 0);
                     if (nw < 0) {
                         if (!(-nw == Status.EAGAIN)) {
                             Pool.destroy(data.fdpool);
@@ -1722,6 +2058,8 @@ public class AprEndpoint extends AbstractEndpoint<Long,Long> implements SNICallB
             } catch (Exception e) {
                 log.warn(sm.getString("endpoint.sendfile.error"), e);
                 return SendfileState.ERROR;
+            } finally {
+                wl.unlock();
             }
             // Add socket to the list. Newly added sockets will wait
             // at most for pollTime before being polled
@@ -1746,8 +2084,8 @@ public class AprEndpoint extends AbstractEndpoint<Long,Long> implements SNICallB
         }
 
         /**
-         * The background thread that listens for incoming TCP/IP connections
-         * and hands them off to an appropriate processor.
+         * The background thread that listens for incoming TCP/IP connections and hands them off to an appropriate
+         * processor.
          */
         @Override
         public void run() {
@@ -1756,14 +2094,6 @@ public class AprEndpoint extends AbstractEndpoint<Long,Long> implements SNICallB
             // Loop until we receive a shutdown command
             while (sendfileRunning) {
 
-                // Loop if endpoint is paused
-                while (sendfileRunning && paused) {
-                    try {
-                        Thread.sleep(pollTime / 1000);
-                    } catch (InterruptedException e) {
-                        // Ignore
-                    }
-                }
                 // Loop if poller is empty
                 while (sendfileRunning && sendfileCount < 1 && addS.size() < 1) {
                     // Reset maintain time.
@@ -1795,9 +2125,7 @@ public class AprEndpoint extends AbstractEndpoint<Long,Long> implements SNICallB
                                     sendfileData.put(Long.valueOf(data.socket), data);
                                     sendfileCount++;
                                 } else {
-                                    getLog().warn(sm.getString(
-                                            "endpoint.sendfile.addfail",
-                                            Integer.valueOf(rv),
+                                    getLog().warn(sm.getString("endpoint.sendfile.addfail", Integer.valueOf(rv),
                                             Error.strerror(rv)));
                                     // Can't do anything: close the socket right away
                                     closeSocketInternal(data.socket);
@@ -1813,11 +2141,10 @@ public class AprEndpoint extends AbstractEndpoint<Long,Long> implements SNICallB
                     if (rv > 0) {
                         for (int n = 0; n < rv; n++) {
                             // Get the sendfile state
-                            SendfileData state =
-                                sendfileData.get(Long.valueOf(desc[n*2+1]));
+                            SendfileData state = sendfileData.get(Long.valueOf(desc[n * 2 + 1]));
                             // Problem events
-                            if (((desc[n*2] & Poll.APR_POLLHUP) == Poll.APR_POLLHUP)
-                                    || ((desc[n*2] & Poll.APR_POLLERR) == Poll.APR_POLLERR)) {
+                            if (((desc[n * 2] & Poll.APR_POLLHUP) == Poll.APR_POLLHUP) ||
+                                    ((desc[n * 2] & Poll.APR_POLLERR) == Poll.APR_POLLERR)) {
                                 // Close socket and clear pool
                                 remove(state);
                                 // Destroy file descriptor pool, which should close the file
@@ -1826,9 +2153,7 @@ public class AprEndpoint extends AbstractEndpoint<Long,Long> implements SNICallB
                                 continue;
                             }
                             // Write some data using sendfile
-                            long nw = Socket.sendfilen(state.socket, state.fd,
-                                                       state.pos,
-                                                       state.length, 0);
+                            long nw = Socket.sendfilen(state.socket, state.fd, state.pos, state.length, 0);
                             if (nw < 0) {
                                 // Close socket and clear pool
                                 remove(state);
@@ -1843,32 +2168,31 @@ public class AprEndpoint extends AbstractEndpoint<Long,Long> implements SNICallB
                             if (state.length == 0) {
                                 remove(state);
                                 switch (state.keepAliveState) {
-                                case NONE: {
-                                    // Close the socket since this is
-                                    // the end of the not keep-alive request.
-                                    closeSocketInternal(state.socket);
-                                    break;
-                                }
-                                case PIPELINED: {
-                                    // Destroy file descriptor pool, which should close the file
-                                    Pool.destroy(state.fdpool);
-                                    Socket.timeoutSet(state.socket, getConnectionTimeout() * 1000);
-                                    // Process the pipelined request data
-                                    if (!processSocket(state.socket, SocketEvent.OPEN_READ)) {
+                                    case NONE: {
+                                        // Close the socket since this is
+                                        // the end of the not keep-alive request.
                                         closeSocketInternal(state.socket);
+                                        break;
                                     }
-                                    break;
-                                }
-                                case OPEN: {
-                                    // Destroy file descriptor pool, which should close the file
-                                    Pool.destroy(state.fdpool);
-                                    Socket.timeoutSet(state.socket, getConnectionTimeout() * 1000);
-                                    // Put the socket back in the poller for
-                                    // processing of further requests
-                                    getPoller().add(state.socket, getKeepAliveTimeout(),
-                                            Poll.APR_POLLIN);
-                                    break;
-                                }
+                                    case PIPELINED: {
+                                        // Destroy file descriptor pool, which should close the file
+                                        Pool.destroy(state.fdpool);
+                                        Socket.timeoutSet(state.socket, getConnectionTimeout() * 1000);
+                                        // Process the pipelined request data
+                                        if (!processSocket(state.socket, SocketEvent.OPEN_READ)) {
+                                            closeSocketInternal(state.socket);
+                                        }
+                                        break;
+                                    }
+                                    case OPEN: {
+                                        // Destroy file descriptor pool, which should close the file
+                                        Pool.destroy(state.fdpool);
+                                        Socket.timeoutSet(state.socket, getConnectionTimeout() * 1000);
+                                        // Put the socket back in the poller for
+                                        // processing of further requests
+                                        getPoller().add(state.socket, getKeepAliveTimeout(), Poll.APR_POLLIN);
+                                        break;
+                                    }
                                 }
                             }
                         }
@@ -1876,12 +2200,10 @@ public class AprEndpoint extends AbstractEndpoint<Long,Long> implements SNICallB
                         int errn = -rv;
                         /* Any non timeup or interrupted error is critical */
                         if ((errn != Status.TIMEUP) && (errn != Status.EINTR)) {
-                            if (errn >  Status.APR_OS_START_USERERR) {
-                                errn -=  Status.APR_OS_START_USERERR;
+                            if (errn > Status.APR_OS_START_USERERR) {
+                                errn -= Status.APR_OS_START_USERERR;
                             }
-                            getLog().error(sm.getString(
-                                    "endpoint.apr.pollError",
-                                    Integer.valueOf(errn),
+                            getLog().error(sm.getString("endpoint.apr.pollError", Integer.valueOf(errn),
                                     Error.strerror(errn)));
                             // Handle poll critical failure
                             synchronized (this) {
@@ -1892,8 +2214,7 @@ public class AprEndpoint extends AbstractEndpoint<Long,Long> implements SNICallB
                         }
                     }
                     // Call maintain for the sendfile poller
-                    if (getConnectionTimeout() > 0 &&
-                            maintainTime > 1000000L && sendfileRunning) {
+                    if (getConnectionTimeout() > 0 && maintainTime > 1000000L && sendfileRunning) {
                         rv = Poll.maintain(sendfilePollset, desc, false);
                         maintainTime = 0;
                         if (rv > 0) {
@@ -1926,11 +2247,8 @@ public class AprEndpoint extends AbstractEndpoint<Long,Long> implements SNICallB
     // --------------------------------- SocketWithOptionsProcessor Inner Class
 
     /**
-     * This class is the equivalent of the Worker, but will simply use in an
-     * external Executor thread pool. This will also set the socket options
-     * and do the handshake.
-     *
-     * This is called after an accept().
+     * This class is the equivalent of the Worker, but will simply use in an external Executor thread pool. This will
+     * also set the socket options and do the handshake. This is called after an accept().
      */
     protected class SocketWithOptionsProcessor implements Runnable {
 
@@ -1944,11 +2262,12 @@ public class AprEndpoint extends AbstractEndpoint<Long,Long> implements SNICallB
         @Override
         public void run() {
 
-            synchronized (socket) {
+            Lock lock = socket.getLock();
+            lock.lock();
+            try {
                 if (!deferAccept) {
                     if (setSocketOptions(socket)) {
-                        getPoller().add(socket.getSocket().longValue(),
-                                getConnectionTimeout(), Poll.APR_POLLIN);
+                        getPoller().add(socket.getSocket().longValue(), getConnectionTimeout(), Poll.APR_POLLIN);
                     } else {
                         // Close socket and pool
                         getHandler().process(socket, SocketEvent.CONNECT_FAIL);
@@ -1972,9 +2291,10 @@ public class AprEndpoint extends AbstractEndpoint<Long,Long> implements SNICallB
                         socket = null;
                     }
                 }
+            } finally {
+                lock.unlock();
             }
         }
-
     }
 
 
@@ -1982,8 +2302,7 @@ public class AprEndpoint extends AbstractEndpoint<Long,Long> implements SNICallB
 
 
     /**
-     * This class is the equivalent of the Worker, but will simply use in an
-     * external Executor thread pool.
+     * This class is the equivalent of the Worker, but will simply use in an external Executor thread pool.
      */
     protected class SocketProcessor extends SocketProcessorBase<Long> {
 
@@ -2003,8 +2322,8 @@ public class AprEndpoint extends AbstractEndpoint<Long,Long> implements SNICallB
             } finally {
                 socketWrapper = null;
                 event = null;
-                //return to cache
-                if (running && !paused && processorCache != null) {
+                // return to cache
+                if (running && processorCache != null) {
                     processorCache.push(this);
                 }
             }
@@ -2022,8 +2341,8 @@ public class AprEndpoint extends AbstractEndpoint<Long,Long> implements SNICallB
         private int pollerFlags = 0;
 
         /*
-         * Used if block/non-blocking is set at the socket level. The client is
-         * responsible for the thread-safe use of this field via the locks provided.
+         * Used if block/non-blocking is set at the socket level. The client is responsible for the thread-safe use of
+         * this field via the locks provided.
          */
         private volatile boolean blockingStatus = true;
         private final Lock blockingStatusReadLock;
@@ -2037,7 +2356,7 @@ public class AprEndpoint extends AbstractEndpoint<Long,Long> implements SNICallB
             this.blockingStatusWriteLock = lock.writeLock();
 
             // TODO Make the socketWriteBuffer size configurable and align the
-            //      SSL and app buffer size settings with NIO & NIO2.
+            // SSL and app buffer size settings with NIO & NIO2.
             if (endpoint.isSSLEnabled()) {
                 sslOutputBuffer = ByteBuffer.allocateDirect(SSL_OUTPUT_BUFFER_SIZE);
                 sslOutputBuffer.position(SSL_OUTPUT_BUFFER_SIZE);
@@ -2048,11 +2367,18 @@ public class AprEndpoint extends AbstractEndpoint<Long,Long> implements SNICallB
             socketBufferHandler = new SocketBufferHandler(6 * 1500, 6 * 1500, true);
         }
 
-        public boolean getBlockingStatus() { return blockingStatus; }
+        public boolean getBlockingStatus() {
+            return blockingStatus;
+        }
+
         public void setBlockingStatus(boolean blockingStatus) {
             this.blockingStatus = blockingStatus;
         }
-        public Lock getBlockingStatusReadLock() { return blockingStatusReadLock; }
+
+        public Lock getBlockingStatusReadLock() {
+            return blockingStatusReadLock;
+        }
+
         public WriteLock getBlockingStatusWriteLock() {
             return blockingStatusWriteLock;
         }
@@ -2063,11 +2389,9 @@ public class AprEndpoint extends AbstractEndpoint<Long,Long> implements SNICallB
             if (nRead > 0) {
                 return nRead;
                 /*
-                 * Since more bytes may have arrived since the buffer was last
-                 * filled, it is an option at this point to perform a
-                 * non-blocking read. However correctly handling the case if
-                 * that read returns end of stream adds complexity. Therefore,
-                 * at the moment, the preference is for simplicity.
+                 * Since more bytes may have arrived since the buffer was last filled, it is an option at this point to
+                 * perform a non-blocking read. However correctly handling the case if that read returns end of stream
+                 * adds complexity. Therefore, at the moment, the preference is for simplicity.
                  */
             }
 
@@ -2091,11 +2415,9 @@ public class AprEndpoint extends AbstractEndpoint<Long,Long> implements SNICallB
             if (nRead > 0) {
                 return nRead;
                 /*
-                 * Since more bytes may have arrived since the buffer was last
-                 * filled, it is an option at this point to perform a
-                 * non-blocking read. However correctly handling the case if
-                 * that read returns end of stream adds complexity. Therefore,
-                 * at the moment, the preference is for simplicity.
+                 * Since more bytes may have arrived since the buffer was last filled, it is an option at this point to
+                 * perform a non-blocking read. However correctly handling the case if that read returns end of stream
+                 * adds complexity. Therefore, at the moment, the preference is for simplicity.
                  */
             }
 
@@ -2143,8 +2465,7 @@ public class AprEndpoint extends AbstractEndpoint<Long,Long> implements SNICallB
                     if (block) {
                         Socket.timeoutSet(getSocket().longValue(), getReadTimeout() * 1000);
                     }
-                    result = Socket.recvb(getSocket().longValue(), to, to.position(),
-                            to.remaining());
+                    result = Socket.recvb(getSocket().longValue(), to, to.position(), to.remaining());
                     readDone = true;
                 }
             } finally {
@@ -2166,8 +2487,7 @@ public class AprEndpoint extends AbstractEndpoint<Long,Long> implements SNICallB
                     readLock.lock();
                     try {
                         writeLock.unlock();
-                        result = Socket.recvb(getSocket().longValue(), to, to.position(),
-                                to.remaining());
+                        result = Socket.recvb(getSocket().longValue(), to, to.position(), to.remaining());
                     } finally {
                         readLock.unlock();
                     }
@@ -2199,13 +2519,12 @@ public class AprEndpoint extends AbstractEndpoint<Long,Long> implements SNICallB
                 }
             } else if (-result == Status.APR_EOF) {
                 return -1;
-            } else if ((OS.IS_WIN32 || OS.IS_WIN64) &&
-                    (-result == Status.APR_OS_START_SYSERR + 10053)) {
+            } else if ((OS.IS_WIN32 || OS.IS_WIN64) && (-result == Status.APR_OS_START_SYSERR + 10053)) {
                 // 10053 on Windows is connection aborted
                 throw new EOFException(sm.getString("socket.apr.clientAbort"));
             } else {
-                throw new IOException(sm.getString("socket.apr.read.error",
-                        Integer.valueOf(-result), getSocket(), this));
+                throw new IOException(
+                        sm.getString("socket.apr.read.error", Integer.valueOf(-result), getSocket(), this));
             }
         }
 
@@ -2233,17 +2552,55 @@ public class AprEndpoint extends AbstractEndpoint<Long,Long> implements SNICallB
 
 
         @Override
+        public void close() {
+            Lock lock = getLock();
+            lock.lock();
+            try {
+                super.close();
+            } finally {
+                lock.unlock();
+            }
+        }
+
+        @Override
         protected void doClose() {
             if (log.isDebugEnabled()) {
                 log.debug("Calling [" + getEndpoint() + "].closeSocket([" + this + "])");
             }
             getEndpoint().connections.remove(getSocket());
+            socketBufferHandler.free();
             socketBufferHandler = SocketBufferHandler.EMPTY;
             nonBlockingWriteBuffer.clear();
             if (sslOutputBuffer != null) {
                 ByteBufferUtils.cleanDirectBuffer(sslOutputBuffer);
             }
-            ((AprEndpoint) getEndpoint()).getPoller().close(getSocket().longValue());
+            Poller poller = ((AprEndpoint) getEndpoint()).getPoller();
+            if (poller != null) {
+                poller.close(getSocket().longValue());
+            }
+        }
+
+
+        @Override
+        protected boolean flushNonBlocking() throws IOException {
+            boolean dataLeft = !socketBufferHandler.isWriteBufferEmpty();
+
+            // Write to the socket, if there is anything to write
+            if (dataLeft) {
+                doWrite(false);
+                dataLeft = !socketBufferHandler.isWriteBufferEmpty();
+            }
+
+            if (!dataLeft && !nonBlockingWriteBuffer.isEmpty()) {
+                dataLeft = nonBlockingWriteBuffer.write(this, false);
+
+                if (!dataLeft && !socketBufferHandler.isWriteBufferEmpty()) {
+                    doWrite(false);
+                    dataLeft = !socketBufferHandler.isWriteBufferEmpty();
+                }
+            }
+
+            return dataLeft;
         }
 
 
@@ -2296,6 +2653,22 @@ public class AprEndpoint extends AbstractEndpoint<Long,Long> implements SNICallB
 
 
         private void doWriteInternal(ByteBuffer from) throws IOException {
+
+            if (previousIOException != null) {
+                /*
+                 * Socket has previously seen an IOException on write.
+                 *
+                 * Blocking writes assume that buffer is always fully written so there is no code checking for
+                 * incomplete writes, retaining the unwritten data and attempting to write it as part of a subsequent
+                 * write call.
+                 *
+                 * Because of the above, when an IOException is triggered we need so skip subsequent attempts to write
+                 * as otherwise it will appear to the client as if some data was dropped just before the connection is
+                 * lost. It is better if the client just sees the dropped connection.
+                 */
+                throw new IOException(previousIOException);
+            }
+
             int thisTime;
 
             do {
@@ -2311,14 +2684,13 @@ public class AprEndpoint extends AbstractEndpoint<Long,Long> implements SNICallB
                         // APR + SSL requires that exactly the same parameters are
                         // passed when re-attempting the write
                     }
-                    thisTime = Socket.sendb(getSocket().longValue(), sslOutputBuffer,
-                            sslOutputBuffer.position(), sslOutputBuffer.limit());
+                    thisTime = Socket.sendb(getSocket().longValue(), sslOutputBuffer, sslOutputBuffer.position(),
+                            sslOutputBuffer.limit());
                     if (thisTime > 0) {
                         sslOutputBuffer.position(sslOutputBuffer.position() + thisTime);
                     }
                 } else {
-                    thisTime = Socket.sendb(getSocket().longValue(), from, from.position(),
-                            from.remaining());
+                    thisTime = Socket.sendb(getSocket().longValue(), from, from.position(), from.remaining());
                     if (thisTime > 0) {
                         from.position(from.position() + thisTime);
                     }
@@ -2327,13 +2699,13 @@ public class AprEndpoint extends AbstractEndpoint<Long,Long> implements SNICallB
                     thisTime = 0;
                 } else if (-thisTime == Status.APR_EOF) {
                     throw new EOFException(sm.getString("socket.apr.clientAbort"));
-                } else if ((OS.IS_WIN32 || OS.IS_WIN64) &&
-                        (-thisTime == Status.APR_OS_START_SYSERR + 10053)) {
+                } else if ((OS.IS_WIN32 || OS.IS_WIN64) && (-thisTime == Status.APR_OS_START_SYSERR + 10053)) {
                     // 10053 on Windows is connection aborted
                     throw new EOFException(sm.getString("socket.apr.clientAbort"));
                 } else if (thisTime < 0) {
-                    throw new IOException(sm.getString("socket.apr.write.error",
-                            Integer.valueOf(-thisTime), getSocket(), this));
+                    previousIOException = new IOException(
+                            sm.getString("socket.apr.write.error", Integer.valueOf(-thisTime), getSocket(), this));
+                    throw previousIOException;
                 }
             } while ((thisTime > 0 || getBlockingStatus()) && from.hasRemaining());
 
@@ -2372,8 +2744,8 @@ public class AprEndpoint extends AbstractEndpoint<Long,Long> implements SNICallB
                 if (log.isDebugEnabled()) {
                     log.debug(sm.getString("endpoint.debug.registerWrite", this));
                 }
-                ((AprEndpoint) getEndpoint()).getPoller().add(
-                        getSocket().longValue(), getWriteTimeout(), Poll.APR_POLLOUT);
+                ((AprEndpoint) getEndpoint()).getPoller().add(getSocket().longValue(), getWriteTimeout(),
+                        Poll.APR_POLLOUT);
             }
         }
 
@@ -2393,25 +2765,31 @@ public class AprEndpoint extends AbstractEndpoint<Long,Long> implements SNICallB
 
         @Override
         protected void populateRemoteAddr() {
-            if (isClosed()) {
-                return;
-            }
+            Lock lock = getLock();
+            lock.lock();
             try {
+                if (isClosed()) {
+                    return;
+                }
                 long socket = getSocket().longValue();
                 long sa = Address.get(Socket.APR_REMOTE, socket);
                 remoteAddr = Address.getip(sa);
             } catch (Exception e) {
                 log.warn(sm.getString("endpoint.warn.noRemoteAddr", getSocket()), e);
+            } finally {
+                lock.unlock();
             }
         }
 
 
         @Override
         protected void populateRemoteHost() {
-            if (isClosed()) {
-                return;
-            }
+            Lock lock = getLock();
+            lock.lock();
             try {
+                if (isClosed()) {
+                    return;
+                }
                 long socket = getSocket().longValue();
                 long sa = Address.get(Socket.APR_REMOTE, socket);
                 remoteHost = Address.getnameinfo(sa, 0);
@@ -2420,68 +2798,86 @@ public class AprEndpoint extends AbstractEndpoint<Long,Long> implements SNICallB
                 }
             } catch (Exception e) {
                 log.warn(sm.getString("endpoint.warn.noRemoteHost", getSocket()), e);
+            } finally {
+                lock.unlock();
             }
         }
 
 
         @Override
         protected void populateRemotePort() {
-            if (isClosed()) {
-                return;
-            }
+            Lock lock = getLock();
+            lock.lock();
             try {
+                if (isClosed()) {
+                    return;
+                }
                 long socket = getSocket().longValue();
                 long sa = Address.get(Socket.APR_REMOTE, socket);
                 Sockaddr addr = Address.getInfo(sa);
                 remotePort = addr.port;
             } catch (Exception e) {
                 log.warn(sm.getString("endpoint.warn.noRemotePort", getSocket()), e);
+            } finally {
+                lock.unlock();
             }
         }
 
 
         @Override
         protected void populateLocalName() {
-            if (isClosed()) {
-                return;
-            }
+            Lock lock = getLock();
+            lock.lock();
             try {
+                if (isClosed()) {
+                    return;
+                }
                 long socket = getSocket().longValue();
                 long sa = Address.get(Socket.APR_LOCAL, socket);
-                localName =Address.getnameinfo(sa, 0);
+                localName = Address.getnameinfo(sa, 0);
             } catch (Exception e) {
                 log.warn(sm.getString("endpoint.warn.noLocalName"), e);
+            } finally {
+                lock.unlock();
             }
         }
 
 
         @Override
         protected void populateLocalAddr() {
-            if (isClosed()) {
-                return;
-            }
+            Lock lock = getLock();
+            lock.lock();
             try {
+                if (isClosed()) {
+                    return;
+                }
                 long socket = getSocket().longValue();
                 long sa = Address.get(Socket.APR_LOCAL, socket);
                 localAddr = Address.getip(sa);
             } catch (Exception e) {
                 log.warn(sm.getString("endpoint.warn.noLocalAddr"), e);
+            } finally {
+                lock.unlock();
             }
         }
 
 
         @Override
         protected void populateLocalPort() {
-            if (isClosed()) {
-                return;
-            }
+            Lock lock = getLock();
+            lock.lock();
             try {
+                if (isClosed()) {
+                    return;
+                }
                 long socket = getSocket().longValue();
                 long sa = Address.get(Socket.APR_LOCAL, socket);
                 Sockaddr addr = Address.getInfo(sa);
                 localPort = addr.port;
             } catch (Exception e) {
                 log.warn(sm.getString("endpoint.warn.noLocalPort"), e);
+            } finally {
+                lock.unlock();
             }
         }
 
@@ -2489,10 +2885,16 @@ public class AprEndpoint extends AbstractEndpoint<Long,Long> implements SNICallB
         @Override
         public SSLSupport getSslSupport(String clientCertProvider) {
             if (getEndpoint().isSSLEnabled()) {
-                return new  AprSSLSupport(this, clientCertProvider);
+                return new AprSSLSupport(this, clientCertProvider);
             } else {
                 return null;
             }
+        }
+
+
+        @Override
+        public SSLSupport getSslSupport() {
+            throw new UnsupportedOperationException();
         }
 
 
@@ -2595,24 +2997,24 @@ public class AprEndpoint extends AbstractEndpoint<Long,Long> implements SNICallB
         }
 
         @Override
-        protected <A> OperationState<A> newOperationState(boolean read,
-                ByteBuffer[] buffers, int offset, int length,
-                BlockingMode block, long timeout, TimeUnit unit, A attachment,
-                CompletionCheck check, CompletionHandler<Long, ? super A> handler,
-                Semaphore semaphore, VectoredIOCompletionHandler<A> completion) {
-            return new AprOperationState<>(read, buffers, offset, length, block,
-                    timeout, unit, attachment, check, handler, semaphore, completion);
+        protected <A> OperationState<A> newOperationState(boolean read, ByteBuffer[] buffers, int offset, int length,
+                BlockingMode block, long timeout, TimeUnit unit, A attachment, CompletionCheck check,
+                CompletionHandler<Long,? super A> handler, Semaphore semaphore,
+                VectoredIOCompletionHandler<A> completion) {
+            return new AprOperationState<>(read, buffers, offset, length, block, timeout, unit, attachment, check,
+                    handler, semaphore, completion);
         }
 
         private class AprOperationState<A> extends OperationState<A> {
             private volatile boolean inline = true;
             private volatile long flushBytes = 0;
-            private AprOperationState(boolean read, ByteBuffer[] buffers, int offset, int length,
-                    BlockingMode block, long timeout, TimeUnit unit, A attachment, CompletionCheck check,
-                    CompletionHandler<Long, ? super A> handler, Semaphore semaphore,
+
+            private AprOperationState(boolean read, ByteBuffer[] buffers, int offset, int length, BlockingMode block,
+                    long timeout, TimeUnit unit, A attachment, CompletionCheck check,
+                    CompletionHandler<Long,? super A> handler, Semaphore semaphore,
                     VectoredIOCompletionHandler<A> completion) {
-                super(read, buffers, offset, length, block,
-                        timeout, unit, attachment, check, handler, semaphore, completion);
+                super(read, buffers, offset, length, block, timeout, unit, attachment, check, handler, semaphore,
+                        completion);
             }
 
             @Override
@@ -2704,7 +3106,6 @@ public class AprEndpoint extends AbstractEndpoint<Long,Long> implements SNICallB
                     }
                 }
             }
-
         }
 
     }

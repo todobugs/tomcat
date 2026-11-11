@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.catalina.storeconfig;
 
 import java.io.PrintWriter;
@@ -27,54 +26,58 @@ import org.apache.catalina.LifecycleListener;
 import org.apache.catalina.Realm;
 import org.apache.catalina.Valve;
 import org.apache.catalina.core.StandardEngine;
-import org.apache.catalina.ha.ClusterValve;
 
 /**
  * Store server.xml Element Engine
  */
 public class StandardEngineSF extends StoreFactoryBase {
 
+    private static final Class<?> clusterValveClass;
+    static {
+        Class<?> clazz = null;
+        try {
+            clazz = Class.forName("org.apache.catalina.ha.ClusterValve");
+        } catch (ClassNotFoundException e) {
+            // Expected when clustering JARs are not present
+        }
+        clusterValveClass = clazz;
+    }
+
+    /**
+     * Constructs a new StandardEngineSF instance for storing Engine elements in server.xml.
+     */
+    public StandardEngineSF() {
+    }
+
     /**
      * Store the specified Engine properties.
-     *
-     * @param aWriter
-     *            PrintWriter to which we are storing
-     * @param indent
-     *            Number of spaces to indent this element
-     * @param aEngine
-     *            Object whose properties are being stored
-     *
-     * @exception Exception
-     *                if an exception occurs while storing
+     * <p>
+     * {@inheritDoc}
      */
     @Override
-    public void storeChildren(PrintWriter aWriter, int indent, Object aEngine,
-            StoreDescription parentDesc) throws Exception {
+    public void storeChildren(PrintWriter aWriter, int indent, Object aEngine, StoreDescription parentDesc)
+            throws Exception {
         if (aEngine instanceof StandardEngine) {
             StandardEngine engine = (StandardEngine) aEngine;
             // Store nested <Listener> elements
-            LifecycleListener listeners[] = engine.findLifecycleListeners();
+            LifecycleListener[] listeners = engine.findLifecycleListeners();
             storeElementArray(aWriter, indent, listeners);
 
             // Store nested <Realm> element
             Realm realm = engine.getRealm();
-            Realm parentRealm = null;
-            // TODO is this case possible? (see it a old Server 5.0 impl)
-            if (engine.getParent() != null) {
-                parentRealm = engine.getParent().getRealm();
-            }
-            if (realm != parentRealm) {
+            if (realm != null) {
                 storeElement(aWriter, indent, realm);
 
             }
 
             // Store nested <Valve> elements
-            Valve valves[] = engine.getPipeline().getValves();
-            if(valves != null && valves.length > 0 ) {
-                List<Valve> engineValves = new ArrayList<>() ;
-                for(int i = 0 ; i < valves.length ; i++ ) {
-                    if(!( valves[i] instanceof ClusterValve))
-                        engineValves.add(valves[i]);
+            Valve[] valves = engine.getPipeline().getValves();
+            if (valves != null && valves.length > 0) {
+                List<Valve> engineValves = new ArrayList<>();
+                for (Valve valve : valves) {
+                    if (clusterValveClass == null || !clusterValveClass.isInstance(valve)) {
+                        engineValves.add(valve);
+                    }
                 }
                 storeElementArray(aWriter, indent, engineValves.toArray());
             }
@@ -84,10 +87,10 @@ public class StandardEngineSF extends StoreFactoryBase {
             if (cluster != null) {
                 storeElement(aWriter, indent, cluster);
             }
-            // store all <Host> elements
-            Container children[] = engine.findChildren();
-            storeElementArray(aWriter, indent, children);
 
-       }
+            // store all <Host> elements
+            Container[] children = engine.findChildren();
+            storeElementArray(aWriter, indent, children);
+        }
     }
 }

@@ -14,8 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
-
 package org.apache.jasper.tagplugins.jstl.core;
 
 import java.io.IOException;
@@ -28,41 +26,49 @@ import org.apache.jasper.compiler.tagplugin.TagPluginContext;
 import org.apache.jasper.tagplugins.jstl.Util;
 
 
+/**
+ * Tag plugin for the JSTL out tag.
+ */
 public final class Out implements TagPlugin {
+
+    /**
+     * Constructs an Out tag plugin.
+     */
+    public Out() {
+    }
 
     @Override
     public void doTag(TagPluginContext ctxt) {
 
-        //these two data member are to indicate
-        //whether the corresponding attribute is specified
-        boolean hasDefault=false, hasEscapeXml=false;
-        hasDefault = ctxt.isAttributeSpecified("default");
-        hasEscapeXml = ctxt.isAttributeSpecified("escapeXml");
+        // these two local variables are to indicate
+        // whether the corresponding attribute is specified
+        boolean hasDefault = ctxt.isAttributeSpecified("default");
+        boolean hasEscapeXml = ctxt.isAttributeSpecified("escapeXml");
 
-        //strValName, strEscapeXmlName & strDefName are two variables' name
-        //standing for value, escapeXml and default attribute
+        // strValName, strEscapeXmlName & strDefName are three variables' names
+        // standing for value, escapeXml and default attribute
         String strObjectName = ctxt.getTemporaryVariableName();
         String strValName = ctxt.getTemporaryVariableName();
         String strDefName = ctxt.getTemporaryVariableName();
         String strEscapeXmlName = ctxt.getTemporaryVariableName();
         String strSkipBodyName = ctxt.getTemporaryVariableName();
+        String strBodyContentName = ctxt.getTemporaryVariableName();
+        String strBodyName = ctxt.getTemporaryVariableName();
 
-        //according to the tag file, the value attribute is mandatory.
+        // the value attribute is not mandatory; the tag body is a fallback.
         ctxt.generateImport("java.io.Reader");
         ctxt.generateJavaSource("Object " + strObjectName + "=");
         ctxt.generateAttribute("value");
         ctxt.generateJavaSource(";");
         ctxt.generateJavaSource("String " + strValName + "=null;");
-        ctxt.generateJavaSource("if(!(" + strObjectName +
-                " instanceof Reader) && "+ strObjectName + " != null){");
-        ctxt.generateJavaSource(
-                strValName + " = " + strObjectName + ".toString();");
+        ctxt.generateJavaSource("if(!(" + strObjectName + " instanceof Reader) && " + strObjectName + " != null){");
+        ctxt.generateJavaSource(strValName + " = " + strObjectName + ".toString();");
         ctxt.generateJavaSource("}");
 
-        //initiate the strDefName with null.
-        //if the default has been specified, then assign the value to it;
+        // initiate the strDefName with null.
+        // if the default has been specified, then assign the value to it;
         ctxt.generateJavaSource("String " + strDefName + " = null;");
-        if(hasDefault){
+        if (hasDefault) {
             ctxt.generateJavaSource("if(");
             ctxt.generateAttribute("default");
             ctxt.generateJavaSource(" != null){");
@@ -72,28 +78,64 @@ public final class Out implements TagPlugin {
             ctxt.generateJavaSource("}");
         }
 
-        //initiate the strEscapeXmlName with true;
-        //if the escapeXml is specified, assign the value to it;
+        // initiate the strEscapeXmlName with true;
+        // if the escapeXml is specified, assign the value to it;
         ctxt.generateJavaSource("boolean " + strEscapeXmlName + " = true;");
-        if(hasEscapeXml){
+        if (hasEscapeXml) {
             ctxt.generateJavaSource(strEscapeXmlName + " = ");
             ctxt.generateAttribute("escapeXml");
             ctxt.generateJavaSource(";");
         }
 
-        //main part.
+        // main part.
         ctxt.generateJavaSource(
-                "boolean " + strSkipBodyName + " = " +
-                "org.apache.jasper.tagplugins.jstl.core.Out.output(out, " +
-                strObjectName + ", " + strValName + ", " + strDefName + ", " +
-                strEscapeXmlName + ");");
+                "boolean " + strSkipBodyName + " = " + "org.apache.jasper.tagplugins.jstl.core.Out.output(out, " +
+                        strObjectName + ", " + strValName + ", " + strDefName + ", " + strEscapeXmlName + ");");
+        if (!ctxt.hasBody()) {
+            // There is no body to use as a fallback, so there is nothing to
+            // buffer. Avoid allocating a BodyContent for every null value.
+            return;
+        }
         ctxt.generateJavaSource("if(!" + strSkipBodyName + ") {");
+        // Neither the value nor the default produced output. As in the
+        // standard tag handler, capture the body content, then output it
+        // trimmed and escaped according to the escapeXml attribute. The
+        // capture is unwound in a finally block, so a failing body does
+        // not leave the output redirected, as the container does when a
+        // buffered tag body throws.
+        ctxt.generateJavaSource("javax.servlet.jsp.tagext.BodyContent " +
+                strBodyContentName + " = _jspx_page_context.pushBody();");
+        ctxt.generateJavaSource("out = " + strBodyContentName + ";");
+        ctxt.generateJavaSource("String " + strBodyName + ";");
+        ctxt.generateJavaSource("try {");
         ctxt.generateBody();
+        ctxt.generateJavaSource("} finally {");
+        ctxt.generateJavaSource("    " + strBodyName + " = " +
+                strBodyContentName + ".getString().trim();");
+        ctxt.generateJavaSource("    out = _jspx_page_context.popBody();");
+        ctxt.generateJavaSource("}");
+        ctxt.generateJavaSource("if(" + strEscapeXmlName + ") {");
+        ctxt.generateJavaSource("    out.write(org.apache.jasper.tagplugins.jstl.Util.escapeXml(" +
+                strBodyName + "));");
+        ctxt.generateJavaSource("} else {");
+        ctxt.generateJavaSource("    out.write(" + strBodyName + ");");
+        ctxt.generateJavaSource("}");
         ctxt.generateJavaSource("}");
     }
 
-    public static boolean output(JspWriter out, Object input, String value,
-            String defaultValue, boolean escapeXml) throws IOException {
+    /**
+     * Performs output of a value to the JspWriter.
+     *
+     * @param out The JspWriter to write to
+     * @param input The input object
+     * @param value The value to output
+     * @param defaultValue The default value
+     * @param escapeXml Whether to escape XML
+     * @return true if output was performed
+     * @throws IOException if an I/O error occurs
+     */
+    public static boolean output(JspWriter out, Object input, String value, String defaultValue, boolean escapeXml)
+            throws IOException {
         if (input instanceof Reader) {
             char[] buffer = new char[8096];
             int read = 0;
@@ -116,7 +158,7 @@ public final class Out implements TagPlugin {
         } else {
             String v = value != null ? value : defaultValue;
             if (v != null) {
-                if(escapeXml){
+                if (escapeXml) {
                     v = Util.escapeXml(v);
                 }
                 out.write(v);

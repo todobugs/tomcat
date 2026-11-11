@@ -34,6 +34,11 @@ public class DOMWriter {
     private final PrintWriter out;
 
 
+    /**
+     * Construct a DOMWriter that writes to the given Writer.
+     *
+     * @param writer The Writer to write to
+     */
     public DOMWriter(Writer writer) {
         out = new PrintWriter(writer);
     }
@@ -41,6 +46,7 @@ public class DOMWriter {
 
     /**
      * Prints the specified node, recursively.
+     *
      * @param node The node to output
      */
     public void print(Node node) {
@@ -62,14 +68,25 @@ public class DOMWriter {
             case Node.ELEMENT_NODE:
                 out.print('<');
                 out.print(node.getLocalName());
-                Attr attrs[] = sortAttributes(node.getAttributes());
-                for (int i = 0; i < attrs.length; i++) {
-                    Attr attr = attrs[i];
+                Attr[] attrs = sortAttributes(node.getAttributes());
+                boolean xmlns = false;
+                for (Attr attr : attrs) {
+                    if ("xmlns".equals(attr.getPrefix())) {
+                        // Skip namespace prefixes as they are removed
+                        continue;
+                    }
                     out.print(' ');
                     out.print(attr.getLocalName());
-
+                    if ("xmlns".equals(attr.getLocalName())) {
+                        xmlns = true;
+                    }
                     out.print("=\"");
                     out.print(Escape.xml("", true, attr.getNodeValue()));
+                    out.print('"');
+                }
+                if (!xmlns && node.getNamespaceURI() != null) {
+                    out.print(" xmlns=\"");
+                    out.print(Escape.xml(node.getNamespaceURI()));
                     out.print('"');
                 }
                 out.print('>');
@@ -88,22 +105,62 @@ public class DOMWriter {
 
             // print text
             case Node.TEXT_NODE:
-                out.print(Escape.xml("", true, node.getNodeValue()));
+                out.print(Escape.xml("", false, node.getNodeValue()));
                 break;
 
             // print processing instruction
             case Node.PROCESSING_INSTRUCTION_NODE:
                 out.print("<?");
                 out.print(node.getLocalName());
-
-                String data = node.getNodeValue();
-                if (data != null && data.length() > 0) {
+                String piData = node.getNodeValue();
+                if (piData != null && !piData.isEmpty()) {
                     out.print(' ');
-                    out.print(data);
+                    // The only illegal sequence in PI data is ?> which would
+                    // terminate the PI early. Break it with a space. PI data
+                    // is opaque and must not have entity escaping applied.
+                    int start = 0;
+                    int end = piData.indexOf("?>");
+                    while (end >= 0) {
+                        out.print(piData.substring(start, end));
+                        out.print("? >");
+                        start = end + 2;
+                        end = piData.indexOf("?>", start);
+                    }
+                    out.print(piData.substring(start));
                 }
                 out.print("?>");
                 break;
-            }
+
+            // print comment
+            case Node.COMMENT_NODE:
+                out.print("<!--");
+                String commentValue = node.getNodeValue();
+                if (commentValue != null) {
+                    // The only illegal sequence in comment data is --> which
+                    // would terminate the comment early. Break it with a space.
+                    int start = 0;
+                    int end = commentValue.indexOf("-->");
+                    while (end >= 0) {
+                        out.print(commentValue.substring(start, end));
+                        out.print("- >");
+                        start = end + 3;
+                        end = commentValue.indexOf("-->", start);
+                    }
+                    out.print(commentValue.substring(start));
+                }
+                out.print("-->");
+                break;
+
+            // print document fragment (just its children)
+            case Node.DOCUMENT_FRAGMENT_NODE:
+                printChildren(node);
+                break;
+
+            default:
+                // Unhandled node types (ENTITY_NODE, NOTATION_NODE,
+                // ATTRIBUTE_NODE) are silently skipped.
+                break;
+        }
 
         if (type == Node.ELEMENT_NODE) {
             out.print("</");
@@ -129,7 +186,9 @@ public class DOMWriter {
 
     /**
      * Returns a sorted list of attributes.
+     *
      * @param attrs The map to sort
+     *
      * @return a sorted attribute array
      */
     private Attr[] sortAttributes(NamedNodeMap attrs) {
@@ -138,17 +197,15 @@ public class DOMWriter {
         }
 
         int len = attrs.getLength();
-        Attr array[] = new Attr[len];
+        Attr[] array = new Attr[len];
         for (int i = 0; i < len; i++) {
             array[i] = (Attr) attrs.item(i);
         }
         for (int i = 0; i < len - 1; i++) {
-            String name = null;
-            name = array[i].getLocalName();
+            String name = array[i].getLocalName();
             int index = i;
             for (int j = i + 1; j < len; j++) {
-                String curName = null;
-                curName = array[j].getLocalName();
+                String curName = array[j].getLocalName();
                 if (curName.compareTo(name) < 0) {
                     name = curName;
                     index = j;

@@ -23,6 +23,9 @@ import java.io.StringReader;
 import org.apache.tomcat.util.buf.ByteChunk;
 import org.apache.tomcat.util.buf.MessageBytes;
 
+/**
+ * Utility class for parsing HTTP Host header values.
+ */
 public class Host {
 
     private Host() {
@@ -35,11 +38,9 @@ public class Host {
      *
      * @param mb The host header value
      *
-     * @return The position of ':' that separates the host from the port or -1
-     *         if it is not present
+     * @return The position of ':' that separates the host from the port or -1 if it is not present
      *
-     * @throws IllegalArgumentException If the host header value is not
-     *         specification compliant
+     * @throws IllegalArgumentException If the host header value is not specification compliant
      */
     public static int parse(MessageBytes mb) {
         return parse(new MessageBytesReader(mb));
@@ -51,11 +52,9 @@ public class Host {
      *
      * @param string The host header value
      *
-     * @return The position of ':' that separates the host from the port or -1
-     *         if it is not present
+     * @return The position of ':' that separates the host from the port or -1 if it is not present
      *
-     * @throws IllegalArgumentException If the host header value is not
-     *         specification compliant
+     * @throws IllegalArgumentException If the host header value is not specification compliant
      */
     public static int parse(String string) {
         return parse(new StringReader(string));
@@ -91,20 +90,25 @@ public class Host {
         private int pos;
         private int mark;
 
-        public MessageBytesReader(MessageBytes mb) {
+        MessageBytesReader(MessageBytes mb) {
             ByteChunk bc = mb.getByteChunk();
             bytes = bc.getBytes();
-            pos = bc.getOffset();
+            pos = bc.getStart();
             end = bc.getEnd();
         }
 
         @Override
         public int read(char[] cbuf, int off, int len) throws IOException {
-            for (int i = off; i < off + len; i++) {
-                // Want output in range 0 to 255, not -128 to 127
-                cbuf[i] = (char) (bytes[pos++] & 0xFF);
+            if (pos < end) {
+                len = Math.min(len, end - pos);
+                for (int i = off; i < off + len; i++) {
+                    // Want output in range 0 to 255, not -128 to 127
+                    cbuf[i] = (char) (bytes[pos++] & 0xFF);
+                }
+                return len;
+            } else {
+                return -1;
             }
-            return len;
         }
 
         @Override

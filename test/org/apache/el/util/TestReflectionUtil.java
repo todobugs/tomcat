@@ -16,9 +16,15 @@
  */
 package org.apache.el.util;
 
+import javax.el.ELContext;
+import javax.el.ExpressionFactory;
+import javax.el.MethodExpression;
 import javax.el.MethodNotFoundException;
 
+import org.junit.Assert;
 import org.junit.Test;
+
+import org.apache.jasper.el.ELContextImpl;
 
 public class TestReflectionUtil {
 
@@ -59,5 +65,21 @@ public class TestReflectionUtil {
         ReflectionUtil.getMethod(null, BASE, "testD",
                 new Class[] {null},
                 new Object[] {null});
+    }
+
+    @Test
+    public void testStaticMethodOnInstance() {
+        ExpressionFactory factory = ExpressionFactory.newInstance();
+        ELContext context = new ELContextImpl(factory);
+
+        MethodExpression methodExpression = factory.createMethodExpression(context, "${\"1\".format(2)}", String.class,
+                new Class<?>[] {});
+
+        // The static method format(String,Object...) must be resolvable and
+        // invocable when called on an instance. The single argument is the
+        // format string. No varargs elements are provided which is valid.
+        Object result = methodExpression.invoke(context, null);
+
+        Assert.assertEquals("2", result);
     }
 }

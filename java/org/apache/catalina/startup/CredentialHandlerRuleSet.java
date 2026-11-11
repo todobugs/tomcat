@@ -20,17 +20,20 @@ import org.apache.tomcat.util.digester.Digester;
 import org.apache.tomcat.util.digester.RuleSet;
 
 /**
- * <p><strong>RuleSet</strong> for processing the contents of a
- * CredentialHandler definition element.  This <code>RuleSet</code> supports
- * CredentialHandler such as the <code>NestedCredentialHandler</code> that used
- * nested CredentialHandlers.</p>
+ * <strong>RuleSet</strong> for processing the contents of a CredentialHandler definition element. This
+ * <code>RuleSet</code> supports CredentialHandler such as the <code>NestedCredentialHandler</code> that uses nested
+ * CredentialHandlers.
  */
 public class CredentialHandlerRuleSet implements RuleSet {
 
 
-    private static final int MAX_NESTED_LEVELS = Integer.getInteger(
-            "org.apache.catalina.startup.CredentialHandlerRuleSet.MAX_NESTED_LEVELS",
-            3).intValue();
+    /**
+     * The maximum number of nested <code>CredentialHandler</code> levels to support. The default value of 3 can be
+     * overridden using the <code>org.apache.catalina.startup.CredentialHandlerRuleSet.MAX_NESTED_LEVELS</code> system
+     * property.
+     */
+    private static final int MAX_NESTED_LEVELS =
+            Integer.getInteger("org.apache.catalina.startup.CredentialHandlerRuleSet.MAX_NESTED_LEVELS", 3).intValue();
 
     // ----------------------------------------------------- Instance Variables
 
@@ -45,8 +48,7 @@ public class CredentialHandlerRuleSet implements RuleSet {
 
 
     /**
-     * Construct an instance of this <code>RuleSet</code> with the default
-     * matching pattern prefix.
+     * Construct an instance of this <code>RuleSet</code> with the default matching pattern prefix.
      */
     public CredentialHandlerRuleSet() {
         this("");
@@ -54,11 +56,9 @@ public class CredentialHandlerRuleSet implements RuleSet {
 
 
     /**
-     * Construct an instance of this <code>RuleSet</code> with the specified
-     * matching pattern prefix.
+     * Construct an instance of this <code>RuleSet</code> with the specified matching pattern prefix.
      *
-     * @param prefix Prefix for matching pattern rules (including the
-     *  trailing slash character)
+     * @param prefix Prefix for matching pattern rules (including the trailing slash character)
      */
     public CredentialHandlerRuleSet(String prefix) {
         this.prefix = prefix;
@@ -68,15 +68,6 @@ public class CredentialHandlerRuleSet implements RuleSet {
     // --------------------------------------------------------- Public Methods
 
 
-    /**
-     * <p>Add the set of Rule instances defined in this RuleSet to the
-     * specified <code>Digester</code> instance, associating them with
-     * our namespace URI (if any).  This method should only be called
-     * by a Digester instance.</p>
-     *
-     * @param digester Digester instance to which the new Rule instances
-     *  should be added.
-     */
     @Override
     public void addRuleInstances(Digester digester) {
         StringBuilder pattern = new StringBuilder(prefix);
@@ -85,14 +76,12 @@ public class CredentialHandlerRuleSet implements RuleSet {
                 pattern.append('/');
             }
             pattern.append("CredentialHandler");
-            addRuleInstances(digester, pattern.toString(), i == 0 ? "setCredentialHandler"
-                    : "addCredentialHandler");
+            addRuleInstances(digester, pattern.toString(), i == 0 ? "setCredentialHandler" : "addCredentialHandler");
         }
     }
 
     private void addRuleInstances(Digester digester, String pattern, String methodName) {
-        digester.addObjectCreate(pattern, null /* MUST be specified in the element */,
-                "className");
+        digester.addObjectCreate(pattern, null /* MUST be specified in the element */, "className");
         digester.addSetProperties(pattern);
         digester.addSetNext(pattern, methodName, "org.apache.catalina.CredentialHandler");
     }

@@ -22,25 +22,35 @@ import org.apache.tomcat.util.net.AprEndpoint;
 
 
 /**
- * Abstract the protocol implementation, including threading, etc.
- * Processor is single threaded and specific to stream-based protocols,
- * will not fit Jk protocols like JNI.
+ * HTTP/1.1 protocol implementation using APR/native.
  *
- * @author Remy Maucherat
- * @author Costin Manolache
+ * @deprecated The APR/Native Connector will be removed in Tomcat 9.1.x onwards and has been removed from Tomcat 10.1.x
+ *                 onwards.
  */
+@Deprecated
 public class Http11AprProtocol extends AbstractHttp11Protocol<Long> {
 
     private static final Log log = LogFactory.getLog(Http11AprProtocol.class);
 
+    @Deprecated
     public Http11AprProtocol() {
-        super(new AprEndpoint());
+        this(new AprEndpoint());
     }
 
 
-    @Override
-    protected Log getLog() { return log; }
+    @Deprecated
+    public Http11AprProtocol(AprEndpoint endpoint) {
+        super(endpoint);
+    }
 
+
+    @Deprecated
+    @Override
+    protected Log getLog() {
+        return log;
+    }
+
+    @Deprecated
     @Override
     public boolean isAprRequired() {
         // Override since this protocol implementation requires the APR/native
@@ -48,18 +58,51 @@ public class Http11AprProtocol extends AbstractHttp11Protocol<Long> {
         return true;
     }
 
-    public int getPollTime() { return ((AprEndpoint)getEndpoint()).getPollTime(); }
-    public void setPollTime(int pollTime) { ((AprEndpoint)getEndpoint()).setPollTime(pollTime); }
+    @Deprecated
+    public int getPollTime() {
+        return ((AprEndpoint) getEndpoint()).getPollTime();
+    }
 
-    public int getSendfileSize() { return ((AprEndpoint)getEndpoint()).getSendfileSize(); }
-    public void setSendfileSize(int sendfileSize) { ((AprEndpoint)getEndpoint()).setSendfileSize(sendfileSize); }
+    @Deprecated
+    public void setPollTime(int pollTime) {
+        ((AprEndpoint) getEndpoint()).setPollTime(pollTime);
+    }
 
-    public boolean getDeferAccept() { return ((AprEndpoint)getEndpoint()).getDeferAccept(); }
-    public void setDeferAccept(boolean deferAccept) { ((AprEndpoint)getEndpoint()).setDeferAccept(deferAccept); }
+    @Deprecated
+    public int getSendfileSize() {
+        return ((AprEndpoint) getEndpoint()).getSendfileSize();
+    }
+
+    @Deprecated
+    public void setSendfileSize(int sendfileSize) {
+        ((AprEndpoint) getEndpoint()).setSendfileSize(sendfileSize);
+    }
+
+    @Deprecated
+    public boolean getDeferAccept() {
+        return ((AprEndpoint) getEndpoint()).getDeferAccept();
+    }
+
+    @Deprecated
+    public void setDeferAccept(boolean deferAccept) {
+        ((AprEndpoint) getEndpoint()).setDeferAccept(deferAccept);
+    }
 
 
-    // ----------------------------------------------------- JMX related methods
 
+    @Override
+    public void init() throws Exception {
+        super.init();
+
+        if (isSSLEnabled()) {
+            log.info(sm.getString("ajpHttpsProtocol.deprecated", getName()));
+        } else {
+            log.info(sm.getString("ajpHttpProtocol.deprecated", getName()));
+        }
+    }
+
+
+    @Deprecated
     @Override
     protected String getNamePrefix() {
         if (isSSLEnabled()) {

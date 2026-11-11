@@ -21,7 +21,6 @@ import java.util.Arrays;
 import java.util.logging.Level;
 
 import org.junit.Assert;
-import org.junit.Before;
 import org.junit.Test;
 
 import org.apache.catalina.Globals;
@@ -29,15 +28,28 @@ import org.apache.catalina.Valve;
 import org.apache.catalina.connector.Connector;
 import org.apache.catalina.connector.Request;
 import org.apache.tomcat.unittest.TesterLogValidationFilter;
+import org.apache.tomcat.util.buf.UEncoder;
 import org.easymock.EasyMock;
 
 public class TestSSLValve {
 
     public static class MockRequest extends Request {
 
-        public MockRequest() {
-            super(EasyMock.createMock(Connector.class));
+        private static MockRequest single_instance = null;
+
+        public MockRequest(Connector connector) {
+            super(connector);
             setCoyoteRequest(new org.apache.coyote.Request());
+        }
+
+        public static MockRequest getInstance() {
+            if (single_instance == null) {
+                Connector connector = EasyMock.createNiceMock(Connector.class);
+                EasyMock.replay(connector);
+                single_instance = new MockRequest(connector);
+            }
+
+            return single_instance;
         }
 
         @Override
@@ -90,22 +102,34 @@ public class TestSSLValve {
             "yoTBqEpJloWksrypqp3iL4PAL5+KkB2zp66+MVAg8LcEDFJggBBJCtv4SCWV7ZOB",
             "WLu8gep+XCwSn0Wb6D3eFs4DoIiMvQ6g2rS/pk7o5eWj", "-----END CERTIFICATE-----" };
 
-    private SSLValve valve = new SSLValve();
+    private final SSLValve valve = new SSLValve();
 
-    private MockRequest mockRequest = new MockRequest();
-    private Valve mockNext = EasyMock.createMock(Valve.class);
+    private MockRequest mockRequest;
+    private final Valve mockNext = EasyMock.createMock(Valve.class);
 
-
-    @Before
     public void setUp() throws Exception {
+        setUp(null);
+    }
+
+    public void setUp(Connector connector) throws Exception {
         valve.setNext(mockNext);
+        if (connector == null) {
+            mockRequest = MockRequest.getInstance();
+        } else {
+            EasyMock.replay(connector);
+            mockRequest = new MockRequest(connector);
+        }
+        // A single MockRequest instance is shared between tests. Remove any
+        // headers and attributes left over by a previous test.
+        mockRequest.getCoyoteRequest().getMimeHeaders().recycle();
+        mockRequest.getCoyoteRequest().getAttributes().clear();
         mockNext.invoke(mockRequest, null);
         EasyMock.replay(mockNext);
     }
 
-
     @Test
-    public void testSslHeader() {
+    public void testSslHeader() throws Exception {
+        setUp();
         final String headerName = "myheader";
         final String headerValue = "BASE64_HEADER_VALUE";
         mockRequest.setHeader(headerName, headerValue);
@@ -115,7 +139,8 @@ public class TestSSLValve {
 
 
     @Test
-    public void testSslHeaderNull() {
+    public void testSslHeaderNull() throws Exception {
+        setUp();
         final String headerName = "myheader";
         mockRequest.setHeader(headerName, null);
 
@@ -124,7 +149,8 @@ public class TestSSLValve {
 
 
     @Test
-    public void testSslHeaderNullModHeader() {
+    public void testSslHeaderNullModHeader() throws Exception {
+        setUp();
         final String headerName = "myheader";
         final String nullModHeaderValue = "(null)";
         mockRequest.setHeader(headerName, nullModHeaderValue);
@@ -135,12 +161,14 @@ public class TestSSLValve {
 
     @Test
     public void testSslHeaderNullName() throws Exception {
+        setUp();
         Assert.assertNull(valve.mygetHeader(mockRequest, null));
     }
 
 
     @Test
     public void testSslHeaderMultiples() throws Exception {
+        setUp();
         final String headerName = "myheader";
         final String headerValue = "BASE64_HEADER_VALUE";
         mockRequest.addHeader(headerName, headerValue);
@@ -152,6 +180,7 @@ public class TestSSLValve {
 
     @Test
     public void testSslClientCertHeaderSingleSpace() throws Exception {
+        setUp();
         String singleSpaced = certificateSingleLine(" ");
         mockRequest.setHeader(valve.getSslClientCertHeader(), singleSpaced);
 
@@ -163,6 +192,7 @@ public class TestSSLValve {
 
     @Test
     public void testSslClientCertHeaderMultiSpace() throws Exception {
+        setUp();
         String singleSpaced = certificateSingleLine("    ");
         mockRequest.setHeader(valve.getSslClientCertHeader(), singleSpaced);
 
@@ -174,6 +204,7 @@ public class TestSSLValve {
 
     @Test
     public void testSslClientCertHeaderTab() throws Exception {
+        setUp();
         String singleSpaced = certificateSingleLine("\t");
         mockRequest.setHeader(valve.getSslClientCertHeader(), singleSpaced);
 
@@ -184,7 +215,20 @@ public class TestSSLValve {
 
 
     @Test
+    public void testSslClientCertHeaderEscaped() throws Exception {
+        setUp();
+        String cert = certificateEscaped();
+        mockRequest.setHeader(valve.getSslClientEscapedCertHeader(), cert);
+
+        valve.invoke(mockRequest, null);
+
+        assertCertificateParsed();
+    }
+
+
+    @Test
     public void testSslClientCertNull() throws Exception {
+        setUp();
         TesterLogValidationFilter f = TesterLogValidationFilter.add(null, "", null,
                 "org.apache.catalina.valves.SSLValve");
 
@@ -198,6 +242,7 @@ public class TestSSLValve {
 
     @Test
     public void testSslClientCertShorter() throws Exception {
+        setUp();
         mockRequest.setHeader(valve.getSslClientCertHeader(), "shorter than hell");
 
         TesterLogValidationFilter f = TesterLogValidationFilter.add(null, "", null,
@@ -213,10 +258,47 @@ public class TestSSLValve {
 
     @Test
     public void testSslClientCertIgnoredBegin() throws Exception {
+        setUp();
         String[] linesBegin = Arrays.copyOf(CERTIFICATE_LINES, CERTIFICATE_LINES.length);
         linesBegin[0] = "3fisjcme3kdsakasdfsadkafsd3";
         String begin = certificateSingleLine(linesBegin, " ");
         mockRequest.setHeader(valve.getSslClientCertHeader(), begin);
+
+        TesterLogValidationFilter f = TesterLogValidationFilter.add(Level.WARNING, null, null,
+                "org.apache.catalina.valves.SSLValve");
+
+        valve.invoke(mockRequest, null);
+
+        EasyMock.verify(mockNext);
+        // A value that does not start with the BEGIN marker is not a PEM
+        // encoded certificate. The header is ignored.
+        Assert.assertNull(mockRequest.getAttribute(Globals.CERTIFICATES_ATTR));
+        Assert.assertEquals(0, f.getMessageCount());
+    }
+
+
+    @Test
+    public void testSslClientCertHeaderEscapedInvalidEncoding() throws Exception {
+        setUp();
+        // Percent-escaping that is not followed by two hex digits
+        mockRequest.setHeader(valve.getSslClientEscapedCertHeader(), "%zz%0a-----BEGIN%20CERTIFICATE-----%0a");
+
+        TesterLogValidationFilter f = TesterLogValidationFilter.add(Level.WARNING, null, null,
+                "org.apache.catalina.valves.SSLValve");
+
+        valve.invoke(mockRequest, null);
+
+        EasyMock.verify(mockNext);
+        Assert.assertNull(mockRequest.getAttribute(Globals.CERTIFICATES_ATTR));
+        Assert.assertEquals(0, f.getMessageCount());
+    }
+
+
+    @Test
+    public void testSslClientCertHeaderEscapedInvalidEncodingFallsBackToPlain() throws Exception {
+        setUp();
+        mockRequest.setHeader(valve.getSslClientEscapedCertHeader(), "%zz%0a-----BEGIN%20CERTIFICATE-----%0a");
+        mockRequest.setHeader(valve.getSslClientCertHeader(), certificateSingleLine(" "));
 
         valve.invoke(mockRequest, null);
 
@@ -226,6 +308,7 @@ public class TestSSLValve {
 
     @Test
     public void testSslClientCertBadFormat() throws Exception {
+        setUp();
         String[] linesDeleted = Arrays.copyOf(CERTIFICATE_LINES, CERTIFICATE_LINES.length / 2);
         String deleted = certificateSingleLine(linesDeleted, " ");
         mockRequest.setHeader(valve.getSslClientCertHeader(), deleted);
@@ -243,8 +326,10 @@ public class TestSSLValve {
 
     @Test
     public void testClientCertProviderNotFound() throws Exception {
-        EasyMock.expect(mockRequest.getConnector().getProperty("clientCertProvider")).andStubReturn("wontBeFound");
-        EasyMock.replay(mockRequest.getConnector());
+        Connector connector = EasyMock.createNiceMock(Connector.class);
+        EasyMock.expect(connector.getProperty("clientCertProvider")).andStubReturn("wontBeFound");
+        setUp(connector);
+
         mockRequest.setHeader(valve.getSslClientCertHeader(), certificateSingleLine(" "));
 
         TesterLogValidationFilter f = TesterLogValidationFilter.add(Level.SEVERE, null,
@@ -259,6 +344,7 @@ public class TestSSLValve {
 
     @Test
     public void testSslCipherHeaderPresent() throws Exception {
+        setUp();
         String cipher = "ciphered-with";
         mockRequest.setHeader(valve.getSslCipherHeader(), cipher);
 
@@ -270,6 +356,7 @@ public class TestSSLValve {
 
     @Test
     public void testSslSessionIdHeaderPresent() throws Exception {
+        setUp();
         String session = "ssl-session";
         mockRequest.setHeader(valve.getSslSessionIdHeader(), session);
 
@@ -281,6 +368,7 @@ public class TestSSLValve {
 
     @Test
     public void testSslCipherUserKeySizeHeaderPresent() throws Exception {
+        setUp();
         Integer keySize = Integer.valueOf(452);
         mockRequest.setHeader(valve.getSslCipherUserKeySizeHeader(), String.valueOf(keySize));
 
@@ -290,16 +378,19 @@ public class TestSSLValve {
     }
 
 
-    @Test(expected = NumberFormatException.class)
+    @Test
     public void testSslCipherUserKeySizeHeaderBadFormat() throws Exception {
+        setUp();
         mockRequest.setHeader(valve.getSslCipherUserKeySizeHeader(), "not-an-integer");
 
-        try {
-            valve.invoke(mockRequest, null);
-        } catch (NumberFormatException e) {
-            Assert.assertNull(mockRequest.getAttribute(Globals.KEY_SIZE_ATTR));
-            throw e;
-        }
+        TesterLogValidationFilter f = TesterLogValidationFilter.add(Level.WARNING, null, null,
+                "org.apache.catalina.valves.SSLValve");
+
+        valve.invoke(mockRequest, null);
+
+        EasyMock.verify(mockNext);
+        Assert.assertNull(mockRequest.getAttribute(Globals.KEY_SIZE_ATTR));
+        Assert.assertEquals(1, f.getMessageCount());
     }
 
 
@@ -315,6 +406,17 @@ public class TestSSLValve {
 
     private static String certificateSingleLine(String separator) {
         return certificateSingleLine(CERTIFICATE_LINES, separator);
+    }
+
+
+    private static String certificateEscaped() throws Exception {
+        String cert = certificateSingleLine(CERTIFICATE_LINES, "\n");
+        String escaped = new UEncoder(UEncoder.SafeCharsSet.DEFAULT).encodeURL(cert, 0, cert.length()).toString();
+        Assert.assertTrue(escaped, escaped.contains("%0a")); // newline is escaped
+        Assert.assertTrue(escaped, escaped.contains("%20")); // space is escaped
+        Assert.assertTrue(escaped, escaped.contains("%2b")); // + is escaped
+        Assert.assertTrue(escaped, escaped.contains("%2f")); // / is escaped
+        return escaped;
     }
 
 

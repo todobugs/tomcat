@@ -21,19 +21,25 @@ import org.xml.sax.Attributes;
 
 
 /**
- * <p>Abstract base class for <code>ObjectCreationFactory</code>
- * implementations.</p>
+ * <p>
+ * Abstract base class for <code>ObjectCreationFactory</code> implementations.
+ * </p>
  */
-public abstract class AbstractObjectCreationFactory
-        implements ObjectCreationFactory {
+public abstract class AbstractObjectCreationFactory implements ObjectCreationFactory {
+
+    /**
+     * Constructs a new instance of this factory.
+     */
+    public AbstractObjectCreationFactory() {
+    }
 
 
     // ----------------------------------------------------- Instance Variables
 
 
     /**
-     * The associated <code>Digester</code> instance that was set up by
-     * {@link FactoryCreateRule} upon initialization.
+     * The associated <code>Digester</code> instance that was set by {@link Digester#addFactoryCreate} upon
+     * initialization.
      */
     private Digester digester = null;
 
@@ -42,8 +48,8 @@ public abstract class AbstractObjectCreationFactory
 
 
     /**
-     * <p>Factory method called by {@link FactoryCreateRule} to supply an
-     * object based on the element's attributes.
+     * <p>
+     * Factory method called by {@link FactoryCreateRule} to supply an object based on the element's attributes.
      *
      * @param attributes the element's attributes
      *
@@ -54,8 +60,8 @@ public abstract class AbstractObjectCreationFactory
 
 
     /**
-     * <p>Returns the {@link Digester} that was set by the
-     * {@link FactoryCreateRule} upon initialization.
+     * <p>
+     * Returns the {@link Digester} that was set by {@link Digester#addFactoryCreate} upon initialization.
      */
     @Override
     public Digester getDigester() {
@@ -64,8 +70,9 @@ public abstract class AbstractObjectCreationFactory
 
 
     /**
-     * <p>Set the {@link Digester} to allow the implementation to do logging,
-     * classloading based on the digester's classloader, etc.
+     * <p>
+     * Set the {@link Digester} to allow the implementation to do logging, classloading based on the digester's
+     * classloader, etc.
      *
      * @param digester parent Digester object
      */

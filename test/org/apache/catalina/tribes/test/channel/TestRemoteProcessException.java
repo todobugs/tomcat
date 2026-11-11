@@ -33,6 +33,7 @@ import org.apache.catalina.tribes.ManagedChannel;
 import org.apache.catalina.tribes.Member;
 import org.apache.catalina.tribes.TesterUtil;
 import org.apache.catalina.tribes.group.GroupChannel;
+import org.apache.catalina.tribes.transport.ReceiverBase;
 
 public class TestRemoteProcessException {
     private int msgCount = 10000;
@@ -43,7 +44,9 @@ public class TestRemoteProcessException {
     @Before
     public void setUp() throws Exception {
         channel1 = new GroupChannel();
+        ((ReceiverBase) channel1.getChannelReceiver()).setPort(0);
         channel2 = new GroupChannel();
+        ((ReceiverBase) channel2.getChannelReceiver()).setPort(0);
         listener1 = new Listener();
         channel2.addChannelListener(listener1);
         TesterUtil.addRandomDomain(new ManagedChannel[] {channel1, channel2});
@@ -76,7 +79,11 @@ public class TestRemoteProcessException {
                     throw e;
                 }
             }
-            if ( error ) errC++; else nerrC++;
+            if ( error ) {
+              errC++;
+            } else {
+              nerrC++;
+            }
         }
         System.err.println("Finished SYNC_ACK");
 
@@ -150,7 +157,9 @@ public class TestRemoteProcessException {
 
         public static boolean verify(Data d) {
             boolean result = (d.length == d.data.length);
-            for ( int i=0; result && (i<d.data.length); i++ ) result = result && d.data[i] == d.key;
+            for ( int i=0; result && (i<d.data.length); i++ ) {
+              result = result && d.data[i] == d.key;
+            }
             return result;
         }
     }

@@ -14,21 +14,32 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
-
 package org.apache.jasper.tagplugins.jstl.core;
 
 import org.apache.jasper.compiler.tagplugin.TagPlugin;
 import org.apache.jasper.compiler.tagplugin.TagPluginContext;
 
+/**
+ * Tag plugin for the JSTL &lt;c:choose&gt; tag.
+ */
 public final class Choose implements TagPlugin {
+
+    /**
+     * Creates a new Choose tag plugin.
+     */
+    public Choose() {
+    }
 
     @Override
     public void doTag(TagPluginContext ctxt) {
 
+        // Mark this context so that the <c:when> and <c:otherwise> tags in
+        // the body know that they are directly nested in a <c:choose>.
+
         // Not much to do here, much of the work will be done in the
         // containing tags, <c:when> and <c:otherwise>.
 
+        ctxt.setPluginAttribute("inChoose", "true");
         ctxt.generateBody();
         // See comments in When.java for the reason "}" is generated here.
         ctxt.generateJavaSource("}");

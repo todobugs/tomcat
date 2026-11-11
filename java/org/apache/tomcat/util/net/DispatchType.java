@@ -17,21 +17,35 @@
 package org.apache.tomcat.util.net;
 
 /**
- * This enumeration lists the different types of dispatches that request
- * processing can trigger. In this instance, dispatch means re-process this
- * request using the given socket status.
+ * This enumeration lists the different types of dispatches that request processing can trigger. In this instance,
+ * dispatch means re-process this request using the given socket status.
  */
 public enum DispatchType {
 
+    /**
+     * Dispatch type for non-blocking read operations.
+     */
     NON_BLOCKING_READ(SocketEvent.OPEN_READ),
-    NON_BLOCKING_WRITE(SocketEvent.OPEN_WRITE);
+    /**
+     * Dispatch type for non-blocking write operations.
+     */
+    NON_BLOCKING_WRITE(SocketEvent.OPEN_WRITE),
+    /**
+     * Dispatch type for non-blocking error operations.
+     */
+    NON_BLOCKING_ERROR(SocketEvent.ERROR);
 
     private final SocketEvent status;
 
-    private DispatchType(SocketEvent status) {
+    DispatchType(SocketEvent status) {
         this.status = status;
     }
 
+    /**
+     * Get the socket event status associated with this dispatch type.
+     *
+     * @return Socket event status
+     */
     public SocketEvent getSocketStatus() {
         return status;
     }

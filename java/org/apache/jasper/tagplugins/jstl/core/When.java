@@ -14,14 +14,21 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
-
 package org.apache.jasper.tagplugins.jstl.core;
 
 import org.apache.jasper.compiler.tagplugin.TagPlugin;
 import org.apache.jasper.compiler.tagplugin.TagPluginContext;
 
+/**
+ * Tag plugin for the {@code <c:when>} JSTL tag.
+ */
 public final class When implements TagPlugin {
+
+    /**
+     * Constructs a new When tag plugin.
+     */
+    public When() {
+    }
 
     @Override
     public void doTag(TagPluginContext ctxt) {
@@ -32,11 +39,22 @@ public final class When implements TagPlugin {
             return;
         }
 
+        /*
+         * The plugin-enabled parent is not a <c:choose>, for example a
+         * <c:forEach>, which the TLD validator does not reject. The generated
+         * if/else chain would be unbalanced and the whole page would fail to
+         * translate. Fall back to the standard tag handler, which reports the
+         * illegal nesting at runtime.
+         */
+        if (!"true".equals(parentContext.getPluginAttribute("inChoose"))) {
+            ctxt.dontUseTagPlugin();
+            return;
+        }
+
         if ("true".equals(parentContext.getPluginAttribute("hasBeenHere"))) {
             ctxt.generateJavaSource("} else if(");
             // See comment below for the reason we generate the extra "}" here.
-        }
-        else {
+        } else {
             ctxt.generateJavaSource("if(");
             parentContext.setPluginAttribute("hasBeenHere", "true");
         }
@@ -45,7 +63,7 @@ public final class When implements TagPlugin {
         ctxt.generateBody();
 
         // We don't generate the closing "}" for the "if" here because there
-        // may be whitespaces in between <c:when>'s.  Instead we delay
+        // may be whitespaces in between <c:when>'s. Instead, we delay
         // generating it until the next <c:when> or <c:otherwise> or
         // <c:choose>
     }

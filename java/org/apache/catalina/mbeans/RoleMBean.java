@@ -21,12 +21,18 @@ import org.apache.tomcat.util.modeler.ManagedBean;
 import org.apache.tomcat.util.modeler.Registry;
 
 /**
- * <p>A <strong>ModelMBean</strong> implementation for the
- * <code>org.apache.catalina.Role</code> component.</p>
- *
- * @author Craig R. McClanahan
+ * <p>
+ * A <strong>ModelMBean</strong> implementation for the <code>org.apache.catalina.Role</code> component.
+ * </p>
  */
 public class RoleMBean extends BaseModelMBean {
+
+    /**
+     * Create a new RoleMBean instance.
+     */
+    public RoleMBean() {
+        super();
+    }
 
     // ----------------------------------------------------- Instance Variables
 

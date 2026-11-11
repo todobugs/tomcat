@@ -14,71 +14,73 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
-
 package org.apache.jasper.tagplugins.jstl.core;
 
 import org.apache.jasper.compiler.tagplugin.TagPlugin;
 import org.apache.jasper.compiler.tagplugin.TagPluginContext;
 
+/**
+ * Tag plugin for the JSTL &lt;c:redirect&gt; tag. Generates code to perform an HTTP redirect
+ * to the specified URL with optional query parameters.
+ */
 public class Redirect implements TagPlugin {
+
+    /**
+     * Default constructor.
+     */
+    public Redirect() {
+    }
 
     @Override
     public void doTag(TagPluginContext ctxt) {
 
-        //flag for the existence of the "context"
+        // flag for the existence of the "context"
         boolean hasContext = ctxt.isAttributeSpecified("context");
 
-        //names of the temp variables
+        // names of the temp variables
         String urlName = ctxt.getTemporaryVariableName();
         String contextName = ctxt.getTemporaryVariableName();
         String baseUrlName = ctxt.getTemporaryVariableName();
-        String resultName = ctxt.getTemporaryVariableName();
         String responseName = ctxt.getTemporaryVariableName();
 
-        //get context
+        // get context
         ctxt.generateJavaSource("String " + contextName + " = null;");
-        if(hasContext){
+        if (hasContext) {
             ctxt.generateJavaSource(contextName + " = ");
             ctxt.generateAttribute("context");
             ctxt.generateJavaSource(";");
         }
 
-        //get the url
+        // get the url
         ctxt.generateJavaSource("String " + urlName + " = ");
         ctxt.generateAttribute("url");
         ctxt.generateJavaSource(";");
 
-        //get the raw url according to "url" and "context"
-        ctxt.generateJavaSource("String " + baseUrlName + " = " +
-                "org.apache.jasper.tagplugins.jstl.Util.resolveUrl(" + urlName + ", " + contextName + ", pageContext);");
-        ctxt.generateJavaSource("pageContext.setAttribute" +
-                "(\"url_without_param\", " + baseUrlName + ");");
+        // get the raw url according to "url" and "context"
+        ctxt.generateJavaSource("String " + baseUrlName + " = " + "org.apache.jasper.tagplugins.jstl.Util.resolveUrl(" +
+                urlName + ", " + contextName + ", _jspx_page_context);");
 
-        //add params
-        ctxt.generateBody();
+        // add params
+        UrlParameters.generateBody(ctxt, baseUrlName);
 
-        ctxt.generateJavaSource("String " + resultName + " = " +
-        "(String)pageContext.getAttribute(\"url_without_param\");");
-        ctxt.generateJavaSource("pageContext.removeAttribute" +
-        "(\"url_without_param\");");
-
-        //get the response object
+        // get the response object
         ctxt.generateJavaSource("HttpServletResponse " + responseName + " = " +
-        "((HttpServletResponse) pageContext.getResponse());");
+                "((HttpServletResponse) _jspx_page_context.getResponse());");
 
-        //if the url is relative, encode it
-        ctxt.generateJavaSource("if(!org.apache.jasper.tagplugins.jstl.Util.isAbsoluteUrl(" + resultName + ")){");
-        ctxt.generateJavaSource("    " + resultName + " = "
-                + responseName + ".encodeRedirectURL(" + resultName + ");");
+        // if the url is relative, encode it
+        ctxt.generateJavaSource("if(!org.apache.jasper.tagplugins.jstl.Util.isAbsoluteUrl(" + baseUrlName + ")){");
+        ctxt.generateJavaSource("    " + baseUrlName + " = " + responseName + ".encodeRedirectURL(" + baseUrlName + ");");
         ctxt.generateJavaSource("}");
 
-        //do redirect
+        // do redirect
         ctxt.generateJavaSource("try{");
-        ctxt.generateJavaSource("    " + responseName + ".sendRedirect(" + resultName + ");");
+        ctxt.generateJavaSource("    " + responseName + ".sendRedirect(" + baseUrlName + ");");
+        // Avoid unreachable code error in compiler
+        ctxt.generateJavaSource("    if (true) {");
+        ctxt.generatePageTermination();
+        ctxt.generateJavaSource("    }");
         ctxt.generateJavaSource("}catch(java.io.IOException ex){");
         ctxt.generateJavaSource("    throw new JspTagException(ex.toString(), ex);");
         ctxt.generateJavaSource("}");
     }
-
 }

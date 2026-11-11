@@ -45,46 +45,47 @@ import org.apache.juli.logging.LogFactory;
 import org.apache.tomcat.util.ExceptionUtils;
 
 /**
- * Standard implementation of the <b>Manager</b> interface that provides
- * simple session persistence across restarts of this component (such as
- * when the entire server is shut down and restarted, or when a particular
- * web application is reloaded.
+ * Standard implementation of the <b>Manager</b> interface that provides simple session persistence across restarts of
+ * this component (such as when the entire server is shut down and restarted, or when a particular web application is
+ * reloaded).
  * <p>
- * <b>IMPLEMENTATION NOTE</b>:  Correct behavior of session storing and
- * reloading depends upon external calls to the <code>start()</code> and
- * <code>stop()</code> methods of this class at the correct times.
- *
- * @author Craig R. McClanahan
+ * <b>IMPLEMENTATION NOTE</b>: Correct behavior of session storing and reloading depends upon external calls to the
+ * <code>start()</code> and <code>stop()</code> methods of this class at the correct times.
  */
 public class StandardManager extends ManagerBase {
+
+    /**
+     * Construct a new {@code StandardManager} instance.
+     */
+    public StandardManager() {
+        // NO-OP
+    }
 
     private final Log log = LogFactory.getLog(StandardManager.class); // must not be static
 
     // ---------------------------------------------------- Security Classes
 
-    private class PrivilegedDoLoad
-        implements PrivilegedExceptionAction<Void> {
+    private class PrivilegedDoLoad implements PrivilegedExceptionAction<Void> {
 
         PrivilegedDoLoad() {
             // NOOP
         }
 
         @Override
-        public Void run() throws Exception{
-           doLoad();
-           return null;
+        public Void run() throws Exception {
+            doLoad();
+            return null;
         }
     }
 
-    private class PrivilegedDoUnload
-        implements PrivilegedExceptionAction<Void> {
+    private class PrivilegedDoUnload implements PrivilegedExceptionAction<Void> {
 
         PrivilegedDoUnload() {
             // NOOP
         }
 
         @Override
-        public Void run() throws Exception{
+        public Void run() throws Exception {
             doUnload();
             return null;
         }
@@ -101,12 +102,10 @@ public class StandardManager extends ManagerBase {
 
 
     /**
-     * Path name of the disk file in which active sessions are saved
-     * when we stop, and from which these sessions are loaded when we start.
-     * A <code>null</code> value indicates that no persistence is desired.
-     * If this pathname is relative, it will be resolved against the
-     * temporary working directory provided by our context, available via
-     * the <code>javax.servlet.context.tempdir</code> context attribute.
+     * Path name of the disk file in which active sessions are saved when we stop, and from which these sessions are
+     * loaded when we start. A <code>null</code> value indicates that no persistence is desired. If this pathname is
+     * relative, it will be resolved against the temporary working directory provided by our context, available via the
+     * <code>javax.servlet.context.tempdir</code> context attribute.
      */
     protected String pathname = "SESSIONS.ser";
 
@@ -120,6 +119,8 @@ public class StandardManager extends ManagerBase {
 
 
     /**
+     * Return the session persistence pathname, if any.
+     *
      * @return The session persistence pathname, if any.
      */
     public String getPathname() {
@@ -128,8 +129,8 @@ public class StandardManager extends ManagerBase {
 
 
     /**
-     * Set the session persistence pathname to the specified value.  If no
-     * persistence support is desired, set the pathname to <code>null</code>.
+     * Set the session persistence pathname to the specified value. If no persistence support is desired, set the
+     * pathname to <code>null</code>.
      *
      * @param pathname New session persistence pathname
      */
@@ -144,15 +145,15 @@ public class StandardManager extends ManagerBase {
 
     @Override
     public void load() throws ClassNotFoundException, IOException {
-        if (SecurityUtil.isPackageProtectionEnabled()){
-            try{
-                AccessController.doPrivileged( new PrivilegedDoLoad() );
-            } catch (PrivilegedActionException ex){
+        if (SecurityUtil.isPackageProtectionEnabled()) {
+            try {
+                AccessController.doPrivileged(new PrivilegedDoLoad());
+            } catch (PrivilegedActionException ex) {
                 Exception exception = ex.getException();
                 if (exception instanceof ClassNotFoundException) {
-                    throw (ClassNotFoundException)exception;
+                    throw (ClassNotFoundException) exception;
                 } else if (exception instanceof IOException) {
-                    throw (IOException)exception;
+                    throw (IOException) exception;
                 }
                 if (log.isDebugEnabled()) {
                     log.debug("Unreported exception in load() ", exception);
@@ -165,17 +166,15 @@ public class StandardManager extends ManagerBase {
 
 
     /**
-     * Load any currently active sessions that were previously unloaded
-     * to the appropriate persistence mechanism, if any.  If persistence is not
-     * supported, this method returns without doing anything.
+     * Load any currently active sessions that were previously unloaded to the appropriate persistence mechanism, if
+     * any. If persistence is not supported, this method returns without doing anything.
      *
-     * @exception ClassNotFoundException if a serialized class cannot be
-     *  found during the reload
-     * @exception IOException if an input/output error occurs
+     * @exception ClassNotFoundException if a serialized class cannot be found during the reload
+     * @exception IOException            if an input/output error occurs
      */
     protected void doLoad() throws ClassNotFoundException, IOException {
-        if (log.isDebugEnabled()) {
-            log.debug("Start: Loading persisted sessions");
+        if (log.isTraceEnabled()) {
+            log.trace("Start: Loading persisted sessions");
         }
 
         // Initialize our internal data structures
@@ -186,12 +185,12 @@ public class StandardManager extends ManagerBase {
         if (file == null) {
             return;
         }
-        if (log.isDebugEnabled()) {
-            log.debug(sm.getString("standardManager.loading", pathname));
+        if (log.isTraceEnabled()) {
+            log.trace(sm.getString("standardManager.loading", pathname));
         }
-        Loader loader = null;
+        Loader loader;
         ClassLoader classLoader = null;
-        Log logger = null;
+        Log logger;
         try (FileInputStream fis = new FileInputStream(file.getAbsolutePath());
                 BufferedInputStream bis = new BufferedInputStream(fis)) {
             Context c = getContext();
@@ -207,28 +206,32 @@ public class StandardManager extends ManagerBase {
             // Load the previously unloaded active sessions
             synchronized (sessions) {
                 try (ObjectInputStream ois = new CustomObjectInputStream(bis, classLoader, logger,
-                        getSessionAttributeValueClassNamePattern(),
-                        getWarnOnSessionAttributeFilterFailure())) {
+                        getSessionAttributeValueClassNamePattern(), getWarnOnSessionAttributeFilterFailure())) {
                     Integer count = (Integer) ois.readObject();
                     int n = count.intValue();
-                    if (log.isDebugEnabled())
-                        log.debug("Loading " + n + " persisted sessions");
+                    if (log.isTraceEnabled()) {
+                        log.trace("Loading " + n + " persisted sessions");
+                    }
                     for (int i = 0; i < n; i++) {
                         StandardSession session = getNewSession();
                         session.readObjectData(ois);
                         session.setManager(this);
+                        if (!session.isValidInternal()) {
+                            // The session was already invalid when it was
+                            // persisted, typically because it expired while
+                            // the sessions were being written. It has already
+                            // left the map of the writing JVM and the
+                            // associated events have already been fired.
+                            // Discard it without activating or expiring it
+                            // again.
+                            continue;
+                        }
                         sessions.put(session.getIdInternal(), session);
                         session.activate();
-                        if (!session.isValidInternal()) {
-                            // If session is already invalid,
-                            // expire session to prevent memory leak.
-                            session.setValid(true);
-                            session.expire();
-                        }
-                        sessionCounter++;
                     }
                 } finally {
-                    // Delete the persistent storage file
+                    // Delete the persistent storage file in all cases, since retrying after an exception
+                    // is not an option
                     if (file.exists()) {
                         if (!file.delete()) {
                             log.warn(sm.getString("standardManager.deletePersistedFileFail", file));
@@ -238,13 +241,13 @@ public class StandardManager extends ManagerBase {
             }
         } catch (FileNotFoundException e) {
             if (log.isDebugEnabled()) {
-                log.debug("No persisted data file found");
+                log.debug(sm.getString("standardManager.noFile", file.getAbsolutePath()), e);
             }
             return;
         }
 
-        if (log.isDebugEnabled()) {
-            log.debug("Finish: Loading persisted sessions");
+        if (log.isTraceEnabled()) {
+            log.trace("Finish: Loading persisted sessions");
         }
     }
 
@@ -254,10 +257,10 @@ public class StandardManager extends ManagerBase {
         if (SecurityUtil.isPackageProtectionEnabled()) {
             try {
                 AccessController.doPrivileged(new PrivilegedDoUnload());
-            } catch (PrivilegedActionException ex){
+            } catch (PrivilegedActionException ex) {
                 Exception exception = ex.getException();
                 if (exception instanceof IOException) {
-                    throw (IOException)exception;
+                    throw (IOException) exception;
                 }
                 if (log.isDebugEnabled()) {
                     log.debug("Unreported exception in unLoad()", exception);
@@ -270,16 +273,16 @@ public class StandardManager extends ManagerBase {
 
 
     /**
-     * Save any currently active sessions in the appropriate persistence
-     * mechanism, if any.  If persistence is not supported, this method
-     * returns without doing anything.
+     * Save any currently active sessions in the appropriate persistence mechanism, if any. If persistence is not
+     * supported, this method returns without doing anything.
      *
      * @exception IOException if an input/output error occurs
      */
     protected void doUnload() throws IOException {
 
-        if (log.isDebugEnabled())
-            log.debug(sm.getString("standardManager.unloading.debug"));
+        if (log.isTraceEnabled()) {
+            log.trace(sm.getString("standardManager.unloading.debug"));
+        }
 
         if (sessions.isEmpty()) {
             log.debug(sm.getString("standardManager.unloading.nosessions"));
@@ -291,8 +294,8 @@ public class StandardManager extends ManagerBase {
         if (file == null) {
             return;
         }
-        if (log.isDebugEnabled()) {
-            log.debug(sm.getString("standardManager.unloading", pathname));
+        if (log.isTraceEnabled()) {
+            log.trace(sm.getString("standardManager.unloading", pathname));
         }
 
         // Keep a note of sessions that are expired
@@ -303,8 +306,8 @@ public class StandardManager extends ManagerBase {
                 ObjectOutputStream oos = new ObjectOutputStream(bos)) {
 
             synchronized (sessions) {
-                if (log.isDebugEnabled()) {
-                    log.debug("Unloading " + sessions.size() + " sessions");
+                if (log.isTraceEnabled()) {
+                    log.trace("Unloading " + sessions.size() + " sessions");
                 }
                 // Write the number of active sessions, followed by the details
                 oos.writeObject(Integer.valueOf(sessions.size()));
@@ -319,7 +322,7 @@ public class StandardManager extends ManagerBase {
 
         // Expire all the sessions we just wrote
         if (log.isDebugEnabled()) {
-            log.debug("Expiring " + list.size() + " persisted sessions");
+            log.debug(sm.getString("standardManager.expiringSessions", Integer.toString(list.size())));
         }
         for (StandardSession session : list) {
             try {
@@ -331,21 +334,21 @@ public class StandardManager extends ManagerBase {
             }
         }
 
-        if (log.isDebugEnabled()) {
-            log.debug("Unloading complete");
+        if (log.isTraceEnabled()) {
+            log.trace("Unloading complete");
         }
     }
 
 
     /**
-     * Start this component and implement the requirements
-     * of {@link org.apache.catalina.util.LifecycleBase#startInternal()}.
+     * Start this component and implement the requirements of
+     * {@link org.apache.catalina.util.LifecycleBase#startInternal()}.
      *
-     * @exception LifecycleException if this component detects a fatal error
-     *  that prevents this component from being used
+     * @exception LifecycleException if this component detects a fatal error that prevents this component from being
+     *                                   used
      */
     @Override
-    protected synchronized void startInternal() throws LifecycleException {
+    protected void startInternal() throws LifecycleException {
 
         super.startInternal();
 
@@ -362,17 +365,17 @@ public class StandardManager extends ManagerBase {
 
 
     /**
-     * Stop this component and implement the requirements
-     * of {@link org.apache.catalina.util.LifecycleBase#stopInternal()}.
+     * Stop this component and implement the requirements of
+     * {@link org.apache.catalina.util.LifecycleBase#stopInternal()}.
      *
-     * @exception LifecycleException if this component detects a fatal error
-     *  that prevents this component from being used
+     * @exception LifecycleException if this component detects a fatal error that prevents this component from being
+     *                                   used
      */
     @Override
-    protected synchronized void stopInternal() throws LifecycleException {
+    protected void stopInternal() throws LifecycleException {
 
-        if (log.isDebugEnabled()) {
-            log.debug("Stopping");
+        if (log.isTraceEnabled()) {
+            log.trace("Stopping");
         }
 
         setState(LifecycleState.STOPPING);
@@ -386,9 +389,8 @@ public class StandardManager extends ManagerBase {
         }
 
         // Expire all active sessions
-        Session sessions[] = findSessions();
-        for (int i = 0; i < sessions.length; i++) {
-            Session session = sessions[i];
+        Session[] sessions = findSessions();
+        for (Session session : sessions) {
             try {
                 if (session.isValid()) {
                     session.expire();
@@ -410,12 +412,12 @@ public class StandardManager extends ManagerBase {
     // ------------------------------------------------------ Protected Methods
 
     /**
-     * Return a File object representing the pathname to our
-     * persistence file, if any.
+     * Return a File object representing the pathname to our persistence file, if any.
+     *
      * @return the file
      */
     protected File file() {
-        if (pathname == null || pathname.length() == 0) {
+        if (pathname == null || pathname.isEmpty()) {
             return null;
         }
         File file = new File(pathname);

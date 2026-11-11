@@ -14,8 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
-
 package org.apache.tomcat.util.modeler;
 
 
@@ -25,27 +23,46 @@ import javax.management.MBeanFeatureInfo;
 
 
 /**
- * <p>Convenience base class for <code>AttributeInfo</code> and
- * <code>OperationInfo</code> classes that will be used to collect configuration
- * information for the <code>ModelMBean</code> beans exposed for management.</p>
- *
- * @author Craig R. McClanahan
+ * <p>
+ * Convenience base class for <code>AttributeInfo</code> and <code>OperationInfo</code> classes that will be used to
+ * collect configuration information for the <code>ModelMBean</code> beans exposed for management.
+ * </p>
  */
 public class FeatureInfo implements Serializable {
-    static final long serialVersionUID = -911529176124712296L;
+    private static final long serialVersionUID = -911529176124712296L;
 
+    /**
+     * Human-readable description of this feature.
+     */
     protected String description = null;
+    /**
+     * The name of this feature.
+     */
     protected String name = null;
+    /**
+     * The underlying JMX MBeanFeatureInfo object.
+     */
     protected MBeanFeatureInfo info = null;
 
-    // all have type except Constructor
+    /**
+     * The fully qualified Java class name of this element.
+     */
     protected String type = null;
+
+    /**
+     * Default constructor for FeatureInfo.
+     */
+    public FeatureInfo() {
+        // Default constructor
+    }
 
 
     // ------------------------------------------------------------- Properties
 
     /**
-     * @return the human-readable description of this feature.
+     * Returns the human-readable description of this feature.
+     *
+     * @return the human-readable description of this feature
      */
     public String getDescription() {
         return this.description;
@@ -57,8 +74,9 @@ public class FeatureInfo implements Serializable {
 
 
     /**
-     * @return the name of this feature, which must be unique among features
-     *  in the same collection.
+     * Returns the name of this feature.
+     *
+     * @return the name of this feature, which must be unique among features in the same collection
      */
     public String getName() {
         return this.name;
@@ -69,7 +87,9 @@ public class FeatureInfo implements Serializable {
     }
 
     /**
-     * @return the fully qualified Java class name of this element.
+     * Returns the fully qualified Java class name of this element.
+     *
+     * @return the fully qualified Java class name of this element
      */
     public String getType() {
         return this.type;

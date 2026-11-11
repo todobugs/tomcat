@@ -14,19 +14,22 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  */
-
 package org.apache.tomcat.jni;
 
-/** PasswordCallback Interface
+/**
+ * PasswordCallback Interface.
  *
- * @author Mladen Turk
+ * @deprecated Unused. Will be removed in Tomcat 9.1 an has been removed in Tomcat 10.1.
  */
+@Deprecated
 public interface PasswordCallback {
 
     /**
      * Called when the password is required
+     *
      * @param prompt Password prompt
+     *
      * @return Valid password or null
      */
-    public String callback(String prompt);
+    String callback(String prompt);
 }

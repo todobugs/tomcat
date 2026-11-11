@@ -24,12 +24,24 @@ import java.net.InetAddress;
 import java.net.Socket;
 import java.net.UnknownHostException;
 import java.security.KeyStore;
+import java.security.KeyStoreException;
 import java.security.NoSuchAlgorithmException;
 import java.security.Principal;
 import java.security.PrivateKey;
+import java.security.cert.CertPathValidator;
+import java.security.cert.Certificate;
 import java.security.cert.CertificateException;
+import java.security.cert.PKIXBuilderParameters;
+import java.security.cert.PKIXRevocationChecker;
+import java.security.cert.TrustAnchor;
+import java.security.cert.X509CertSelector;
 import java.security.cert.X509Certificate;
+import java.util.EnumSet;
+import java.util.Enumeration;
+import java.util.HashSet;
+import java.util.Set;
 
+import javax.net.ssl.CertPathTrustManagerParameters;
 import javax.net.ssl.KeyManager;
 import javax.net.ssl.KeyManagerFactory;
 import javax.net.ssl.SSLContext;
@@ -48,22 +60,25 @@ import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 
 import org.junit.Assert;
+import org.junit.Assume;
 
 import org.apache.catalina.Context;
+import org.apache.catalina.LifecycleListener;
 import org.apache.catalina.authenticator.SSLAuthenticator;
 import org.apache.catalina.connector.Connector;
 import org.apache.catalina.core.AprLifecycleListener;
+import org.apache.catalina.core.OpenSSLLifecycleListener;
 import org.apache.catalina.core.StandardServer;
 import org.apache.catalina.startup.TesterMapRealm;
 import org.apache.catalina.startup.Tomcat;
-import org.apache.tomcat.jni.Library;
-import org.apache.tomcat.jni.LibraryNotFoundError;
-import org.apache.tomcat.jni.SSL;
-import org.apache.tomcat.util.compat.JrePlatform;
+import org.apache.tomcat.jni.AprStatus;
 import org.apache.tomcat.util.descriptor.web.LoginConfig;
 import org.apache.tomcat.util.descriptor.web.SecurityCollection;
 import org.apache.tomcat.util.descriptor.web.SecurityConstraint;
 import org.apache.tomcat.util.net.SSLHostConfigCertificate.Type;
+import org.apache.tomcat.util.net.jsse.JSSEImplementation;
+import org.apache.tomcat.util.net.openssl.OpenSSLImplementation;
+import org.apache.tomcat.util.net.openssl.OpenSSLStatus;
 
 public final class TesterSupport {
 
@@ -76,15 +91,27 @@ public final class TesterSupport {
     public static final String LOCALHOST_RSA_JKS = SSL_DIR + "localhost-rsa.jks";
     public static final String LOCALHOST_KEYPASS_JKS = SSL_DIR + "localhost-rsa-copy1.jks";
     public static final String JKS_PASS = "changeit";
+    public static final String JKS_PASS_FILE = SSL_DIR + "keystore-password";
     public static final String JKS_KEY_PASS = "tomcatpass";
+    public static final String JKS_KEY_PASS_FILE = SSL_DIR + "key-password";
     public static final String CA_CERT_PEM = SSL_DIR + CA_ALIAS + "-cert.pem";
     public static final String LOCALHOST_EC_CERT_PEM = SSL_DIR + "localhost-ec-cert.pem";
     public static final String LOCALHOST_EC_KEY_PEM = SSL_DIR + "localhost-ec-key.pem";
     public static final String LOCALHOST_RSA_CERT_PEM = SSL_DIR + "localhost-rsa-cert.pem";
     public static final String LOCALHOST_RSA_KEY_PEM = SSL_DIR + "localhost-rsa-key.pem";
-    public static final boolean OPENSSL_AVAILABLE;
-    public static final int OPENSSL_VERSION;
-    public static final String OPENSSL_ERROR;
+    public static final String LOCALHOST_RSA_LONGCHAIN_CERT_PEM = SSL_DIR + "localhost-rsa-longchain-cert.pem";
+    public static final String LOCALHOST_RSA_LONGCHAIN_KEY_PEM = SSL_DIR + "localhost-rsa-longchain-key.pem";
+    public static final String LOCALHOST_RSA_LONGCHAIN_CHAIN_PEM = SSL_DIR + "localhost-rsa-longchain-chain.pem";
+    public static final String DB_INDEX = SSL_DIR + "index.db";
+    public static final String OCSP_RESPONDER_RSA_CERT = SSL_DIR + "ocsp-responder-rsa-cert.pem";
+    public static final String OCSP_RESPONDER_RSA_KEY = SSL_DIR + "ocsp-responder-rsa-key.pem";
+    public static final String LOCALHOST_CRL_RSA_JKS = SSL_DIR + "localhost-crl-rsa.jks";
+    public static final String LOCALHOST_CRL_RSA_CERT_PEM = SSL_DIR + "localhost-crl-rsa-cert.pem";
+    public static final String LOCALHOST_CRL_RSA_KEY_PEM = SSL_DIR + "localhost-crl-rsa-key.pem";
+    public static final String CLIENT_CRL_JKS = SSL_DIR + "user2-crl.jks";
+    public static final String CLIENT_CRL_LONG_JKS = SSL_DIR + "user3-crl-long.jks";
+    public static final String EMPTY_CRL = SSL_DIR + "empty-crl.pem";
+    public static final String POPULATED_CRL = SSL_DIR + "populated-crl.pem";
     public static final boolean TLSV13_AVAILABLE;
 
     public static final String ROLE = "testrole";
@@ -95,21 +122,6 @@ public final class TesterSupport {
 
     static {
         boolean available = false;
-        int version = 0;
-        String err = "";
-        try {
-            Library.initialize(null);
-            available = true;
-            version = SSL.version();
-            Library.terminate();
-        } catch (Exception | LibraryNotFoundError ex) {
-            err = ex.getMessage();
-        }
-        OPENSSL_AVAILABLE = available;
-        OPENSSL_VERSION = version;
-        OPENSSL_ERROR = err;
-
-        available = false;
         try {
             SSLContext.getInstance(Constants.SSL_PROTO_TLSv1_3);
             available = true;
@@ -118,24 +130,29 @@ public final class TesterSupport {
         TLSV13_AVAILABLE = available;
     }
 
-    public static boolean isOpensslAvailable() {
-        return OPENSSL_AVAILABLE;
-    }
-
-    public static int getOpensslVersion() {
-        return OPENSSL_VERSION;
-    }
-
     public static boolean isTlsv13Available() {
         return TLSV13_AVAILABLE;
     }
 
     public static void initSsl(Tomcat tomcat) {
-        initSsl(tomcat, LOCALHOST_RSA_JKS, null, null);
+        // By default, use JSSE trust
+        initSsl(tomcat, false);
     }
 
-    protected static void initSsl(Tomcat tomcat, String keystore,
-            String keystorePass, String keyPass) {
+    public static void initSsl(Tomcat tomcat, boolean opensslTrust) {
+        // By default, use JSSE configuration
+        // TLS material for tests uses default password
+        initSsl(tomcat, LOCALHOST_RSA_JKS, LOCALHOST_RSA_CERT_PEM, LOCALHOST_RSA_KEY_PEM, opensslTrust);
+    }
+
+    public static void initSsl(Tomcat tomcat, String keystore, String certifcateFile, String certificateKeyFile,
+            boolean opensslTrust) {
+        // TLS material for tests uses default password
+        initSsl(tomcat, keystore, certifcateFile, certificateKeyFile, opensslTrust, null, null, null, null);
+    }
+
+    protected static void initSsl(Tomcat tomcat, String keystore, String certifcateFile, String certificateKeyFile,
+            boolean opensslTrust, String keystorePass, String keystorePassFile, String keyPass, String keyPassFile) {
 
         Connector connector = tomcat.getConnector();
         connector.setSecure(true);
@@ -158,24 +175,56 @@ public final class TesterSupport {
             }
             sslHostConfig.setSslProtocol("tls");
             certificate.setCertificateKeystoreFile(new File(keystore).getAbsolutePath());
-            sslHostConfig.setTruststoreFile(new File(CA_JKS).getAbsolutePath());
+            if (keystorePassFile != null) {
+                certificate.setCertificateKeystorePasswordFile(new File(keystorePassFile).getAbsolutePath());
+            }
             if (keystorePass != null) {
                 certificate.setCertificateKeystorePassword(keystorePass);
+            }
+            if (keyPassFile != null) {
+                certificate.setCertificateKeyPasswordFile(new File(keyPassFile).getAbsolutePath());
             }
             if (keyPass != null) {
                 certificate.setCertificateKeyPassword(keyPass);
             }
         } else {
-            certificate.setCertificateFile(new File(LOCALHOST_RSA_CERT_PEM).getAbsolutePath());
-            certificate.setCertificateKeyFile(new File(LOCALHOST_RSA_KEY_PEM).getAbsolutePath());
+            certificate.setCertificateFile(new File(certifcateFile).getAbsolutePath());
+            certificate.setCertificateKeyFile(new File(certificateKeyFile).getAbsolutePath());
+        }
+        if (opensslTrust) {
             sslHostConfig.setCaCertificateFile(new File(CA_CERT_PEM).getAbsolutePath());
+        } else {
+            sslHostConfig.setTruststoreFile(new File(CA_JKS).getAbsolutePath());
         }
     }
 
-    protected static KeyManager[] getUser1KeyManagers() throws Exception {
+    public static void configureSSLImplementation(Tomcat tomcat, String sslImplementationName, boolean useOpenSSL) {
+        String protocol = tomcat.getConnector().getProtocolHandlerClassName();
+        if (protocol.contains("Apr")) {
+            // Only run for OpenSSL to avoid running the test multiple times
+            Assume.assumeTrue("With APR, only run for OpenSSL", OpenSSLImplementation.class.getName().equals(sslImplementationName));
+            // If APR is being used, the listener will have been configured in TomcatBaseTest.setUp()
+        } else {
+            if (useOpenSSL) {
+                LifecycleListener listener = null;
+                if (OpenSSLImplementation.class.getName().equals(sslImplementationName)) {
+                    listener = new AprLifecycleListener();
+                    Assume.assumeTrue(AprLifecycleListener.isAprAvailable());
+                } else {
+                    listener = new OpenSSLLifecycleListener();
+                    Assume.assumeTrue(OpenSSLLifecycleListener.isAvailable());
+                }
+                StandardServer server = (StandardServer) tomcat.getServer();
+                server.addLifecycleListener(listener);
+            }
+            Assert.assertTrue(tomcat.getConnector().setProperty("sslImplementationName", sslImplementationName));
+        }
+    }
+
+    protected static KeyManager[] getUserKeyManagers(String keyStore) throws Exception {
         KeyManagerFactory kmf = KeyManagerFactory.getInstance(
                 KeyManagerFactory.getDefaultAlgorithm());
-        kmf.init(getKeyStore(CLIENT_JKS), JKS_PASS.toCharArray());
+        kmf.init(getKeyStore(keyStore), JKS_PASS.toCharArray());
         KeyManager[] managers = kmf.getKeyManagers();
         KeyManager manager;
         for (int i=0; i < managers.length; i++) {
@@ -190,20 +239,74 @@ public final class TesterSupport {
     }
 
     protected static TrustManager[] getTrustManagers() throws Exception {
-        TrustManagerFactory tmf = TrustManagerFactory.getInstance(
-                TrustManagerFactory.getDefaultAlgorithm());
-        tmf.init(getKeyStore(CA_JKS));
+        return getTrustManagers(false);
+    }
+
+    protected static TrustManager[] getTrustManagers(boolean enableOcsp) throws Exception {
+        KeyStore trustStore = getKeyStore(CA_JKS);
+        TrustManagerFactory tmf = TrustManagerFactory.getInstance("PKIX");
+        if (enableOcsp) {
+            Set<TrustAnchor> trustAnchors = getTrustAnchorsFromKeystore(trustStore);
+            PKIXBuilderParameters pkix = new PKIXBuilderParameters(trustAnchors, new X509CertSelector());
+            PKIXRevocationChecker revocationChecker =
+                    (PKIXRevocationChecker) CertPathValidator.getInstance("PKIX").getRevocationChecker();
+            revocationChecker.setOptions(EnumSet.of(PKIXRevocationChecker.Option.NO_FALLBACK));
+            pkix.addCertPathChecker(revocationChecker);
+            tmf.init(new CertPathTrustManagerParameters(pkix));
+        } else {
+            tmf.init(trustStore);
+        }
         return tmf.getTrustManagers();
     }
 
+    private static Set<TrustAnchor> getTrustAnchorsFromKeystore(KeyStore keyStore) throws KeyStoreException {
+        Set<TrustAnchor> trustAnchors = new HashSet<>();
+        Enumeration<String> aliases = keyStore.aliases();
+        while (aliases.hasMoreElements()) {
+            String alias = aliases.nextElement();
+            Certificate certificate = keyStore.getCertificate(alias);
+            if (certificate instanceof X509Certificate) {
+                trustAnchors.add(new TrustAnchor((X509Certificate) certificate, null));
+            }
+        }
+        return trustAnchors;
+    }
+
     public static ClientSSLSocketFactory configureClientSsl() {
+        return configureClientSsl(false, null, false, CLIENT_JKS);
+    }
+
+    public static ClientSSLSocketFactory configureClientSsl(boolean forceTls12) {
+        return configureClientSsl(forceTls12, null, false, CLIENT_JKS);
+    }
+
+    public static ClientSSLSocketFactory configureClientSsl(String[] ciphers) {
+        return configureClientSsl(false, ciphers, false, CLIENT_JKS);
+    }
+
+    public static ClientSSLSocketFactory configureClientSsl(boolean forceTls12, String[] ciphers) {
+        return configureClientSsl(forceTls12, ciphers, false, CLIENT_JKS);
+    }
+
+    public static ClientSSLSocketFactory configureClientSsl(boolean enableOcsp, String keyStore) {
+        return configureClientSsl(false, null, enableOcsp, keyStore);
+    }
+
+    public static ClientSSLSocketFactory configureClientSsl(boolean forceTls12, String[] ciphers, boolean enableOcsp,
+            String keyStore) {
         ClientSSLSocketFactory clientSSLSocketFactory = null;
         try {
-            SSLContext sc = SSLContext.getInstance(Constants.SSL_PROTO_TLS);
-            sc.init(TesterSupport.getUser1KeyManagers(),
-                    TesterSupport.getTrustManagers(),
-                    null);
+            SSLContext sc;
+            if (TLSV13_AVAILABLE && !forceTls12) {
+                sc = SSLContext.getInstance(Constants.SSL_PROTO_TLSv1_3);
+            } else {
+                sc = SSLContext.getInstance(Constants.SSL_PROTO_TLSv1_2);
+            }
+            sc.init(getUserKeyManagers(keyStore), getTrustManagers(enableOcsp), null);
             clientSSLSocketFactory = new ClientSSLSocketFactory(sc.getSocketFactory());
+            if (ciphers != null) {
+                clientSSLSocketFactory.setCipher(ciphers);
+            }
             javax.net.ssl.HttpsURLConnection.setDefaultSSLSocketFactory(clientSSLSocketFactory);
         } catch (Exception e) {
             e.printStackTrace();
@@ -220,37 +323,33 @@ public final class TesterSupport {
         return ks;
     }
 
-    protected static boolean isRenegotiationSupported(Tomcat tomcat) {
-        String protocol = tomcat.getConnector().getProtocolHandlerClassName();
-        if (protocol.contains("Apr")) {
-            // Disabled by default in 1.1.20 windows binary (2010-07-27)
-            return false;
-        }
-
-        return true;
-    }
-
     protected static boolean isClientRenegotiationSupported(Tomcat tomcat) {
         String protocol = tomcat.getConnector().getProtocolHandlerClassName();
         if (protocol.contains("Apr")) {
             // Disabled by default in 1.1.20 windows binary (2010-07-27)
             return false;
         }
-        if (protocol.contains("NioProtocol") || (protocol.contains("Nio2Protocol") && JrePlatform.IS_MAC_OS)) {
-            // Doesn't work on all platforms - see BZ 56448.
-            return false;
-        }
-        String sslImplementation = System.getProperty("tomcat.test.sslImplementation");
-        if (sslImplementation != null && !"${test.sslImplementation}".equals(sslImplementation)) {
-            // Assume custom SSL is not supporting this
+        // Disabled for Tomcat Native (part of response to CVE-2009-3555)
+        // Only JRE provided JSSE implementation supports this
+        String sslImplementation = (String) tomcat.getConnector().getProperty("sslImplementationName");
+        if (!JSSEImplementation.class.getName().equals(sslImplementation)) {
             return false;
         }
 
         return true;
     }
 
-    protected static void configureClientCertContext(Tomcat tomcat) {
-        TesterSupport.initSsl(tomcat);
+    public static boolean isOpenSSLVariant(String sslImplementationName, OpenSSLStatus.Name name) {
+        return "org.apache.tomcat.util.net.openssl.panama.OpenSSLImplementation".equals(sslImplementationName)
+                && name.equals(OpenSSLStatus.getName());
+    }
+
+    public static void configureClientCertContext(Tomcat tomcat) {
+        configureClientCertContext(tomcat, false, CLIENT_JKS);
+    }
+
+    public static void configureClientCertContext(Tomcat tomcat, boolean useOpenSSLTrust, String... keyStores) {
+        initSsl(tomcat, useOpenSSLTrust);
 
         /* When running on Java 11, TLSv1.3 is enabled by default. The JSSE
          * implementation of TLSv1.3 does not support
@@ -265,12 +364,12 @@ public final class TesterSupport {
         Context ctx = tomcat.addContext("", null);
 
         Tomcat.addServlet(ctx, "simple", new SimpleServlet());
-        ctx.addServletMappingDecoded("/unprotected", "simple");
-        ctx.addServletMappingDecoded("/protected", "simple");
+        ctx.addServletMapping("/unprotected", "simple");
+        ctx.addServletMapping("/protected", "simple");
 
         // Security constraints
         SecurityCollection collection = new SecurityCollection();
-        collection.addPatternDecoded("/protected");
+        collection.addPattern("/protected");
         SecurityConstraint sc = new SecurityConstraint();
         sc.addAuthRole(ROLE);
         sc.addCollection(collection);
@@ -283,22 +382,30 @@ public final class TesterSupport {
         try {
             KeyStore ks = getKeyStore(CA_JKS);
             X509Certificate cert = (X509Certificate)ks.getCertificate(CA_ALIAS);
-            clientAuthExpectedIssuer = cert.getSubjectDN().getName();
+            clientAuthExpectedIssuer = cert.getSubjectX500Principal().toString();
         } catch (Exception ex) {
             throw new RuntimeException(ex);
         }
 
-        String cn = "NOTFOUND";
-        try {
-            KeyStore ks = getKeyStore(CLIENT_JKS);
-            X509Certificate cert = (X509Certificate)ks.getCertificate(CLIENT_ALIAS);
-            cn = cert.getSubjectDN().getName();
-        } catch (Exception ex) {
-            throw new RuntimeException(ex);
-        }
+        // Add the user for each certificate in each key store to the realm and assign each user the standard role
+        for (String keyStore : keyStores) {
+            String cn = "NOTFOUND";
+            try {
+                KeyStore ks = getKeyStore(keyStore);
+                Enumeration<String> aliases = ks.aliases();
+                while (aliases.hasMoreElements()) {
+                    String alias = aliases.nextElement();
+                    X509Certificate cert = (X509Certificate)ks.getCertificate(alias);
+                    cn = cert.getSubjectX500Principal().toString();
 
-        realm.addUser(cn, "not used");
-        realm.addUserRole(cn, ROLE);
+                    realm.addUser(cn, "not used");
+                    realm.addUserRole(cn, ROLE);
+                }
+            } catch (Exception ex) {
+                throw new RuntimeException(ex);
+            }
+
+        }
         ctx.setRealm(realm);
 
         // Configure the authenticator
@@ -335,8 +442,9 @@ public final class TesterSupport {
     }
 
     protected static boolean checkLastClientAuthRequestedIssuers() {
-        if (lastRequestedIssuers == null || lastRequestedIssuers.length != 1)
-            return false;
+        if (lastRequestedIssuers == null || lastRequestedIssuers.length != 1) {
+          return false;
+        }
         return (new X500Principal(clientAuthExpectedIssuer)).equals(
                     new X500Principal(lastRequestedIssuers[0].getName()));
     }
@@ -378,10 +486,11 @@ public final class TesterSupport {
 
             // Report the number of bytes read
             resp.setContentType("text/plain");
-            if (contentOK)
-                resp.getWriter().print("OK-" + read);
-            else
-                resp.getWriter().print("CONTENT-MISMATCH-" + read);
+            if (contentOK) {
+              resp.getWriter().print("OK-" + read);
+            } else {
+              resp.getWriter().print("CONTENT-MISMATCH-" + read);
+            }
         }
     }
 
@@ -586,6 +695,7 @@ public final class TesterSupport {
         private final SSLSocketFactory delegate;
 
         private String[] ciphers = null;
+        private String[] protocols = null;
 
 
         public ClientSSLSocketFactory(SSLSocketFactory delegate) {
@@ -599,6 +709,15 @@ public final class TesterSupport {
          */
         public void setCipher(String[] ciphers) {
             this.ciphers = ciphers;
+        }
+
+        /**
+         * Forces the use of the specified protocols.
+         *
+         * @param protocols Array of standard protocols to use
+         */
+        public void setProtocols(String[] protocols) {
+            this.protocols = protocols;
         }
 
         @Override
@@ -652,6 +771,9 @@ public final class TesterSupport {
             if (ciphers != null) {
                 ((SSLSocket) socket).setEnabledCipherSuites(ciphers);
             }
+            if (protocols != null) {
+                ((SSLSocket) socket).setEnabledProtocols(protocols);
+            }
             return socket;
         }
     }
@@ -670,7 +792,7 @@ public final class TesterSupport {
 
         if (connector.getProtocolHandlerClassName().contains("Apr")) {
             // APR connector so OpenSSL is used for TLS.
-            if (SSL.version() >= 0x1010100f) {
+            if (AprStatus.getOpenSSLVersion() >= 0x1010100f) {
                 return Constants.SSL_PROTO_TLSv1_3;
             } else {
                 return Constants.SSL_PROTO_TLSv1_2;

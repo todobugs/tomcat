@@ -17,22 +17,23 @@
 package org.apache.tomcat.util.descriptor.web;
 
 
-
 /**
- * Representation of a resource link for a web application, as
- * represented in a <code>&lt;ResourceLink&gt;</code> element in the
- * server configuration file.
- *
- * @author Remy Maucherat
- * @author Peter Rossbach (Peter Rossbach (pero@apache.org))
+ * Representation of a resource link for a web application, as represented in a <code>&lt;ResourceLink&gt;</code>
+ * element in the server configuration file.
  */
 public class ContextResourceLink extends ResourceBase {
 
     private static final long serialVersionUID = 1L;
 
+    /**
+     * Default constructor for ContextResourceLink.
+     */
+    public ContextResourceLink() {
+    }
+
     // ------------------------------------------------------------- Properties
 
-   /**
+    /**
      * The global name of this resource.
      */
     private String global = null;
@@ -41,18 +42,38 @@ public class ContextResourceLink extends ResourceBase {
      */
     private String factory = null;
 
+    /**
+     * Returns the global name of this resource.
+     *
+     * @return the global resource name
+     */
     public String getGlobal() {
         return this.global;
     }
 
+    /**
+     * Sets the global name of this resource.
+     *
+     * @param global the global resource name
+     */
     public void setGlobal(String global) {
         this.global = global;
     }
 
+    /**
+     * Returns the factory to be used for creating the object.
+     *
+     * @return the factory class name
+     */
     public String getFactory() {
         return factory;
     }
 
+    /**
+     * Sets the factory to be used for creating the object.
+     *
+     * @param factory the factory class name
+     */
     public void setFactory(String factory) {
         this.factory = factory;
     }
@@ -76,7 +97,7 @@ public class ContextResourceLink extends ResourceBase {
             sb.append(", global=");
             sb.append(getGlobal());
         }
-        sb.append("]");
+        sb.append(']');
         return sb.toString();
     }
 
@@ -111,12 +132,9 @@ public class ContextResourceLink extends ResourceBase {
             return false;
         }
         if (global == null) {
-            if (other.global != null) {
-                return false;
-            }
-        } else if (!global.equals(other.global)) {
-            return false;
+            return other.global == null;
+        } else {
+            return global.equals(other.global);
         }
-        return true;
     }
 }

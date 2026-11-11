@@ -31,26 +31,30 @@ public class ServerCookies {
     private int limit = 200;
 
 
+    /**
+     * Creates a new ServerCookies instance with the specified initial array size.
+     *
+     * @param initialSize the initial capacity for the cookies array
+     */
     public ServerCookies(int initialSize) {
         serverCookies = new ServerCookie[initialSize];
     }
 
 
     /**
-     * Register a new, initialized cookie. Cookies are recycled, and most of the
-     * time an existing ServerCookie object is returned. The caller can set the
-     * name/value and attributes for the cookie.
+     * Register a new, initialized cookie. Cookies are recycled, and most of the time an existing ServerCookie object is
+     * returned. The caller can set the name/value and attributes for the cookie.
+     *
      * @return the new cookie
      */
     public ServerCookie addCookie() {
         if (limit > -1 && cookieCount >= limit) {
-            throw new IllegalArgumentException(
-                    sm.getString("cookies.maxCountFail", Integer.valueOf(limit)));
+            throw new IllegalArgumentException(sm.getString("cookies.maxCountFail", Integer.valueOf(limit)));
         }
 
         if (cookieCount >= serverCookies.length) {
-            int newSize = limit > -1 ? Math.min(2*cookieCount, limit) : 2*cookieCount;
-            ServerCookie scookiesTmp[] = new ServerCookie[newSize];
+            int newSize = limit > -1 ? Math.min(2 * cookieCount, limit) : 2 * cookieCount;
+            ServerCookie[] scookiesTmp = new ServerCookie[newSize];
             System.arraycopy(serverCookies, 0, scookiesTmp, 0, cookieCount);
             serverCookies = scookiesTmp;
         }
@@ -65,27 +69,46 @@ public class ServerCookies {
     }
 
 
+    /**
+     * Returns the cookie at the specified index.
+     *
+     * @param idx the index of the cookie
+     * @return the cookie at the specified index
+     */
     public ServerCookie getCookie(int idx) {
         return serverCookies[idx];
     }
 
 
+    /**
+     * Returns the number of cookies currently stored.
+     *
+     * @return the cookie count
+     */
     public int getCookieCount() {
         return cookieCount;
     }
 
 
+    /**
+     * Sets the maximum number of cookies that can be stored.
+     *
+     * @param limit the maximum number of cookies, or -1 for no limit
+     */
     public void setLimit(int limit) {
         this.limit = limit;
         if (limit > -1 && serverCookies.length > limit && cookieCount <= limit) {
             // shrink cookie list array
-            ServerCookie scookiesTmp[] = new ServerCookie[limit];
+            ServerCookie[] scookiesTmp = new ServerCookie[limit];
             System.arraycopy(serverCookies, 0, scookiesTmp, 0, cookieCount);
             serverCookies = scookiesTmp;
         }
     }
 
 
+    /**
+     * Recycles all stored cookies and resets the cookie count to zero.
+     */
     public void recycle() {
         for (int i = 0; i < cookieCount; i++) {
             serverCookies[i].recycle();

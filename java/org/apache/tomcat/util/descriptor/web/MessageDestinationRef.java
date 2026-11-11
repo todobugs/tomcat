@@ -18,16 +18,22 @@ package org.apache.tomcat.util.descriptor.web;
 
 
 /**
- * <p>Representation of a message destination reference for a web application,
- * as represented in a <code>&lt;message-destination-ref&gt;</code> element
- * in the deployment descriptor.</p>
+ * <p>
+ * Representation of a message destination reference for a web application, as represented in a
+ * <code>&lt;message-destination-ref&gt;</code> element in the deployment descriptor.
+ * </p>
  *
- * @author Craig R. McClanahan
  * @since Tomcat 5.0
  */
 public class MessageDestinationRef extends ResourceBase {
 
     private static final long serialVersionUID = 1L;
+
+    /**
+     * Default constructor.
+     */
+    public MessageDestinationRef() {
+    }
 
     // ------------------------------------------------------------- Properties
 
@@ -37,10 +43,18 @@ public class MessageDestinationRef extends ResourceBase {
      */
     private String link = null;
 
+    /**
+     * Get the link.
+     * @return the link
+     */
     public String getLink() {
         return this.link;
     }
 
+    /**
+     * Set the link.
+     * @param link the link
+     */
     public void setLink(String link) {
         this.link = link;
     }
@@ -51,10 +65,18 @@ public class MessageDestinationRef extends ResourceBase {
      */
     private String usage = null;
 
+    /**
+     * Get the usage.
+     * @return the usage
+     */
     public String getUsage() {
         return this.usage;
     }
 
+    /**
+     * Set the usage.
+     * @param usage the usage
+     */
     public void setUsage(String usage) {
         this.usage = usage;
     }
@@ -67,7 +89,7 @@ public class MessageDestinationRef extends ResourceBase {
      */
     @Override
     public String toString() {
-        StringBuilder sb = new StringBuilder("MessageDestination[");
+        StringBuilder sb = new StringBuilder("MessageDestinationRef[");
         sb.append("name=");
         sb.append(getName());
         if (link != null) {
@@ -86,7 +108,7 @@ public class MessageDestinationRef extends ResourceBase {
             sb.append(", description=");
             sb.append(getDescription());
         }
-        sb.append("]");
+        sb.append(']');
         return sb.toString();
     }
 
@@ -121,12 +143,9 @@ public class MessageDestinationRef extends ResourceBase {
             return false;
         }
         if (usage == null) {
-            if (other.usage != null) {
-                return false;
-            }
-        } else if (!usage.equals(other.usage)) {
-            return false;
+            return other.usage == null;
+        } else {
+            return usage.equals(other.usage);
         }
-        return true;
     }
 }

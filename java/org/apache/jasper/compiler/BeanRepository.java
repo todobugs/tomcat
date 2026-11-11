@@ -23,20 +23,18 @@ import org.apache.jasper.JasperException;
 
 /**
  * Repository of {page, request, session, application}-scoped beans
- *
- * @author Mandar Raje
- * @author Remy Maucherat
  */
 public class BeanRepository {
 
-    private final HashMap<String, String> beanTypes;
+    private final HashMap<String,String> beanTypes;
     private final ClassLoader loader;
     private final ErrorDispatcher errDispatcher;
 
     /**
      * Constructor.
+     *
      * @param loader The class loader
-     * @param err The error dispatcher that will be used to report errors
+     * @param err    The error dispatcher that will be used to report errors
      */
     public BeanRepository(ClassLoader loader, ErrorDispatcher err) {
         this.loader = loader;
@@ -44,32 +42,51 @@ public class BeanRepository {
         beanTypes = new HashMap<>();
     }
 
-    public void addBean(Node.UseBean n, String s, String type, String scope)
-        throws JasperException {
+    /**
+     * Registers a scoped bean.
+     *
+     * @param n the UseBean node
+     * @param s the bean name
+     * @param type the bean type
+     * @param scope the bean scope
+     * @throws JasperException if the scope is invalid
+     */
+    public void addBean(Node.UseBean n, String s, String type, String scope) throws JasperException {
 
-        if (!(scope == null || scope.equals("page") || scope.equals("request")
-                || scope.equals("session") || scope.equals("application"))) {
+        if (!(scope == null || scope.equals("page") || scope.equals("request") || scope.equals("session") ||
+                scope.equals("application"))) {
             errDispatcher.jspError(n, "jsp.error.usebean.badScope");
         }
 
         beanTypes.put(s, type);
     }
 
-    public Class<?> getBeanType(String bean)
-        throws JasperException {
-        Class<?> clazz = null;
+    /**
+     * Returns the class of a registered bean.
+     *
+     * @param bean the bean name
+     * @return the bean class
+     * @throws JasperException if the class cannot be loaded
+     */
+    public Class<?> getBeanType(String bean) throws JasperException {
+        Class<?> clazz;
         try {
             clazz = loader.loadClass(beanTypes.get(bean));
         } catch (ClassNotFoundException ex) {
-            throw new JasperException (ex);
+            throw new JasperException(ex);
         }
         return clazz;
     }
 
+    /**
+     * Checks if a bean with the given name is registered.
+     *
+     * @param bean the bean name
+     * @return true if the bean is registered
+     */
     public boolean checkVariable(String bean) {
         return beanTypes.containsKey(bean);
     }
 
 }
-
 

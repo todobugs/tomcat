@@ -29,14 +29,27 @@ import org.apache.tomcat.util.net.SSLSupport;
 import org.apache.tomcat.util.net.SocketEvent;
 import org.apache.tomcat.util.net.SocketWrapperBase;
 
+/**
+ * Upgrade processor for internal (Coyote-based) upgrade handlers.
+ */
 public class UpgradeProcessorInternal extends UpgradeProcessorBase {
 
     private static final Log log = LogFactory.getLog(UpgradeProcessorInternal.class);
 
+    /**
+     * The internal upgrade handler.
+     */
     private final InternalHttpUpgradeHandler internalHttpUpgradeHandler;
 
-    public UpgradeProcessorInternal(SocketWrapperBase<?> wrapper,
-            UpgradeToken upgradeToken) {
+    /**
+     * Constructs a new UpgradeProcessorInternal.
+     *
+     * @param wrapper the socket wrapper
+     * @param upgradeToken the upgrade token
+     * @param upgradeGroupInfo the group info for statistics
+     */
+    public UpgradeProcessorInternal(SocketWrapperBase<?> wrapper, UpgradeToken upgradeToken,
+            UpgradeGroupInfo upgradeGroupInfo) {
         super(upgradeToken);
         this.internalHttpUpgradeHandler = (InternalHttpUpgradeHandler) upgradeToken.getHttpUpgradeHandler();
         /*
@@ -46,6 +59,12 @@ public class UpgradeProcessorInternal extends UpgradeProcessorBase {
         wrapper.setWriteTimeout(INFINITE_TIMEOUT);
 
         internalHttpUpgradeHandler.setSocketWrapper(wrapper);
+
+        // HTTP/2 uses RequestInfo objects so does not provide upgradeInfo
+        UpgradeInfo upgradeInfo = internalHttpUpgradeHandler.getUpgradeInfo();
+        if (upgradeInfo != null && upgradeGroupInfo != null) {
+            upgradeInfo.setGroupInfo(upgradeGroupInfo);
+        }
     }
 
 
@@ -79,6 +98,11 @@ public class UpgradeProcessorInternal extends UpgradeProcessorBase {
     }
 
 
+    /**
+     * Returns whether the internal handler has pending async I/O.
+     *
+     * @return true if there is async I/O
+     */
     public boolean hasAsyncIO() {
         return internalHttpUpgradeHandler.hasAsyncIO();
     }
@@ -88,6 +112,10 @@ public class UpgradeProcessorInternal extends UpgradeProcessorBase {
 
     @Override
     public void close() throws Exception {
+        UpgradeInfo upgradeInfo = internalHttpUpgradeHandler.getUpgradeInfo();
+        if (upgradeInfo != null) {
+            upgradeInfo.setGroupInfo(null);
+        }
         internalHttpUpgradeHandler.destroy();
     }
 

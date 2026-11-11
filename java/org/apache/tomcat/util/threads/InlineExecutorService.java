@@ -16,15 +16,26 @@
  */
 package org.apache.tomcat.util.threads;
 
+import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.AbstractExecutorService;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.TimeUnit;
 
+/**
+ * An executor service that runs tasks inline on the calling thread. Useful for testing
+ * and scenarios where asynchronous execution is not required.
+ */
 public class InlineExecutorService extends AbstractExecutorService {
 
+    /**
+     * Creates a new inline executor service.
+     */
+    public InlineExecutorService() {
+    }
+
     private volatile boolean shutdown;
-    private volatile boolean taskRunning;
+    private int runningTasks;
     private volatile boolean terminated;
 
     private final Object lock = new Object();
@@ -33,14 +44,17 @@ public class InlineExecutorService extends AbstractExecutorService {
     public void shutdown() {
         shutdown = true;
         synchronized (lock) {
-            terminated = !taskRunning;
+            terminated = runningTasks == 0;
+            if (terminated) {
+                lock.notifyAll();
+            }
         }
     }
 
     @Override
     public List<Runnable> shutdownNow() {
         shutdown();
-        return null;
+        return Collections.emptyList();
     }
 
     @Override
@@ -55,11 +69,17 @@ public class InlineExecutorService extends AbstractExecutorService {
 
     @Override
     public boolean awaitTermination(long timeout, TimeUnit unit) throws InterruptedException {
+        long timeoutExpiry = System.nanoTime() + unit.toNanos(timeout);
+        long timeoutMillis = unit.toMillis(timeout);
         synchronized (lock) {
-            if (terminated) {
-                return true;
+            /*
+             * Spurious wake-ups are possible. Keep waiting until the service has been terminated or the timeout has
+             * expired.
+             */
+            while (!terminated && timeoutMillis > 0) {
+                lock.wait(timeoutMillis);
+                timeoutMillis = (timeoutExpiry - System.nanoTime()) / 1_000_000;
             }
-            lock.wait(unit.toMillis(timeout));
             return terminated;
         }
     }
@@ -70,14 +90,17 @@ public class InlineExecutorService extends AbstractExecutorService {
             if (shutdown) {
                 throw new RejectedExecutionException();
             }
-            taskRunning = true;
+            runningTasks++;
         }
-        command.run();
-        synchronized (lock) {
-            taskRunning = false;
-            if (shutdown) {
-                terminated = true;
-                lock.notifyAll();
+        try {
+            command.run();
+        } finally {
+            synchronized (lock) {
+                runningTasks--;
+                if (shutdown && runningTasks == 0) {
+                    terminated = true;
+                    lock.notifyAll();
+                }
             }
         }
     }

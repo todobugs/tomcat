@@ -31,20 +31,25 @@ public class Http11Nio2Protocol extends AbstractHttp11JsseProtocol<Nio2Channel> 
 
 
     public Http11Nio2Protocol() {
-        super(new Nio2Endpoint());
+        this(new Nio2Endpoint());
+    }
+
+
+    public Http11Nio2Protocol(Nio2Endpoint endpoint) {
+        super(endpoint);
     }
 
 
     @Override
-    protected Log getLog() { return log; }
+    protected Log getLog() {
+        return log;
+    }
 
-
-    // ----------------------------------------------------- JMX related methods
 
     @Override
     protected String getNamePrefix() {
         if (isSSLEnabled()) {
-            return "https-" + getSslImplementationShortName()+ "-nio2";
+            return "https-" + getSslImplementationShortName() + "-nio2";
         } else {
             return "http-nio2";
         }

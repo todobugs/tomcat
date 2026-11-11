@@ -26,8 +26,7 @@ class WsMappingResult {
     private final Map<String,String> pathParams;
 
 
-    WsMappingResult(ServerEndpointConfig config,
-            Map<String,String> pathParams) {
+    WsMappingResult(ServerEndpointConfig config, Map<String,String> pathParams) {
         this.config = config;
         this.pathParams = pathParams;
     }

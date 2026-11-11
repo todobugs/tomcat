@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.catalina.storeconfig;
 
 import java.io.PrintWriter;
@@ -23,26 +22,24 @@ import org.apache.catalina.tribes.transport.MultiPointSender;
 import org.apache.catalina.tribes.transport.ReplicationTransmitter;
 
 /**
- * Generate Sender Element
+ * Factory that generates the configuration store output for a Sender element.
  */
 public class SenderSF extends StoreFactoryBase {
 
     /**
+     * Default constructor.
+     */
+    public SenderSF() {
+    }
+
+    /**
      * Store the specified Sender child.
-     *
-     * @param aWriter
-     *            PrintWriter to which we are storing
-     * @param indent
-     *            Number of spaces to indent this element
-     * @param aSender
-     *            Channel whose properties are being stored
-     *
-     * @exception Exception
-     *                if an exception occurs while storing
+     * <p>
+     * {@inheritDoc}
      */
     @Override
-    public void storeChildren(PrintWriter aWriter, int indent, Object aSender,
-            StoreDescription parentDesc) throws Exception {
+    public void storeChildren(PrintWriter aWriter, int indent, Object aSender, StoreDescription parentDesc)
+            throws Exception {
         if (aSender instanceof ReplicationTransmitter) {
             ReplicationTransmitter transmitter = (ReplicationTransmitter) aSender;
             // Store nested <Transport> element
@@ -50,6 +47,6 @@ public class SenderSF extends StoreFactoryBase {
             if (transport != null) {
                 storeElement(aWriter, indent, transport);
             }
-       }
+        }
     }
 }

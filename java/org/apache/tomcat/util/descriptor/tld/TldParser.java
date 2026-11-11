@@ -36,34 +36,62 @@ import org.xml.sax.SAXException;
  * Parses a Tag Library Descriptor.
  */
 public class TldParser {
+    /**
+     * The logger for this parser.
+     */
     private final Log log = LogFactory.getLog(TldParser.class); // must not be static
+
+    /**
+     * The digester used to parse TLD XML.
+     */
     private final Digester digester;
 
-    public TldParser(boolean namespaceAware, boolean validation,
-            boolean blockExternal) {
+    /**
+     * Creates a new TldParser with default rules.
+     *
+     * @param namespaceAware whether namespace processing is enabled
+     * @param validation whether XML validation is enabled
+     * @param blockExternal whether external entities should be blocked
+     */
+    public TldParser(boolean namespaceAware, boolean validation, boolean blockExternal) {
         this(namespaceAware, validation, new TldRuleSet(), blockExternal);
     }
 
-    public TldParser(boolean namespaceAware, boolean validation, RuleSet ruleSet,
-            boolean blockExternal) {
-        digester = DigesterFactory.newDigester(
-                validation, namespaceAware, ruleSet, blockExternal);
+    /**
+     * Creates a new TldParser with the specified rule set.
+     *
+     * @param namespaceAware whether namespace processing is enabled
+     * @param validation whether XML validation is enabled
+     * @param ruleSet the rule set for parsing
+     * @param blockExternal whether external entities should be blocked
+     */
+    public TldParser(boolean namespaceAware, boolean validation, RuleSet ruleSet, boolean blockExternal) {
+        digester = DigesterFactory.newDigester(validation, namespaceAware, ruleSet, blockExternal);
     }
 
+    /**
+     * Parses a TLD from the given resource path.
+     *
+     * @param path the TLD resource path
+     * @return the parsed tag library XML
+     * @throws IOException if an I/O error occurs
+     * @throws SAXException if a parsing error occurs
+     */
     public TaglibXml parse(TldResourcePath path) throws IOException, SAXException {
         ClassLoader original;
+        Thread currentThread = Thread.currentThread();
         if (Constants.IS_SECURITY_ENABLED) {
-            PrivilegedGetTccl pa = new PrivilegedGetTccl();
+            PrivilegedGetTccl pa = new PrivilegedGetTccl(currentThread);
             original = AccessController.doPrivileged(pa);
         } else {
-            original = Thread.currentThread().getContextClassLoader();
+            original = currentThread.getContextClassLoader();
         }
         try (InputStream is = path.openStream()) {
             if (Constants.IS_SECURITY_ENABLED) {
-                PrivilegedSetTccl pa = new PrivilegedSetTccl(TldParser.class.getClassLoader());
+                PrivilegedSetTccl pa = new PrivilegedSetTccl(currentThread, TldParser.class.getClassLoader());
                 AccessController.doPrivileged(pa);
             } else {
-                Thread.currentThread().setContextClassLoader(TldParser.class.getClassLoader());
+                currentThread.setContextClassLoader(TldParser.class.getClassLoader());
             }
             XmlErrorHandler handler = new XmlErrorHandler();
             digester.setErrorHandler(handler);
@@ -85,14 +113,19 @@ public class TldParser {
         } finally {
             digester.reset();
             if (Constants.IS_SECURITY_ENABLED) {
-                PrivilegedSetTccl pa = new PrivilegedSetTccl(original);
+                PrivilegedSetTccl pa = new PrivilegedSetTccl(currentThread, original);
                 AccessController.doPrivileged(pa);
             } else {
-                Thread.currentThread().setContextClassLoader(original);
+                currentThread.setContextClassLoader(original);
             }
         }
     }
 
+    /**
+     * Sets the class loader used for parsing.
+     *
+     * @param classLoader the class loader
+     */
     public void setClassLoader(ClassLoader classLoader) {
         digester.setClassLoader(classLoader);
     }

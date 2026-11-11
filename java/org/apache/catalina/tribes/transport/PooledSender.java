@@ -17,6 +17,7 @@
 package org.apache.catalina.tribes.transport;
 
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.List;
 
 import org.apache.catalina.tribes.Member;
@@ -24,33 +25,55 @@ import org.apache.catalina.tribes.util.StringManager;
 import org.apache.juli.logging.Log;
 import org.apache.juli.logging.LogFactory;
 
+/**
+ * An abstract pooled sender that manages a pool of {@link DataSender} instances.
+ */
 public abstract class PooledSender extends AbstractSender implements MultiPointSender {
 
     private static final Log log = LogFactory.getLog(PooledSender.class);
-    protected static final StringManager sm =
-        StringManager.getManager(Constants.Package);
+    /** StringManager for internationalized log messages. */
+    protected static final StringManager sm = StringManager.getManager(Constants.Package);
 
     private final SenderQueue queue;
     private int poolSize = 25;
     private long maxWait = 3000;
+
+    /**
+     * Creates a new PooledSender with the default pool size.
+     */
     public PooledSender() {
-        queue = new SenderQueue(this,poolSize);
+        queue = new SenderQueue(this, poolSize);
     }
 
+    /**
+     * Creates and returns a new DataSender instance for the pool.
+     * @return a new DataSender
+     */
     public abstract DataSender getNewDataSender();
 
+    /**
+     * Retrieves a sender from the pool, waiting up to maxWait milliseconds. If maxWait is zero or negative, the call
+     * waits indefinitely for a sender to become available.
+     *
+     * @return a DataSender from the pool, or null if the wait timed out or the calling thread was interrupted
+     *
+     * @throws IllegalStateException if the sender pool has been closed
+     */
     public DataSender getSender() {
         return queue.getSender(getMaxWait());
     }
 
+    /**
+     * Returns a sender back to the pool after use.
+     * @param sender the sender to return
+     */
     public void returnSender(DataSender sender) {
-        sender.keepalive();
         queue.returnSender(sender);
     }
 
     @Override
     public synchronized void connect() throws IOException {
-        //do nothing, happens in the socket sender itself
+        // do nothing, happens in the socket sender itself
         queue.open();
         setConnected(true);
     }
@@ -62,36 +85,62 @@ public abstract class PooledSender extends AbstractSender implements MultiPointS
     }
 
 
+    /**
+     * Returns the number of senders currently available in the pool.
+     * @return the number of senders in the pool
+     */
     public int getInPoolSize() {
         return queue.getInPoolSize();
     }
 
+    /**
+     * Returns the number of senders currently in use.
+     * @return the number of senders in use
+     */
     public int getInUsePoolSize() {
         return queue.getInUsePoolSize();
     }
 
 
+    /**
+     * Sets the maximum number of senders in the pool.
+     * @param poolSize the pool size
+     */
     public void setPoolSize(int poolSize) {
         this.poolSize = poolSize;
         queue.setLimit(poolSize);
     }
 
+    /**
+     * Returns the maximum number of senders in the pool.
+     * @return the pool size
+     */
     public int getPoolSize() {
         return poolSize;
     }
 
+    /**
+     * Returns the maximum time to wait for a sender from the pool, in milliseconds.
+     * @return the maximum wait time
+     */
     public long getMaxWait() {
         return maxWait;
     }
 
+    /**
+     * Sets the maximum time to wait for a sender from the pool, in milliseconds. A value of zero or less means the
+     * wait for a sender is unbounded.
+     *
+     * @param maxWait the maximum wait time
+     */
     public void setMaxWait(long maxWait) {
         this.maxWait = maxWait;
     }
 
     @Override
     public boolean keepalive() {
-        //do nothing, the pool checks on every return
-        return (queue==null)?false:queue.checkIdleKeepAlive();
+        // do nothing, the pool checks on every return
+        return queue != null && queue.checkIdleKeepAlive();
     }
 
     @Override
@@ -101,104 +150,122 @@ public abstract class PooledSender extends AbstractSender implements MultiPointS
 
     @Override
     public void remove(Member member) {
-        //no op for now, should not cancel out any keys
-        //can create serious sync issues
-        //all TCP connections are cleared out through keepalive
-        //and if remote node disappears
+        // no op for now, should not cancel out any keys
+        // can create serious sync issues
+        // all TCP connections are cleared out through keepalive
+        // and if remote node disappears
     }
-    //  ----------------------------------------------------- Inner Class
+    // ----------------------------------------------------- Inner Class
 
     private static class SenderQueue {
-        private int limit = 25;
+        private int limit;
 
-        PooledSender parent = null;
+        PooledSender parent;
 
-        private List<DataSender> notinuse = null;
+        private final List<DataSender> notinuse;
 
-        private List<DataSender> inuse = null;
+        private final List<DataSender> inuse;
 
         private boolean isOpen = true;
 
-        public SenderQueue(PooledSender parent, int limit) {
+        SenderQueue(PooledSender parent, int limit) {
             this.limit = limit;
             this.parent = parent;
-            notinuse = new java.util.LinkedList<>();
-            inuse = new java.util.LinkedList<>();
+            notinuse = new ArrayList<>();
+            inuse = new ArrayList<>();
         }
 
         /**
          * @return Returns the limit.
          */
-        public int getLimit() {
+        public synchronized int getLimit() {
             return limit;
         }
+
         /**
          * @param limit The limit to set.
          */
-        public void setLimit(int limit) {
+        public synchronized void setLimit(int limit) {
             this.limit = limit;
+            // Raising the limit can make room for a new sender to be created
+            notifyAll();
         }
 
-        public int getInUsePoolSize() {
+        public synchronized int getInUsePoolSize() {
             return inuse.size();
         }
 
-        public int getInPoolSize() {
+        public synchronized int getInPoolSize() {
             return notinuse.size();
         }
 
         public synchronized boolean checkIdleKeepAlive() {
-            DataSender[] list = new DataSender[notinuse.size()];
-            notinuse.toArray(list);
+            DataSender[] list = notinuse.toArray(new DataSender[0]);
             boolean result = false;
-            for (int i=0; i<list.length; i++) {
-                result = result | list[i].keepalive();
+            for (DataSender dataSender : list) {
+                // Do not short-circuit. dataSender.keepalive() does real, required work for all senders.
+                result = result | dataSender.keepalive();
             }
             return result;
         }
 
         public synchronized DataSender getSender(long timeout) {
-            long start = System.currentTimeMillis();
-            while ( true ) {
-                if (!isOpen)throw new IllegalStateException(sm.getString("pooledSender.closed.queue"));
+            long start = System.nanoTime();
+            while (true) {
+                if (!isOpen) {
+                    throw new IllegalStateException(sm.getString("pooledSender.closed.queue"));
+                }
                 DataSender sender = null;
-                if (notinuse.size() == 0 && inuse.size() < limit) {
+                if (notinuse.isEmpty() && inuse.size() < limit) {
                     sender = parent.getNewDataSender();
-                } else if (notinuse.size() > 0) {
+                } else if (!notinuse.isEmpty()) {
                     sender = notinuse.remove(0);
                 }
                 if (sender != null) {
                     inuse.add(sender);
                     return sender;
-                }//end if
-                long delta = System.currentTimeMillis() - start;
-                if ( delta > timeout && timeout>0) return null;
-                else {
-                    try {
-                        wait(Math.max(timeout - delta,1));
-                    }catch (InterruptedException x){}
-                }//end if
+                }
+                try {
+                    if (timeout > 0) {
+                        long delta = (System.nanoTime() - start) / 1_000_000;
+                        if (delta >= timeout) {
+                            return null;
+                        }
+                        // Everything that can make a sender available - returnSender(),
+                        // open(), close() and setLimit() - notifies every waiting
+                        // thread, so there is no need to poll.
+                        wait(timeout - delta);
+                    } else {
+                        // No timeout configured: wait until a sender becomes
+                        // available or the queue is closed.
+                        wait();
+                    }
+                } catch (InterruptedException x) {
+                    // Restore the interrupt status and let the caller handle it
+                    Thread.currentThread().interrupt();
+                    return null;
+                }
             }
         }
 
         public synchronized void returnSender(DataSender sender) {
-            if ( !isOpen) {
+            if (!isOpen) {
                 sender.disconnect();
                 return;
             }
-            //to do
             inuse.remove(sender);
-            //just in case the limit has changed
-            if ( notinuse.size() < this.getLimit() ) notinuse.add(sender);
-            else
+            // just in case the limit has changed
+            if (notinuse.size() < this.getLimit()) {
+                notinuse.add(sender);
+            } else {
                 try {
                     sender.disconnect();
                 } catch (Exception e) {
                     if (log.isDebugEnabled()) {
-                        log.debug(sm.getString(
-                                "PooledSender.senderDisconnectFail"), e);
+                        log.debug(sm.getString("PooledSender.senderDisconnectFail"), e);
                     }
                 }
+            }
             notifyAll();
         }
 
@@ -206,14 +273,14 @@ public abstract class PooledSender extends AbstractSender implements MultiPointS
             isOpen = false;
             Object[] unused = notinuse.toArray();
             Object[] used = inuse.toArray();
-            for (int i = 0; i < unused.length; i++) {
-                DataSender sender = (DataSender) unused[i];
+            for (Object value : unused) {
+                DataSender sender = (DataSender) value;
                 sender.disconnect();
-            }//for
-            for (int i = 0; i < used.length; i++) {
-                DataSender sender = (DataSender) used[i];
+            }
+            for (Object o : used) {
+                DataSender sender = (DataSender) o;
                 sender.disconnect();
-            }//for
+            }
             notinuse.clear();
             inuse.clear();
             notifyAll();

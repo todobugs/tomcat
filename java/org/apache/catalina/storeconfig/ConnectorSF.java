@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.catalina.storeconfig;
 
 import java.io.PrintWriter;
@@ -29,48 +28,29 @@ import org.apache.tomcat.util.net.SSLHostConfig;
  */
 public class ConnectorSF extends StoreFactoryBase {
 
+    /**
+     * Creates a new ConnectorSF instance.
+     */
+    public ConnectorSF() {
+        super();
+    }
+
     @Override
-    public void storeChildren(PrintWriter aWriter, int indent, Object aConnector,
-            StoreDescription parentDesc) throws Exception {
+    public void storeChildren(PrintWriter aWriter, int indent, Object aConnector, StoreDescription parentDesc)
+            throws Exception {
 
         if (aConnector instanceof Connector) {
             Connector connector = (Connector) aConnector;
             // Store nested <Listener> elements
-            LifecycleListener listeners[] = connector.findLifecycleListeners();
+            LifecycleListener[] listeners = connector.findLifecycleListeners();
             storeElementArray(aWriter, indent, listeners);
             // Store nested <UpgradeProtocol> elements
             UpgradeProtocol[] upgradeProtocols = connector.findUpgradeProtocols();
             storeElementArray(aWriter, indent, upgradeProtocols);
-            if (Boolean.TRUE.equals(connector.getProperty("SSLEnabled"))) {
-                // Store nested <SSLHostConfig> elements
-                SSLHostConfig[] hostConfigs = connector.findSslHostConfigs();
-                storeElementArray(aWriter, indent, hostConfigs);
-            }
+            // Store nested <SSLHostConfig> elements
+            SSLHostConfig[] hostConfigs = connector.findSslHostConfigs();
+            storeElementArray(aWriter, indent, hostConfigs);
         }
-    }
-
-    protected void printOpenTag(PrintWriter aWriter, int indent, Object bean,
-            StoreDescription aDesc) throws Exception {
-        aWriter.print("<");
-        aWriter.print(aDesc.getTag());
-        storeConnectorAttributes(aWriter, indent, bean, aDesc);
-        aWriter.println(">");
-    }
-
-    protected void storeConnectorAttributes(PrintWriter aWriter, int indent,
-            Object bean, StoreDescription aDesc) throws Exception {
-        if (aDesc.isAttributes()) {
-            getStoreAppender().printAttributes(aWriter, indent, false, bean,
-                    aDesc);
-        }
-    }
-
-    protected void printTag(PrintWriter aWriter, int indent, Object bean,
-            StoreDescription aDesc) throws Exception {
-        aWriter.print("<");
-        aWriter.print(aDesc.getTag());
-        storeConnectorAttributes(aWriter, indent, bean, aDesc);
-        aWriter.println("/>");
     }
 
 }

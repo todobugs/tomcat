@@ -1,4 +1,4 @@
-/**
+/*
  *  Licensed to the Apache Software Foundation (ASF) under one or more
  *  contributor license agreements.  See the NOTICE file distributed with
  *  this work for additional information regarding copyright ownership.
@@ -26,25 +26,35 @@ import javax.security.auth.message.config.ServerAuthContext;
 import javax.security.auth.message.module.ServerAuthModule;
 
 /**
- * Basic implementation primarily intended for use when using third-party
- * {@link ServerAuthModule} implementations that only provide the module. This
- * implementation supports multiple modules and will treat the user as
- * authenticated if any one module is able to authenticate the user.
+ * Basic implementation primarily intended for use when using third-party {@link ServerAuthModule} implementations that
+ * only provide the module. This implementation supports multiple modules and will treat the user as authenticated if
+ * any one module is able to authenticate the user.
  */
 public class SimpleServerAuthContext implements ServerAuthContext {
 
     private final List<ServerAuthModule> modules;
 
 
+    /**
+     * Creates a new SimpleServerAuthContext.
+     *
+     * @param modules List of ServerAuthModule instances to use for authentication
+     */
     public SimpleServerAuthContext(List<ServerAuthModule> modules) {
         this.modules = modules;
     }
 
 
-    @SuppressWarnings("unchecked") // JASPIC API uses raw types
+    /**
+     * {@inheritDoc}
+     * <p>
+     * Iterates through the configured modules in order and returns the first result that is not {@code SEND_FAILURE}.
+     * If all modules return {@code SEND_FAILURE}, returns {@code SEND_FAILURE}.
+     */
     @Override
-    public AuthStatus validateRequest(MessageInfo messageInfo, Subject clientSubject,
-            Subject serviceSubject) throws AuthException {
+    @SuppressWarnings("unchecked") // JASPIC API uses raw types
+    public AuthStatus validateRequest(MessageInfo messageInfo, Subject clientSubject, Subject serviceSubject)
+            throws AuthException {
         for (int moduleIndex = 0; moduleIndex < modules.size(); moduleIndex++) {
             ServerAuthModule module = modules.get(moduleIndex);
             AuthStatus result = module.validateRequest(messageInfo, clientSubject, serviceSubject);
@@ -57,14 +67,28 @@ public class SimpleServerAuthContext implements ServerAuthContext {
     }
 
 
+    /**
+     * {@inheritDoc}
+     * <p>
+     * Delegates to the module that was selected during request validation.
+     */
     @Override
-    public AuthStatus secureResponse(MessageInfo messageInfo, Subject serviceSubject)
-            throws AuthException {
-        ServerAuthModule module = modules.get(((Integer) messageInfo.getMap().get("moduleIndex")).intValue());
-        return module.secureResponse(messageInfo, serviceSubject);
+    public AuthStatus secureResponse(MessageInfo messageInfo, Subject serviceSubject) throws AuthException {
+        Object obj = messageInfo.getMap().get("moduleIndex");
+        if (obj instanceof Integer) {
+            ServerAuthModule module = modules.get(((Integer) obj).intValue());
+            return module.secureResponse(messageInfo, serviceSubject);
+        } else {
+            return AuthStatus.SEND_FAILURE;
+        }
     }
 
 
+    /**
+     * {@inheritDoc}
+     * <p>
+     * Delegates to all configured modules.
+     */
     @Override
     public void cleanSubject(MessageInfo messageInfo, Subject subject) throws AuthException {
         for (ServerAuthModule module : modules) {

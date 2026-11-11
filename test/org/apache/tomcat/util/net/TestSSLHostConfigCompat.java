@@ -30,8 +30,6 @@ import org.junit.runners.Parameterized.Parameter;
 
 import org.apache.catalina.Context;
 import org.apache.catalina.connector.Connector;
-import org.apache.catalina.core.AprLifecycleListener;
-import org.apache.catalina.core.StandardServer;
 import org.apache.catalina.startup.TesterServlet;
 import org.apache.catalina.startup.Tomcat;
 import org.apache.catalina.startup.TomcatBaseTest;
@@ -39,6 +37,7 @@ import org.apache.tomcat.util.buf.ByteChunk;
 import org.apache.tomcat.util.net.SSLHostConfigCertificate.StoreType;
 import org.apache.tomcat.util.net.SSLHostConfigCertificate.Type;
 import org.apache.tomcat.util.net.TesterSupport.ClientSSLSocketFactory;
+import org.apache.tomcat.util.net.openssl.OpenSSLStatus;
 
 /*
  * Tests compatibility of JSSE and OpenSSL settings.
@@ -51,14 +50,12 @@ public class TestSSLHostConfigCompat extends TomcatBaseTest {
         List<Object[]> parameterSets = new ArrayList<>();
 
         for (StoreType storeType : new StoreType[] { StoreType.KEYSTORE, StoreType.PEM } ) {
-            parameterSets.add(new Object[] {"NIO-JSSE", "org.apache.coyote.http11.Http11NioProtocol",
-                    "org.apache.tomcat.util.net.jsse.JSSEImplementation", storeType});
-
-            parameterSets.add(new Object[] {"NIO-OpenSSL", "org.apache.coyote.http11.Http11NioProtocol",
-                    "org.apache.tomcat.util.net.openssl.OpenSSLImplementation", storeType});
-
-            parameterSets.add(new Object[] { "APR/Native", "org.apache.coyote.http11.Http11AprProtocol",
-                    "org.apache.tomcat.util.net.openssl.OpenSSLImplementation", storeType});
+            parameterSets.add(new Object[] {
+                    "JSSE", Boolean.FALSE, "org.apache.tomcat.util.net.jsse.JSSEImplementation", storeType});
+            parameterSets.add(new Object[] {
+                    "OpenSSL", Boolean.TRUE, "org.apache.tomcat.util.net.openssl.OpenSSLImplementation", storeType});
+            parameterSets.add(new Object[] {
+                    "OpenSSL-FFM", Boolean.TRUE, "org.apache.tomcat.util.net.openssl.panama.OpenSSLImplementation", storeType});
         }
 
         return parameterSets;
@@ -68,15 +65,13 @@ public class TestSSLHostConfigCompat extends TomcatBaseTest {
     public String connectorName;
 
     @Parameter(1)
-    public String protocolName;
+    public boolean useOpenSSL;
 
     @Parameter(2)
     public String sslImplementationName;
 
     @Parameter(3)
     public StoreType storeType;
-
-    private SSLHostConfig sslHostConfig = new SSLHostConfig();
 
 
     @Test
@@ -111,7 +106,7 @@ public class TestSSLHostConfigCompat extends TomcatBaseTest {
         configureHostEC();
 
         // Configure cipher suite that requires an RSA certificate on the server
-        ClientSSLSocketFactory clientSSLSocketFactory = TesterSupport.configureClientSsl();
+        ClientSSLSocketFactory clientSSLSocketFactory = TesterSupport.configureClientSsl(true);
         clientSSLSocketFactory.setCipher(new String[] {"TLS_DHE_RSA_WITH_AES_256_GCM_SHA384"});
 
         doTest(false);
@@ -128,7 +123,7 @@ public class TestSSLHostConfigCompat extends TomcatBaseTest {
         configureHostRSA();
 
         // Configure cipher suite that requires an RSA certificate on the server
-        ClientSSLSocketFactory clientSSLSocketFactory = TesterSupport.configureClientSsl();
+        ClientSSLSocketFactory clientSSLSocketFactory = TesterSupport.configureClientSsl(true);
         clientSSLSocketFactory.setCipher(new String[] {"TLS_DHE_RSA_WITH_AES_256_GCM_SHA384"});
 
         doTest(false);
@@ -145,7 +140,7 @@ public class TestSSLHostConfigCompat extends TomcatBaseTest {
         configureHostEC();
 
         // Configure cipher suite that requires an EC certificate on the server
-        ClientSSLSocketFactory clientSSLSocketFactory = TesterSupport.configureClientSsl();
+        ClientSSLSocketFactory clientSSLSocketFactory = TesterSupport.configureClientSsl(true);
         clientSSLSocketFactory.setCipher(new String[] {"TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384"});
 
         doTest(false);
@@ -162,7 +157,7 @@ public class TestSSLHostConfigCompat extends TomcatBaseTest {
         configureHostRSA();
 
         // Configure cipher suite that requires an EC certificate on the server
-        ClientSSLSocketFactory clientSSLSocketFactory = TesterSupport.configureClientSsl();
+        ClientSSLSocketFactory clientSSLSocketFactory = TesterSupport.configureClientSsl(true);
         clientSSLSocketFactory.setCipher(new String[] {"TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384"});
 
         doTest(false);
@@ -174,7 +169,7 @@ public class TestSSLHostConfigCompat extends TomcatBaseTest {
         configureHostRSA();
 
         // Configure cipher suite that requires an RSA certificate on the server
-        ClientSSLSocketFactory clientSSLSocketFactory = TesterSupport.configureClientSsl();
+        ClientSSLSocketFactory clientSSLSocketFactory = TesterSupport.configureClientSsl(true);
         clientSSLSocketFactory.setCipher(new String[] {"TLS_DHE_RSA_WITH_AES_256_GCM_SHA384"});
 
         doTest(false);
@@ -186,7 +181,7 @@ public class TestSSLHostConfigCompat extends TomcatBaseTest {
         configureHostRSA();
 
         // Configure cipher suite that requires an EC certificate on the server
-        ClientSSLSocketFactory clientSSLSocketFactory = TesterSupport.configureClientSsl();
+        ClientSSLSocketFactory clientSSLSocketFactory = TesterSupport.configureClientSsl(true);
         clientSSLSocketFactory.setCipher(new String[] {"TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384"});
 
         doTest(false);
@@ -198,7 +193,7 @@ public class TestSSLHostConfigCompat extends TomcatBaseTest {
         configureHostRSA();
 
         // Configure cipher suite that requires an EC certificate on the server
-        ClientSSLSocketFactory clientSSLSocketFactory = TesterSupport.configureClientSsl();
+        ClientSSLSocketFactory clientSSLSocketFactory = TesterSupport.configureClientSsl(true);
         clientSSLSocketFactory.setCipher(new String[] {
                 "TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384",
                 "TLS_DHE_RSA_WITH_AES_256_GCM_SHA384"});
@@ -212,7 +207,7 @@ public class TestSSLHostConfigCompat extends TomcatBaseTest {
         configureHostEC();
 
         // Configure cipher suite that requires an RSA certificate on the server
-        ClientSSLSocketFactory clientSSLSocketFactory = TesterSupport.configureClientSsl();
+        ClientSSLSocketFactory clientSSLSocketFactory = TesterSupport.configureClientSsl(true);
         clientSSLSocketFactory.setCipher(new String[] {"TLS_DHE_RSA_WITH_AES_256_GCM_SHA384"});
 
         doTest(false);
@@ -224,7 +219,7 @@ public class TestSSLHostConfigCompat extends TomcatBaseTest {
         configureHostEC();
 
         // Configure cipher suite that requires an EC certificate on the server
-        ClientSSLSocketFactory clientSSLSocketFactory = TesterSupport.configureClientSsl();
+        ClientSSLSocketFactory clientSSLSocketFactory = TesterSupport.configureClientSsl(true);
         clientSSLSocketFactory.setCipher(new String[] {"TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384"});
 
         doTest(false);
@@ -236,7 +231,7 @@ public class TestSSLHostConfigCompat extends TomcatBaseTest {
         configureHostEC();
 
         // Configure cipher suite that requires an RSA certificate on the server
-        ClientSSLSocketFactory clientSSLSocketFactory = TesterSupport.configureClientSsl();
+        ClientSSLSocketFactory clientSSLSocketFactory = TesterSupport.configureClientSsl(true);
         clientSSLSocketFactory.setCipher(new String[] {
                 "TLS_DHE_RSA_WITH_AES_256_GCM_SHA384",
                 "TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384"});
@@ -246,6 +241,7 @@ public class TestSSLHostConfigCompat extends TomcatBaseTest {
 
 
     private void configureHostRSA() {
+        SSLHostConfig sslHostConfig = getSSLHostConfig();
         switch (storeType) {
         case KEYSTORE: {
             SSLHostConfigCertificate sslHostConfigCertificateRsa = new SSLHostConfigCertificate(sslHostConfig, Type.RSA);
@@ -265,6 +261,7 @@ public class TestSSLHostConfigCompat extends TomcatBaseTest {
 
 
     private void configureHostEC() {
+        SSLHostConfig sslHostConfig = getSSLHostConfig();
         switch (storeType) {
         case KEYSTORE: {
             SSLHostConfigCertificate sslHostConfigCertificateEc = new SSLHostConfigCertificate(sslHostConfig, Type.EC);
@@ -291,11 +288,14 @@ public class TestSSLHostConfigCompat extends TomcatBaseTest {
 
     private void doTest(boolean configureClientSsl) throws Exception {
         if (configureClientSsl) {
-            TesterSupport.configureClientSsl();
+            TesterSupport.configureClientSsl(true);
         }
 
         Tomcat tomcat = getTomcatInstance();
         tomcat.start();
+
+        Assume.assumeFalse("BoringSSL removes support for many ciphers",
+                TesterSupport.isOpenSSLVariant(sslImplementationName, OpenSSLStatus.Name.BORINGSSL));
 
         // Check a request can be made
         ByteChunk res = getUrl("https://localhost:" + getPort() + "/");
@@ -304,17 +304,8 @@ public class TestSSLHostConfigCompat extends TomcatBaseTest {
 
 
     @Override
-    protected String getProtocol() {
-        return protocolName;
-    }
-
-
-    @Override
     public void setUp() throws Exception {
         super.setUp();
-
-        AprLifecycleListener listener = new AprLifecycleListener();
-        Assume.assumeTrue(AprLifecycleListener.isAprAvailable());
 
         Tomcat tomcat = getTomcatInstance();
         Connector connector = tomcat.getConnector();
@@ -323,20 +314,23 @@ public class TestSSLHostConfigCompat extends TomcatBaseTest {
         connector.setScheme("https");
         connector.setSecure(true);
         Assert.assertTrue(connector.setProperty("SSLEnabled", "true"));
-        if (!connector.getProtocolHandlerClassName().contains("Apr")) {
-            // Skip this for APR. It is not supported.
-            Assert.assertTrue(connector.setProperty("sslImplementationName", sslImplementationName));
-        }
+        SSLHostConfig sslHostConfig = new SSLHostConfig();
         sslHostConfig.setProtocols("TLSv1.2");
         connector.addSslHostConfig(sslHostConfig);
 
-        StandardServer server = (StandardServer) tomcat.getServer();
-        server.addLifecycleListener(listener);
+        TesterSupport.configureSSLImplementation(tomcat, sslImplementationName, useOpenSSL);
 
         // Simple webapp
-        Context ctxt = tomcat.addContext("", null);
+        Context ctxt = getProgrammaticRootContext();
         Tomcat.addServlet(ctxt, "TesterServlet", new TesterServlet());
-        ctxt.addServletMappingDecoded("/*", "TesterServlet");
+        ctxt.addServletMapping("/*", "TesterServlet");
+    }
+
+
+    private SSLHostConfig getSSLHostConfig() {
+        Tomcat tomcat = getTomcatInstance();
+        Connector connector = tomcat.getConnector();
+        return connector.findSslHostConfigs()[0];
     }
 
 

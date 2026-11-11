@@ -17,7 +17,9 @@
 package org.apache.tomcat.util.net.openssl;
 
 import java.io.IOException;
+import java.security.KeyException;
 import java.security.KeyStoreException;
+import java.security.NoSuchAlgorithmException;
 import java.util.List;
 import java.util.Set;
 
@@ -32,12 +34,20 @@ import org.apache.tomcat.util.net.SSLUtilBase;
 import org.apache.tomcat.util.net.jsse.JSSEKeyManager;
 import org.apache.tomcat.util.res.StringManager;
 
+/**
+ * OpenSSL implementation of SSL utility operations.
+ */
 public class OpenSSLUtil extends SSLUtilBase {
 
     private static final Log log = LogFactory.getLog(OpenSSLUtil.class);
-    private static final StringManager sm = StringManager.getManager(OpenSSLContext.class);
+    private static final StringManager sm = StringManager.getManager(OpenSSLUtil.class);
 
 
+    /**
+     * Constructs an OpenSSLUtil for the given certificate.
+     *
+     * @param certificate The SSL host config certificate
+     */
     public OpenSSLUtil(SSLHostConfigCertificate certificate) {
         super(certificate);
     }
@@ -73,8 +83,21 @@ public class OpenSSLUtil extends SSLUtilBase {
         return new OpenSSLContext(certificate, negotiableProtocols);
     }
 
-
+    @Deprecated
     public static X509KeyManager chooseKeyManager(KeyManager[] managers) throws Exception {
+        return chooseKeyManager(managers, true);
+    }
+
+
+    /**
+     * Chooses an X509 key manager from the array of key managers.
+     *
+     * @param managers The key managers to choose from
+     * @param throwOnMissing Whether to throw if no key manager is found
+     * @return The chosen X509 key manager
+     * @throws Exception if no suitable key manager is found and throwOnMissing is true
+     */
+    public static X509KeyManager chooseKeyManager(KeyManager[] managers, boolean throwOnMissing) throws Exception {
         if (managers == null) {
             return null;
         }
@@ -88,37 +111,48 @@ public class OpenSSLUtil extends SSLUtilBase {
                 return (X509KeyManager) manager;
             }
         }
-        throw new IllegalStateException(sm.getString("openssl.keyManagerMissing"));
+        if (throwOnMissing) {
+            throw new IllegalStateException(sm.getString("openssl.keyManagerMissing"));
+        }
+
+        log.warn(sm.getString("openssl.keyManagerMissing.warn"));
+        return null;
     }
 
 
     @Override
     public KeyManager[] getKeyManagers() throws Exception {
+        if (sslHostConfig.isPreSharedKeyOnly()) {
+            return null;
+        }
         try {
             return super.getKeyManagers();
         } catch (IllegalArgumentException e) {
             // No (or invalid?) certificate chain was provided for the cert
             String msg = sm.getString("openssl.nonJsseChain", certificate.getCertificateChainFile());
             if (log.isDebugEnabled()) {
-                log.info(msg, e);
+                log.debug(msg, e);
             } else {
                 log.info(msg);
             }
             return null;
-        } catch (KeyStoreException | IOException e) {
-            // Depending on what is presented, JSSE may also throw
-            // KeyStoreException or IOException if it doesn't understand the
-            // provided file.
+        } catch (KeyStoreException | KeyException | IOException | NoSuchAlgorithmException e) {
+            /*
+             * JSSE may throw any of KeyStoreException, KeyException or IOException if it does not understand the format
+             * of the provided file.
+             *
+             * If JSSE does understand the file but does not support the algorithm used then NoSuchAlgorithmException
+             * will be seen.
+             */
             if (certificate.getCertificateFile() != null) {
-                String msg = sm.getString("openssl.nonJsseCertficate",
-                        certificate.getCertificateFile(), certificate.getCertificateKeyFile());
+                String msg = sm.getString("openssl.nonJsseCertificate", certificate.getCertificateFile(),
+                        certificate.getCertificateKeyFile());
                 if (log.isDebugEnabled()) {
-                    log.info(msg, e);
+                    log.debug(msg, e);
                 } else {
                     log.info(msg);
                 }
-                // Assume JSSE processing of the certificate failed, try again with OpenSSL
-                // without a key manager
+                // Assume JSSE processing of the certificate failed, try again with OpenSSL without a key manager.
                 return null;
             }
             throw e;

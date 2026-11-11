@@ -20,41 +20,113 @@ import java.util.Properties;
 
 import org.apache.catalina.tribes.Member;
 
+/**
+ * MBean interface for McastService.
+ */
 public interface McastServiceMBean {
 
     // Attributes
-    public String getAddress();
+    /**
+     * Get the multicast address.
+     * @return the address
+     */
+    String getAddress();
 
-    public int getPort();
+    /**
+     * Get the multicast port.
+     * @return the port
+     */
+    int getPort();
 
-    public long getFrequency();
+    /**
+     * Get the heartbeat frequency.
+     * @return the frequency
+     */
+    long getFrequency();
 
-    public long getDropTime();
+    /**
+     * Get the drop time.
+     * @return the drop time
+     */
+    long getDropTime();
 
-    public String getBind();
+    /**
+     * Get the bind address.
+     * @return the bind address
+     */
+    String getBind();
 
-    public int getTtl();
+    /**
+     * Get the TTL.
+     * @return the TTL
+     */
+    int getTtl();
 
-    public byte[] getDomain();
+    /**
+     * Get the domain.
+     * @return the domain
+     */
+    byte[] getDomain();
 
-    public int getSoTimeout();
+    /**
+     * Get the socket timeout.
+     * @return the socket timeout
+     */
+    int getSoTimeout();
 
-    public boolean getRecoveryEnabled();
+    /**
+     * Get whether recovery is enabled.
+     * @return whether recovery is enabled
+     */
+    boolean getRecoveryEnabled();
 
-    public int getRecoveryCounter();
+    /**
+     * Get the recovery counter.
+     * @return the recovery counter
+     */
+    int getRecoveryCounter();
 
-    public long getRecoverySleepTime();
+    /**
+     * Get the recovery sleep time.
+     * @return the recovery sleep time
+     */
+    long getRecoverySleepTime();
 
-    public boolean getLocalLoopbackDisabled();
+    /**
+     * Get whether local loopback is disabled.
+     * @return whether local loopback is disabled
+     */
+    boolean getLocalLoopbackDisabled();
 
-    public String getLocalMemberName();
+    /**
+     * Get the local member name.
+     * @return the local member name
+     */
+    String getLocalMemberName();
 
     // Operation
-    public Properties getProperties();
+    /**
+     * Get the properties.
+     * @return the properties
+     */
+    Properties getProperties();
 
-    public boolean hasMembers();
+    /**
+     * Check if there are members.
+     * @return true if there are members
+     */
+    boolean hasMembers();
 
-    public String[] getMembersByName();
+    /**
+     * Get the member names.
+     * @return the member names
+     */
+    String[] getMembersByName();
 
-    public Member findMemberByName(String name);
+    /**
+     * Find a member by name.
+     * @param name the member name
+     * @return the member
+     */
+    Member findMemberByName(String name);
 }

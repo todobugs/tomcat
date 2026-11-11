@@ -17,7 +17,11 @@
 package org.apache.coyote.http2;
 
 import java.nio.ByteBuffer;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.locks.ReentrantLock;
 
+import org.apache.juli.logging.Log;
+import org.apache.juli.logging.LogFactory;
 import org.apache.tomcat.util.res.StringManager;
 
 /**
@@ -25,14 +29,19 @@ import org.apache.tomcat.util.res.StringManager;
  */
 public class HpackDecoder {
 
-    protected static final StringManager sm = StringManager.getManager(HpackDecoder.class);
+    private static final Log log = LogFactory.getLog(HpackDecoder.class);
+    private static final StringManager sm = StringManager.getManager(HpackDecoder.class);
 
     private static final int DEFAULT_RING_BUFFER_SIZE = 10;
 
     /**
      * The object that receives the headers that are emitted from this decoder
      */
-    private HeaderEmitter headerEmitter;
+    private final AtomicReference<HeaderEmitter> headerEmitter = new AtomicReference<>();
+    /**
+     * The lock used to avoid a race between replacing the stream and emitting a header.
+     */
+    private final ReentrantLock streamEmitterLock = new ReentrantLock();
 
     /**
      * The header table
@@ -40,9 +49,8 @@ public class HpackDecoder {
     private Hpack.HeaderField[] headerTable;
 
     /**
-     * The current HEAD position of the header table. We use a ring buffer type
-     * construct as it would be silly to actually shuffle the items around in the
-     * array.
+     * The current HEAD position of the header table. We use a ring buffer type construct as it would be silly to
+     * actually shuffle the items around in the array.
      */
     private int firstSlotPosition = 0;
 
@@ -59,7 +67,7 @@ public class HpackDecoder {
     /**
      * The maximum allowed memory size set by the container.
      */
-    private int maxMemorySizeHard;
+    private final int maxMemorySizeHard;
     /**
      * The maximum memory size currently in use. May be less than the hard limit.
      */
@@ -72,8 +80,6 @@ public class HpackDecoder {
     private volatile boolean countedCookie;
     private volatile int headerSize = 0;
 
-    private final StringBuilder stringBuilder = new StringBuilder();
-
     HpackDecoder(int maxMemorySize) {
         this.maxMemorySizeHard = maxMemorySize;
         this.maxMemorySizeSoft = maxMemorySize;
@@ -85,9 +91,8 @@ public class HpackDecoder {
     }
 
     /**
-     * Decodes the provided frame data. If this method leaves data in the buffer
-     * then this buffer should be compacted so this data is preserved, unless
-     * there is no more data in which case this should be considered a protocol error.
+     * Decodes the provided frame data. If this method leaves data in the buffer then this buffer should be compacted so
+     * this data is preserved, unless there is no more data in which case this should be considered a protocol error.
      *
      * @param buffer The buffer
      *
@@ -98,19 +103,18 @@ public class HpackDecoder {
             int originalPos = buffer.position();
             byte b = buffer.get();
             if ((b & 0b10000000) != 0) {
-                //if the first bit is set it is an indexed header field
-                buffer.position(buffer.position() - 1); //unget the byte
-                int index = Hpack.decodeInteger(buffer, 7); //prefix is 7
+                // if the first bit is set it is an indexed header field
+                buffer.position(buffer.position() - 1); // unget the byte
+                int index = Hpack.decodeInteger(buffer, 7); // prefix is 7
                 if (index == -1) {
                     buffer.position(originalPos);
                     return;
-                } else if(index == 0) {
-                    throw new HpackException(
-                            sm.getString("hpackdecoder.zeroNotValidHeaderTableIndex"));
+                } else if (index == 0) {
+                    throw new HpackException(sm.getString("hpackdecoder.zeroNotValidHeaderTableIndex"));
                 }
                 handleIndex(index);
             } else if ((b & 0b01000000) != 0) {
-                //Literal Header Field with Incremental Indexing
+                // Literal Header Field with Incremental Indexing
                 String headerName = readHeaderName(buffer, 6);
                 if (headerName == null) {
                     buffer.position(originalPos);
@@ -124,7 +128,7 @@ public class HpackDecoder {
                 emitHeader(headerName, headerValue);
                 addEntryToHeaderTable(new Hpack.HeaderField(headerName, headerValue));
             } else if ((b & 0b11110000) == 0) {
-                //Literal Header Field without Indexing
+                // Literal Header Field without Indexing
                 String headerName = readHeaderName(buffer, 4);
                 if (headerName == null) {
                     buffer.position(originalPos);
@@ -137,7 +141,7 @@ public class HpackDecoder {
                 }
                 emitHeader(headerName, headerValue);
             } else if ((b & 0b11110000) == 0b00010000) {
-                //Literal Header Field never indexed
+                // Literal Header Field never indexed
                 String headerName = readHeaderName(buffer, 4);
                 if (headerName == null) {
                     buffer.position(originalPos);
@@ -150,11 +154,12 @@ public class HpackDecoder {
                 }
                 emitHeader(headerName, headerValue);
             } else if ((b & 0b11100000) == 0b00100000) {
-                //context update max table size change
+                // context update max table size change
                 if (!handleMaxMemorySizeChange(buffer, originalPos)) {
                     return;
                 }
             } else {
+                // Unreachable
                 throw new RuntimeException(sm.getString("hpackdecoder.notImplemented"));
             }
         }
@@ -164,15 +169,15 @@ public class HpackDecoder {
         if (headerCount != 0) {
             throw new HpackException(sm.getString("hpackdecoder.tableSizeUpdateNotAtStart"));
         }
-        buffer.position(buffer.position() - 1); //unget the byte
+        buffer.position(buffer.position() - 1); // unget the byte
         int size = Hpack.decodeInteger(buffer, 5);
         if (size == -1) {
             buffer.position(originalPos);
             return false;
         }
         if (size > maxMemorySizeHard) {
-            throw new HpackException(sm.getString("hpackdecoder.maxMemorySizeExceeded",
-                    Integer.valueOf(size), Integer.valueOf(maxMemorySizeHard)));
+            throw new HpackException(sm.getString("hpackdecoder.maxMemorySizeExceeded", Integer.valueOf(size),
+                    Integer.valueOf(maxMemorySizeHard)));
         }
         maxMemorySizeSoft = size;
         if (currentMemorySize > maxMemorySizeSoft) {
@@ -197,7 +202,7 @@ public class HpackDecoder {
     }
 
     private String readHeaderName(ByteBuffer buffer, int prefixLength) throws HpackException {
-        buffer.position(buffer.position() - 1); //unget the byte
+        buffer.position(buffer.position() - 1); // unget the byte
         int index = Hpack.decodeInteger(buffer, prefixLength);
         if (index == -1) {
             return null;
@@ -215,26 +220,24 @@ public class HpackDecoder {
         byte data = buffer.get(buffer.position());
 
         int length = Hpack.decodeInteger(buffer, 7);
-        if (buffer.remaining() < length) {
+        if (buffer.remaining() < length || length == -1) {
             return null;
         }
         boolean huffman = (data & 0b10000000) != 0;
         if (huffman) {
             return readHuffmanString(length, buffer);
         }
+        StringBuilder stringBuilder = new StringBuilder(length);
         for (int i = 0; i < length; ++i) {
-            stringBuilder.append((char) buffer.get());
+            stringBuilder.append((char) (buffer.get() & 0xFF));
         }
-        String ret = stringBuilder.toString();
-        stringBuilder.setLength(0);
-        return ret;
+        return stringBuilder.toString();
     }
 
     private String readHuffmanString(int length, ByteBuffer buffer) throws HpackException {
+        StringBuilder stringBuilder = new StringBuilder(length);
         HPackHuffman.decode(buffer, length, stringBuilder);
-        String ret = stringBuilder.toString();
-        stringBuilder.setLength(0);
-        return ret;
+        return stringBuilder.toString();
     }
 
     private String handleIndexedHeaderName(int index) throws HpackException {
@@ -242,12 +245,7 @@ public class HpackDecoder {
             return Hpack.STATIC_TABLE[index].name;
         } else {
             // index is 1 based
-            if (index > Hpack.STATIC_TABLE_LENGTH + filledTableSlots) {
-                throw new HpackException(sm.getString("hpackdecoder.headerTableIndexInvalid",
-                        Integer.valueOf(index), Integer.valueOf(Hpack.STATIC_TABLE_LENGTH),
-                        Integer.valueOf(filledTableSlots)));
-            }
-            int adjustedIndex = getRealIndex(index - Hpack.STATIC_TABLE_LENGTH);
+            int adjustedIndex = getRealIndex(index);
             Hpack.HeaderField res = headerTable[adjustedIndex];
             if (res == null) {
                 throw new HpackException(sm.getString("hpackdecoder.nullHeader", Integer.valueOf(index)));
@@ -260,49 +258,64 @@ public class HpackDecoder {
      * Handle an indexed header representation
      *
      * @param index The index
-     * @throws HpackException
+     *
+     * @throws HpackException If an error occurs processing the given index
      */
     private void handleIndex(int index) throws HpackException {
         if (index <= Hpack.STATIC_TABLE_LENGTH) {
             addStaticTableEntry(index);
         } else {
-            int adjustedIndex = getRealIndex(index - Hpack.STATIC_TABLE_LENGTH);
+            // index is 1 based
+            int adjustedIndex = getRealIndex(index);
+            if (log.isTraceEnabled()) {
+                log.trace(sm.getString("hpackdecoder.useDynamic", Integer.valueOf(adjustedIndex)));
+            }
             Hpack.HeaderField headerField = headerTable[adjustedIndex];
+            if (headerField == null) {
+                throw new HpackException(sm.getString("hpackdecoder.nullHeader", Integer.valueOf(index)));
+            }
             emitHeader(headerField.name, headerField.value);
         }
     }
 
     /**
-     * because we use a ring buffer type construct, and don't actually shuffle
-     * items in the array, we need to figure out the real index to use.
+     * because we use a ring buffer type construct, and don't actually shuffle items in the array, we need to figure out
+     * the real index to use.
      * <p/>
      * package private for unit tests
      *
      * @param index The index from the hpack
+     *
      * @return the real index into the array
      */
     int getRealIndex(int index) throws HpackException {
-        //the index is one based, but our table is zero based, hence -1
-        //also because of our ring buffer setup the indexes are reversed
-        //index = 1 is at position firstSlotPosition + filledSlots
-        int realIndex = (firstSlotPosition + (filledTableSlots - index)) % headerTable.length;
-        if (realIndex < 0) {
-            throw new HpackException(sm.getString("hpackdecoder.headerTableIndexInvalid",
-                    Integer.valueOf(index), Integer.valueOf(Hpack.STATIC_TABLE_LENGTH),
-                    Integer.valueOf(filledTableSlots)));
+        int dynamicIndex = index - Hpack.STATIC_TABLE_LENGTH;
+        // The index is one based, but our table is zero based
+        // Also, because of our ring buffer set up, the indexes are reversed
+        // Dynamic index 1 (the most recently added entry) is at position
+        // (firstSlotPosition + filledTableSlots - 1) % headerTable.length
+        if (dynamicIndex < 1 || dynamicIndex > filledTableSlots) {
+            throw new HpackException(sm.getString("hpackdecoder.headerTableIndexInvalid", Integer.valueOf(index),
+                    Integer.valueOf(Hpack.STATIC_TABLE_LENGTH), Integer.valueOf(filledTableSlots)));
         }
-        return realIndex;
+        return (firstSlotPosition + (filledTableSlots - dynamicIndex)) % headerTable.length;
     }
 
     private void addStaticTableEntry(int index) throws HpackException {
-        //adds an entry from the static table.
+        // adds an entry from the static table.
+        if (log.isTraceEnabled()) {
+            log.trace(sm.getString("hpackdecoder.useStatic", Integer.valueOf(index)));
+        }
         Hpack.HeaderField entry = Hpack.STATIC_TABLE[index];
         emitHeader(entry.name, (entry.value == null) ? "" : entry.value);
     }
 
     private void addEntryToHeaderTable(Hpack.HeaderField entry) {
         if (entry.size > maxMemorySizeSoft) {
-            //it is to big to fit, so we just completely clear the table.
+            if (log.isTraceEnabled()) {
+                log.trace(sm.getString("hpackdecoder.clearDynamic"));
+            }
+            // it is too big to fit, so we just completely clear the table.
             while (filledTableSlots > 0) {
                 headerTable[firstSlotPosition] = null;
                 firstSlotPosition++;
@@ -318,6 +331,9 @@ public class HpackDecoder {
         int newTableSlots = filledTableSlots + 1;
         int tableLength = headerTable.length;
         int index = (firstSlotPosition + filledTableSlots) % tableLength;
+        if (log.isTraceEnabled()) {
+            log.trace(sm.getString("hpackdecoder.addDynamic", Integer.valueOf(index), entry.name, entry.value));
+        }
         headerTable[index] = entry;
         int newSize = currentMemorySize + entry.size;
         while (newSize > maxMemorySizeSoft) {
@@ -336,9 +352,9 @@ public class HpackDecoder {
     }
 
     private void resizeIfRequired() {
-        if(filledTableSlots == headerTable.length) {
-            Hpack.HeaderField[] newArray = new Hpack.HeaderField[headerTable.length + 10]; //we only grow slowly
-            for(int i = 0; i < headerTable.length; ++i) {
+        if (filledTableSlots == headerTable.length) {
+            Hpack.HeaderField[] newArray = new Hpack.HeaderField[headerTable.length + 10]; // we only grow slowly
+            for (int i = 0; i < headerTable.length; ++i) {
                 newArray[i] = headerTable[(firstSlotPosition + i) % headerTable.length];
             }
             firstSlotPosition = 0;
@@ -356,29 +372,25 @@ public class HpackDecoder {
          *
          * @param name  Header name
          * @param value Header value
-         * @throws HpackException If a header is received that is not compliant
-         *                        with the HTTP/2 specification
+         *
+         * @throws HpackException If a header is received that is not compliant with the HTTP/2 specification
          */
         void emitHeader(String name, String value) throws HpackException;
 
         /**
-         * Inform the recipient of the headers that a stream error needs to be
-         * triggered using the given message when {@link #validateHeaders()} is
-         * called. This is used when the Parser becomes aware of an error that
-         * is not visible to the recipient.
+         * Inform the recipient of the headers that a stream error needs to be triggered using the given message when
+         * {@link #validateHeaders()} is called. This is used when the Parser becomes aware of an error that is not
+         * visible to the recipient.
          *
          * @param streamException The exception to use when resetting the stream
          */
         void setHeaderException(StreamException streamException);
 
         /**
-         * Are the headers pass to the recipient so far valid? The decoder needs
-         * to process all the headers to maintain state even if there is a
-         * problem. In addition, it is easy for the the intended recipient to
-         * track if the complete set of headers is valid since to do that state
-         * needs to be maintained between the parsing of the initial headers and
-         * the parsing of any trailer headers. The recipient is the best place
-         * to maintain that state.
+         * Are the headers passed to the recipient valid? The decoder needs to process all the headers to maintain state
+         * even if there is a problem. In addition, it is easy for the intended recipient to track if the complete set
+         * of headers is valid since to do that state needs to be maintained between the parsing of the initial headers
+         * and the parsing of any trailer headers. The recipient is the best place to maintain that state.
          *
          * @throws StreamException If the headers received to date are not valid
          */
@@ -387,16 +399,27 @@ public class HpackDecoder {
 
 
     HeaderEmitter getHeaderEmitter() {
-        return headerEmitter;
+        return headerEmitter.get();
     }
 
 
     void setHeaderEmitter(HeaderEmitter headerEmitter) {
-        this.headerEmitter = headerEmitter;
+        this.headerEmitter.set(headerEmitter);
         // Reset limit tracking
         headerCount = 0;
         countedCookie = false;
         headerSize = 0;
+    }
+
+
+    void compareAndSetHeaderEmitter(HeaderEmitter expectedValue, HeaderEmitter newValue) {
+        // Only used in stream replacement so should not reset limits
+        this.headerEmitter.compareAndSet(expectedValue, newValue);
+    }
+
+
+    void clearHeaderEmitter() {
+        headerEmitter.set(null);
     }
 
 
@@ -416,11 +439,11 @@ public class HpackDecoder {
             // Only count the cookie header once since HTTP/2 splits it into
             // multiple headers to aid compression
             if (!countedCookie) {
-                headerCount ++;
+                headerCount++;
                 countedCookie = true;
             }
         } else {
-            headerCount ++;
+            headerCount++;
         }
         // Overhead will vary. The main concern is that lots of small headers
         // trigger the limiting mechanism correctly. Therefore, use an overhead
@@ -428,8 +451,21 @@ public class HpackDecoder {
         int inc = 3 + name.length() + value.length();
         headerSize += inc;
         if (!isHeaderCountExceeded() && !isHeaderSizeExceeded(0)) {
-            headerEmitter.emitHeader(name, value);
+            if (log.isTraceEnabled()) {
+                log.trace(sm.getString("hpackdecoder.emitHeader", name, value));
+            }
+            streamEmitterLock.lock();
+            try {
+                headerEmitter.get().emitHeader(name, value);
+            } finally {
+                streamEmitterLock.unlock();
+            }
         }
+    }
+
+
+    ReentrantLock getStreamEmitterLock() {
+        return streamEmitterLock;
     }
 
 
@@ -458,7 +494,7 @@ public class HpackDecoder {
     }
 
 
-    //package private fields for unit tests
+    // package private fields for unit tests
 
     int getFirstSlotPosition() {
         return firstSlotPosition;

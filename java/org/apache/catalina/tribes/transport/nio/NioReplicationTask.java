@@ -14,8 +14,8 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.catalina.tribes.transport.nio;
+
 import java.io.IOException;
 import java.net.SocketAddress;
 import java.nio.ByteBuffer;
@@ -42,26 +42,44 @@ import org.apache.juli.logging.Log;
 import org.apache.juli.logging.LogFactory;
 
 /**
- * A worker thread class which can drain channels and echo-back the input. Each
- * instance is constructed with a reference to the owning thread pool object.
- * When started, the thread loops forever waiting to be awakened to service the
- * channel associated with a SelectionKey object. The worker is tasked by
- * calling its serviceChannel() method with a SelectionKey object. The
- * serviceChannel() method stores the key reference in the thread object then
- * calls notify() to wake it up. When the channel has been drained, the worker
- * thread returns itself to its parent pool.
+ * A worker thread class which drains a channel and processes received messages. Each instance services a single
+ * SelectionKey per invocation. After completion, the worker returns itself to its parent pool for reuse.
  */
 public class NioReplicationTask extends AbstractRxTask {
 
     private static final Log log = LogFactory.getLog(NioReplicationTask.class);
+    /**
+     * String manager for this class.
+     */
     protected static final StringManager sm = StringManager.getManager(NioReplicationTask.class);
 
+    /**
+     * Buffer for reading data from the channel.
+     */
     private ByteBuffer buffer = null;
+
+    /**
+     * Selection key for the channel being serviced.
+     */
     private SelectionKey key;
+
+    /**
+     * Size of the receive buffer.
+     */
     private int rxBufSize;
+
+    /**
+     * Reference to the owning NIO receiver.
+     */
     private final NioReceiver receiver;
 
-    public NioReplicationTask (ListenCallback callback, NioReceiver receiver) {
+    /**
+     * Creates a new NIO replication task.
+     *
+     * @param callback The listen callback
+     * @param receiver The owning NIO receiver
+     */
+    public NioReplicationTask(ListenCallback callback, NioReceiver receiver) {
         super(callback);
         this.receiver = receiver;
     }
@@ -69,164 +87,209 @@ public class NioReplicationTask extends AbstractRxTask {
     // loop forever waiting for work to do
     @Override
     public synchronized void run() {
-        if ( buffer == null ) {
-            int size = getRxBufSize();
-            if (key.channel() instanceof DatagramChannel) {
-                size = ChannelReceiver.MAX_UDP_SIZE;
-            }
-            if ( (getOptions() & OPTION_DIRECT_BUFFER) == OPTION_DIRECT_BUFFER) {
-                buffer = ByteBuffer.allocateDirect(size);
-            } else {
-                buffer = ByteBuffer.allocate(size);
-            }
-        } else {
-            buffer.clear();
-        }
-        if (key == null) {
-            return; // just in case
-        }
-        if ( log.isTraceEnabled() )
-            log.trace("Servicing key:"+key);
-
         try {
-            ObjectReader reader = (ObjectReader)key.attachment();
-            if ( reader == null ) {
-                if ( log.isTraceEnabled() )
-                    log.trace("No object reader, cancelling:"+key);
-                cancelKey(key);
+            if (key == null) {
+                return; // just in case
+            }
+            if (buffer == null) {
+                int size = getRxBufSize();
+                if (key.channel() instanceof DatagramChannel) {
+                    size = ChannelReceiver.MAX_UDP_SIZE;
+                }
+                if ((getOptions() & OPTION_DIRECT_BUFFER) == OPTION_DIRECT_BUFFER) {
+                    buffer = ByteBuffer.allocateDirect(size);
+                } else {
+                    buffer = ByteBuffer.allocate(size);
+                }
             } else {
-                if ( log.isTraceEnabled() )
-                    log.trace("Draining channel:"+key);
+                buffer.clear();
+            }
+            if (log.isTraceEnabled()) {
+                log.trace("Servicing key:" + key);
+            }
 
-                drainChannel(key, reader);
+            try {
+                ObjectReader reader = (ObjectReader) key.attachment();
+                if (reader == null) {
+                    if (log.isTraceEnabled()) {
+                        log.trace("No object reader, cancelling:" + key);
+                    }
+                    cancelKey(key);
+                } else {
+                    if (log.isTraceEnabled()) {
+                        log.trace("Draining channel:" + key);
+                    }
+
+                    drainChannel(key, reader);
+                }
+            } catch (Exception e) {
+                // this is common, since the sockets on the other
+                // end expire after a certain time.
+                if (e instanceof CancelledKeyException) {
+                    // do nothing
+                } else if (e instanceof IOException) {
+                    // don't spew out stack traces for IO exceptions unless debug is enabled.
+                    if (log.isDebugEnabled()) {
+                        log.debug(sm.getString("nioReplicationTask.unable.drainChannel.ioe", e.getMessage()), e);
+                    } else {
+                        log.warn(sm.getString("nioReplicationTask.unable.drainChannel.ioe", e.getMessage()));
+                    }
+                } else if (log.isErrorEnabled()) {
+                    // this is a real error, log it.
+                    log.error(sm.getString("nioReplicationTask.exception.drainChannel"), e);
+                }
+                cancelKey(key);
             }
-        } catch (Exception e) {
-            //this is common, since the sockets on the other
-            //end expire after a certain time.
-            if ( e instanceof CancelledKeyException ) {
-                //do nothing
-            } else if ( e instanceof IOException ) {
-                //dont spew out stack traces for IO exceptions unless debug is enabled.
-                if (log.isDebugEnabled()) log.debug ("IOException in replication worker, unable to drain channel. Probable cause: Keep alive socket closed["+e.getMessage()+"].", e);
-                else log.warn (sm.getString("nioReplicationTask.unable.drainChannel.ioe", e.getMessage()));
-            } else if ( log.isErrorEnabled() ) {
-                //this is a real error, log it.
-                log.error(sm.getString("nioReplicationTask.exception.drainChannel"),e);
+        } catch (Error e) {
+            // The key no longer has any interest ops so nothing would ever service it again. Cancel it so that the
+            // connection is released, then let the Error propagate.
+            if (key != null) {
+                cancelKey(key);
             }
-            cancelKey(key);
+            throw e;
+        } finally {
+            key = null;
+            // done, ready for more, return to pool -- done from a finally
+            // block so the worker can never leak out of the pool, not even
+            // when an Error escapes the catch block above
+            getTaskPool().returnWorker(this);
         }
-        key = null;
-        // done, ready for more, return to pool
-        getTaskPool().returnWorker (this);
     }
 
     /**
-     * Called to initiate a unit of work by this worker thread
-     * on the provided SelectionKey object.  This method is
-     * synchronized, as is the run() method, so only one key
-     * can be serviced at a given time.
-     * Before waking the worker thread, and before returning
-     * to the main selection loop, this key's interest set is
-     * updated to remove OP_READ.  This will cause the selector
-     * to ignore read-readiness for this channel while the
-     * worker thread is servicing it.
+     * Cancel the current selection key.
+     */
+    synchronized void cancel() {
+        try {
+            if (key != null) {
+                cancelKey(key);
+            }
+        } finally {
+            key = null;
+            getTaskPool().returnWorker(this);
+        }
+    }
+
+    /**
+     * Called to initiate a unit of work by this worker thread on the provided SelectionKey object. This method is
+     * synchronized, as is the run() method, so only one key can be serviced at a given time. Before waking the worker
+     * thread, and before returning to the main selection loop, this key's interest set is updated to remove OP_READ.
+     * This will cause the selector to ignore read-readiness for this channel while the worker thread is servicing it.
+     *
      * @param key The key to process
      */
-    public synchronized void serviceChannel (SelectionKey key) {
-        if ( log.isTraceEnabled() ) log.trace("About to service key:"+key);
-        ObjectReader reader = (ObjectReader)key.attachment();
-        if ( reader != null ) reader.setLastAccess(System.currentTimeMillis());
+    public synchronized void serviceChannel(SelectionKey key) {
+        if (log.isTraceEnabled()) {
+            log.trace("About to service key:" + key);
+        }
+        ObjectReader reader = (ObjectReader) key.attachment();
+        if (reader != null) {
+            reader.setLastAccess(System.currentTimeMillis());
+        }
         this.key = key;
-        key.interestOps (key.interestOps() & (~SelectionKey.OP_READ));
-        key.interestOps (key.interestOps() & (~SelectionKey.OP_WRITE));
+        key.interestOps(key.interestOps() & (~SelectionKey.OP_READ));
+        key.interestOps(key.interestOps() & (~SelectionKey.OP_WRITE));
     }
 
     /**
-     * The actual code which drains the channel associated with
-     * the given key.  This method assumes the key has been
-     * modified prior to invocation to turn off selection
-     * interest in OP_READ.  When this method completes it
-     * re-enables OP_READ and calls wakeup() on the selector
-     * so the selector will resume watching this channel.
-     * @param key The key to process
+     * The actual code which drains the channel associated with the given key. This method assumes the key has been
+     * modified prior to invocation to turn off selection interest in OP_READ. When this method completes it re-enables
+     * OP_READ and calls wakeup() on the selector so the selector will resume watching this channel.
+     *
+     * @param key    The key to process
      * @param reader The reader
+     *
      * @throws Exception IO error
      */
-    protected void drainChannel (final SelectionKey key, ObjectReader reader) throws Exception {
+    protected void drainChannel(final SelectionKey key, ObjectReader reader) throws Exception {
         reader.access();
         ReadableByteChannel channel = (ReadableByteChannel) key.channel();
-        int count=-1;
-        buffer.clear();         // make buffer empty
+        int count = -1;
         SocketAddress saddr = null;
 
         if (channel instanceof SocketChannel) {
             // loop while data available, channel is non-blocking
-            while ((count = channel.read (buffer)) > 0) {
-                buffer.flip();      // make buffer readable
-                if ( buffer.hasArray() )
-                    reader.append(buffer.array(),0,count,false);
-                else
-                    reader.append(buffer,count,false);
-                buffer.clear();     // make buffer empty
-                //do we have at least one package?
-                if ( reader.hasPackage() ) break;
+            while ((count = channel.read(buffer)) > 0) {
+                buffer.flip(); // make buffer readable
+                if (buffer.hasArray()) {
+                    reader.append(buffer.array(), 0, count, false);
+                } else {
+                    reader.append(buffer, count, false);
+                }
+                buffer.clear(); // make buffer empty
+                // do we have at least one package?
+                if (reader.hasPackage()) {
+                    break;
+                }
             }
         } else if (channel instanceof DatagramChannel) {
-            DatagramChannel dchannel = (DatagramChannel)channel;
+            DatagramChannel dchannel = (DatagramChannel) channel;
             saddr = dchannel.receive(buffer);
-            buffer.flip();      // make buffer readable
-            if ( buffer.hasArray() )
-                reader.append(buffer.array(),0,buffer.limit()-buffer.position(),false);
-            else
-                reader.append(buffer,buffer.limit()-buffer.position(),false);
-            buffer.clear();     // make buffer empty
-            //did we get a package
-            count = reader.hasPackage()?1:-1;
+            buffer.flip(); // make buffer readable
+            if (buffer.hasArray()) {
+                reader.append(buffer.array(), 0, buffer.limit() - buffer.position(), false);
+            } else {
+                reader.append(buffer, buffer.limit() - buffer.position(), false);
+            }
+            buffer.clear(); // make buffer empty
+            // did we get a package
+            count = reader.hasPackage() ? 1 : -1;
         }
 
         int pkgcnt = reader.count();
 
-        if (count < 0 && pkgcnt == 0 ) {
-            //end of stream, and no more packages to process
+        if (count < 0 && pkgcnt == 0) {
+            // end of stream, and no more packages to process
             remoteEof(key);
             return;
         }
 
-        ChannelMessage[] msgs = pkgcnt == 0? ChannelData.EMPTY_DATA_ARRAY : reader.execute();
+        ChannelMessage[] msgs = pkgcnt == 0 ? ChannelData.EMPTY_DATA_ARRAY : reader.execute();
 
-        registerForRead(key,reader);//register to read new data, before we send it off to avoid dead locks
+        registerForRead(key, reader);// register to read new data, before we send it off to avoid deadlocks
 
-        for ( int i=0; i<msgs.length; i++ ) {
-            /**
-             * Use send ack here if you want to ack the request to the remote
-             * server before completing the request
-             * This is considered an asynchronous request
+        for (ChannelMessage msg : msgs) {
+            /*
+             * Use send ack here if you want to ack the request to the remote server before completing the request This
+             * is considered an asynchronous request
              */
-            if (ChannelData.sendAckAsync(msgs[i].getOptions())) sendAck(key,(WritableByteChannel)channel,Constants.ACK_COMMAND,saddr);
-            try {
-                if ( Logs.MESSAGES.isTraceEnabled() ) {
-                    try {
-                        Logs.MESSAGES.trace("NioReplicationThread - Received msg:" + new UniqueId(msgs[i].getUniqueId()) + " at " + new java.sql.Timestamp(System.currentTimeMillis()));
-                    }catch ( Throwable t ) {}
-                }
-                //process the message
-                getCallback().messageDataReceived(msgs[i]);
-                /**
-                 * Use send ack here if you want the request to complete on this
-                 * server before sending the ack to the remote server
-                 * This is considered a synchronized request
-                 */
-                if (ChannelData.sendAckSync(msgs[i].getOptions())) sendAck(key,(WritableByteChannel)channel,Constants.ACK_COMMAND,saddr);
-            }catch ( RemoteProcessException e ) {
-                if ( log.isDebugEnabled() ) log.error(sm.getString("nioReplicationTask.process.clusterMsg.failed"),e);
-                if (ChannelData.sendAckSync(msgs[i].getOptions())) sendAck(key,(WritableByteChannel)channel,Constants.FAIL_ACK_COMMAND,saddr);
-            }catch ( Exception e ) {
-                log.error(sm.getString("nioReplicationTask.process.clusterMsg.failed"),e);
-                if (ChannelData.sendAckSync(msgs[i].getOptions())) sendAck(key,(WritableByteChannel)channel,Constants.FAIL_ACK_COMMAND,saddr);
+            if (ChannelData.sendAckAsync(msg.getOptions())) {
+                sendAck(key, (WritableByteChannel) channel, Constants.ACK_COMMAND, saddr);
             }
-            if ( getUseBufferPool() ) {
-                BufferPool.getBufferPool().returnBuffer(msgs[i].getMessage());
-                msgs[i].setMessage(null);
+            try {
+                if (Logs.MESSAGES.isTraceEnabled()) {
+                    try {
+                        Logs.MESSAGES.trace("NioReplicationThread - Received msg:" + new UniqueId(msg.getUniqueId()) +
+                                " at " + new java.sql.Timestamp(System.currentTimeMillis()));
+                    } catch (Throwable ignore) {
+                        // Ignore
+                    }
+                }
+                // process the message
+                getCallback().messageDataReceived(msg);
+                /*
+                 * Use send ack here if you want the request to complete on this server before sending the ack to the
+                 * remote server This is considered a synchronized request
+                 */
+                if (ChannelData.sendAckSync(msg.getOptions())) {
+                    sendAck(key, (WritableByteChannel) channel, Constants.ACK_COMMAND, saddr);
+                }
+            } catch (RemoteProcessException e) {
+                if (log.isDebugEnabled()) {
+                    log.debug(sm.getString("nioReplicationTask.process.clusterMsg.failed"), e);
+                }
+                if (ChannelData.sendAckSync(msg.getOptions())) {
+                    sendAck(key, (WritableByteChannel) channel, Constants.FAIL_ACK_COMMAND, saddr);
+                }
+            } catch (Exception e) {
+                log.error(sm.getString("nioReplicationTask.process.clusterMsg.failed"), e);
+                if (ChannelData.sendAckSync(msg.getOptions())) {
+                    sendAck(key, (WritableByteChannel) channel, Constants.FAIL_ACK_COMMAND, saddr);
+                }
+            }
+            if (getUseBufferPool()) {
+                BufferPool.getBufferPool().returnBuffer(msg.getMessage());
+                msg.setMessage(null);
             }
         }
 
@@ -237,67 +300,73 @@ public class NioReplicationTask extends AbstractRxTask {
 
     private void remoteEof(SelectionKey key) {
         // close channel on EOF, invalidates the key
-        if ( log.isDebugEnabled() ) log.debug("Channel closed on the remote end, disconnecting");
+        if (log.isDebugEnabled()) {
+            log.debug(sm.getString("nioReplicationTask.disconnect"));
+        }
         cancelKey(key);
     }
 
+    /**
+     * Registers a selection key for read interest.
+     *
+     * @param key    The selection key
+     * @param reader The object reader
+     */
     protected void registerForRead(final SelectionKey key, ObjectReader reader) {
-        if ( log.isTraceEnabled() )
-            log.trace("Adding key for read event:"+key);
+        if (log.isTraceEnabled()) {
+            log.trace("Adding key for read event:" + key);
+        }
         reader.finish();
-        //register our OP_READ interest
-        Runnable r = new Runnable() {
-            @Override
-            public void run() {
-                try {
-                    if (key.isValid()) {
-                        // cycle the selector so this key is active again
-                        key.selector().wakeup();
-                        // resume interest in OP_READ, OP_WRITE
-                        int resumeOps = key.interestOps() | SelectionKey.OP_READ;
-                        key.interestOps(resumeOps);
-                        if ( log.isTraceEnabled() )
-                            log.trace("Registering key for read:"+key);
+        // register our OP_READ interest
+        Runnable r = () -> {
+            try {
+                if (key.isValid()) {
+                    // resume interest in OP_READ, OP_WRITE
+                    int resumeOps = key.interestOps() | SelectionKey.OP_READ;
+                    key.interestOps(resumeOps);
+                    if (log.isTraceEnabled()) {
+                        log.trace("Registering key for read:" + key);
                     }
-                } catch (CancelledKeyException ckx ) {
-                    NioReceiver.cancelledKey(key);
-                    if ( log.isTraceEnabled() )
-                        log.trace("CKX Cancelling key:"+key);
-
-                } catch (Exception x) {
-                    log.error(sm.getString("nioReplicationTask.error.register.key", key),x);
                 }
+            } catch (CancelledKeyException ckx) {
+                NioReceiver.cancelledKey(key);
+                if (log.isTraceEnabled()) {
+                    log.trace("CKX Cancelling key:" + key);
+                }
+
+            } catch (Exception e) {
+                log.error(sm.getString("nioReplicationTask.error.register.key", key), e);
             }
         };
         receiver.addEvent(r);
     }
 
     private void cancelKey(final SelectionKey key) {
-        if ( log.isTraceEnabled() )
-            log.trace("Adding key for cancel event:"+key);
+        if (log.isTraceEnabled()) {
+            log.trace("Adding key for cancel event:" + key);
+        }
 
-        ObjectReader reader = (ObjectReader)key.attachment();
-        if ( reader != null ) {
+        ObjectReader reader = (ObjectReader) key.attachment();
+        if (reader != null) {
             reader.setCancelled(true);
             reader.finish();
         }
-        Runnable cx = new Runnable() {
-            @Override
-            public void run() {
-                if ( log.isTraceEnabled() )
-                    log.trace("Cancelling key:"+key);
-
-                NioReceiver.cancelledKey(key);
+        Runnable cx = () -> {
+            if (log.isTraceEnabled()) {
+                log.trace("Cancelling key:" + key);
             }
+
+            NioReceiver.cancelledKey(key);
         };
         receiver.addEvent(cx);
     }
 
 
     /**
-     * Send a reply-acknowledgement (6,2,3), sends it doing a busy write, the ACK is so small
-     * that it should always go to the buffer.
-     * @param key The key to use
+     * Send a reply-acknowledgement (6,2,3), sends it doing a busy write, the ACK is so small that it should always go
+     * to the buffer.
+     *
+     * @param key     The key to use
      * @param channel The channel
      * @param command The command to write
      * @param udpaddr Target address
@@ -308,32 +377,45 @@ public class NioReplicationTask extends AbstractRxTask {
             ByteBuffer buf = ByteBuffer.wrap(command);
             int total = 0;
             if (channel instanceof DatagramChannel) {
-                DatagramChannel dchannel = (DatagramChannel)channel;
-                //were using a shared channel, document says its thread safe
-                //TODO check optimization, one channel per thread?
-                while ( total < command.length ) {
+                DatagramChannel dchannel = (DatagramChannel) channel;
+                // were using a shared channel, document says its thread safe
+                // TODO check optimization, one channel per thread?
+                while (total < command.length) {
                     total += dchannel.send(buf, udpaddr);
                 }
             } else {
-                while ( total < command.length ) {
+                while (total < command.length) {
                     total += channel.write(buf);
                 }
             }
             if (log.isTraceEnabled()) {
                 log.trace("ACK sent to " +
-                        ( (channel instanceof SocketChannel) ?
-                          ((SocketChannel)channel).socket().getInetAddress() :
-                          ((DatagramChannel)channel).socket().getInetAddress()));
+                        ((channel instanceof SocketChannel) ? ((SocketChannel) channel).socket().getInetAddress() :
+                                ((DatagramChannel) channel).socket().getInetAddress()));
             }
-        } catch ( java.io.IOException x ) {
-            log.warn(sm.getString("nioReplicationTask.unable.ack", x.getMessage()));
+        } catch (IOException ioe) {
+            if (log.isDebugEnabled()) {
+                log.debug(sm.getString("nioReplicationTask.unable.ack", ioe.getMessage()), ioe);
+            } else {
+                log.warn(sm.getString("nioReplicationTask.unable.ack", ioe.getMessage()));
+            }
         }
     }
 
+    /**
+     * Sets the receive buffer size.
+     *
+     * @param rxBufSize the receive buffer size in bytes
+     */
     public void setRxBufSize(int rxBufSize) {
         this.rxBufSize = rxBufSize;
     }
 
+    /**
+     * Returns the receive buffer size.
+     *
+     * @return the receive buffer size in bytes
+     */
     public int getRxBufSize() {
         return rxBufSize;
     }

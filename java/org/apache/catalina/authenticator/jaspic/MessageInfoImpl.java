@@ -25,22 +25,43 @@ import javax.servlet.http.HttpServletResponse;
 
 import org.apache.tomcat.util.res.StringManager;
 
+/**
+ * Implementation of MessageInfo for JASPIC authentication.
+ */
 public class MessageInfoImpl implements MessageInfo {
+    /**
+     * The string manager for this class.
+     */
     protected static final StringManager sm = StringManager.getManager(MessageInfoImpl.class);
 
+    /**
+     * Key for the mandatory flag.
+     */
     public static final String IS_MANDATORY = "javax.security.auth.message.MessagePolicy.isMandatory";
 
-    private final Map<String, Object> map = new HashMap<>();
+    private final Map<String,Object> map = new HashMap<>();
     private HttpServletRequest request;
     private HttpServletResponse response;
 
+    /**
+     * Default constructor.
+     */
     public MessageInfoImpl() {
     }
 
+    /**
+     * Constructor.
+     *
+     * @param request       the request
+     * @param response      the response
+     * @param authMandatory whether auth is mandatory
+     */
     public MessageInfoImpl(HttpServletRequest request, HttpServletResponse response, boolean authMandatory) {
         this.request = request;
         this.response = response;
-        map.put(IS_MANDATORY, Boolean.toString(authMandatory));
+        if (authMandatory) {
+            map.put(IS_MANDATORY, Boolean.toString(authMandatory));
+        }
     }
 
     @Override
@@ -63,8 +84,8 @@ public class MessageInfoImpl implements MessageInfo {
     @Override
     public void setRequestMessage(Object request) {
         if (!(request instanceof HttpServletRequest)) {
-            throw new IllegalArgumentException(sm.getString("authenticator.jaspic.badRequestType",
-                    request.getClass().getName()));
+            String typeName = request == null ? "null" : request.getClass().getName();
+            throw new IllegalArgumentException(sm.getString("authenticator.jaspic.badRequestType", typeName));
         }
         this.request = (HttpServletRequest) request;
     }
@@ -72,8 +93,8 @@ public class MessageInfoImpl implements MessageInfo {
     @Override
     public void setResponseMessage(Object response) {
         if (!(response instanceof HttpServletResponse)) {
-            throw new IllegalArgumentException(sm.getString("authenticator.jaspic.badResponseType",
-                    response.getClass().getName()));
+            String typeName = response == null ? "null" : response.getClass().getName();
+            throw new IllegalArgumentException(sm.getString("authenticator.jaspic.badResponseType", typeName));
         }
         this.response = (HttpServletResponse) response;
     }

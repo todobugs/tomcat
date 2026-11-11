@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.catalina.tribes.tipis;
 
 import java.io.IOException;
@@ -50,21 +49,24 @@ import org.apache.juli.logging.Log;
 import org.apache.juli.logging.LogFactory;
 
 /**
+ * An abstract replicated map implementation.
+ *
  * @param <K> The type of Key
  * @param <V> The type of Value
  */
-public abstract class AbstractReplicatedMap<K,V>
-        implements Map<K,V>, Serializable, RpcCallback, ChannelListener,
-        MembershipListener, Heartbeat {
+public abstract class AbstractReplicatedMap<K, V>
+        implements Map<K,V>, Serializable, RpcCallback, ChannelListener, MembershipListener, Heartbeat {
 
     private static final long serialVersionUID = 1L;
 
+    /** The string manager for packaging specific messages. */
     protected static final StringManager sm = StringManager.getManager(AbstractReplicatedMap.class);
 
+    /** The logger instance. */
     private final Log log = LogFactory.getLog(AbstractReplicatedMap.class); // must not be static
 
     /**
-     * The default initial capacity - MUST be a power of two.
+     * The default initial capacity.
      */
     public static final int DEFAULT_INITIAL_CAPACITY = 16;
 
@@ -74,13 +76,24 @@ public abstract class AbstractReplicatedMap<K,V>
     public static final float DEFAULT_LOAD_FACTOR = 0.75f;
 
 
-//------------------------------------------------------------------------------
-//              INSTANCE VARIABLES
-//------------------------------------------------------------------------------
-    protected final ConcurrentMap<K, MapEntry<K,V>> innerMap;
+    // ------------------------------------------------------------------------------
+    // INSTANCE VARIABLES
+    // ------------------------------------------------------------------------------
+    /** The underlying concurrent map storing entries. */
+    protected final ConcurrentMap<K,MapEntry<K,V>> innerMap;
 
+    /**
+     * Gets the state message type.
+     *
+     * @return the state message type
+     */
     protected abstract int getStateMessageType();
 
+    /**
+     * Gets the replicate message type.
+     *
+     * @return the replicate message type
+     */
     protected abstract int getReplicateMessageType();
 
 
@@ -97,9 +110,7 @@ public abstract class AbstractReplicatedMap<K,V>
      */
     protected transient RpcChannel rpcChannel;
     /**
-     * The Map context name makes this map unique, this
-     * allows us to have more than one map shared
-     * through one channel
+     * The Map context name makes this map unique, this allows us to have more than one map shared through one channel
      */
     protected transient byte[] mapContextName;
     /**
@@ -113,7 +124,11 @@ public abstract class AbstractReplicatedMap<K,V>
     /**
      * A list of members in our map
      */
-    protected final transient HashMap<Member, Long> mapMembers = new HashMap<>();
+    protected final transient HashMap<Member,Long> mapMembers = new HashMap<>();
+    /**
+     * Members removed by ping expiry before their disappearance is processed.
+     */
+    private final transient Set<Member> membersPendingDisappearance = new LinkedHashSet<>();
     /**
      * Our default send options
      */
@@ -128,16 +143,13 @@ public abstract class AbstractReplicatedMap<K,V>
     protected transient ClassLoader[] externalLoaders;
 
     /**
-     * The node we are currently backing up data to, this index will rotate
-     * on a round robin basis
+     * The node we are currently backing up data to, this index will rotate on a round robin basis
      */
     protected transient int currentNode = 0;
 
     /**
-     * Since the map keeps internal membership
-     * this is the timeout for a ping message to be responded to
-     * If a remote map doesn't respond within this timeframe,
-     * its considered dead.
+     * Since the map keeps internal membership this is the timeout for a ping message to be responded to If a remote map
+     * doesn't respond within this timeframe, its considered dead.
      */
     protected transient long accessTimeout = 5000;
 
@@ -151,39 +163,53 @@ public abstract class AbstractReplicatedMap<K,V>
      */
     private transient volatile State state = State.NEW;
 
-//------------------------------------------------------------------------------
-//              map owner interface
-//------------------------------------------------------------------------------
-
-    public static interface MapOwner {
-        public void objectMadePrimary(Object key, Object value);
-    }
-
-//------------------------------------------------------------------------------
-//              CONSTRUCTORS
-//------------------------------------------------------------------------------
+    // ------------------------------------------------------------------------------
+    // map owner interface
+    // ------------------------------------------------------------------------------
 
     /**
-     * Creates a new map.
-     * @param owner The map owner
-     * @param channel The channel to use for communication
-     * @param timeout long - timeout for RPC messages
-     * @param mapContextName String - unique name for this map, to allow multiple maps per channel
-     * @param initialCapacity int - the size of this map, see HashMap
-     * @param loadFactor float - load factor, see HashMap
-     * @param channelSendOptions Send options
-     * @param cls - a list of classloaders to be used for deserialization of objects.
-     * @param terminate - Flag for whether to terminate this map that failed to start.
+     * Interface for the owner of this replicated map.
      */
-    public AbstractReplicatedMap(MapOwner owner,
-                                 Channel channel,
-                                 long timeout,
-                                 String mapContextName,
-                                 int initialCapacity,
-                                 float loadFactor,
-                                 int channelSendOptions,
-                                 ClassLoader[] cls,
-                                 boolean terminate) {
+    public interface MapOwner {
+        /**
+         * Called when an object becomes primary on this node.
+         *
+         * @param key The key of the object
+         * @param value The value of the object
+         */
+        void objectMadePrimary(Object key, Object value);
+    }
+
+    // ------------------------------------------------------------------------------
+    // CONSTRUCTORS
+    // ------------------------------------------------------------------------------
+
+    /**
+     * Creates a new replicated map with the specified configuration.
+     *
+     * Initializes the internal {@link ConcurrentHashMap} with the given capacity and load factor,
+     * then delegates to {@link #init(MapOwner, Channel, String, long, int, ClassLoader[], boolean)}
+     * to configure the map, register listeners, and perform state transfer from existing cluster members.
+     *
+     * @param owner              the object that owns this map and receives notifications when entries
+     *                           become primary on this node
+     * @param channel            the channel used for cluster communication; must not be {@code null}
+     * @param timeout            the timeout in milliseconds for RPC messages
+     * @param mapContextName     a unique name for this map that distinguishes it from other maps
+     *                           sharing the same channel
+     * @param initialCapacity    the initial capacity of the internal map, as defined by
+     *                           {@link ConcurrentHashMap#ConcurrentHashMap(int, float, int)}
+     * @param loadFactor         the load factor of the internal map, as defined by
+     *                           {@link ConcurrentHashMap#ConcurrentHashMap(int, float, int)}
+     * @param channelSendOptions the send options to use when transmitting messages through the channel
+     * @param cls                an array of class loaders used during deserialization of received objects,
+     *                           or {@code null} if no external loaders are needed
+     * @param terminate          if {@code true}, the map will terminate itself and throw a {@link RuntimeException}
+     *                           when initialization fails; if {@code false}, the failure is logged and the map
+     *                           continues in a degraded state
+     */
+    public AbstractReplicatedMap(MapOwner owner, Channel channel, long timeout, String mapContextName,
+            int initialCapacity, float loadFactor, int channelSendOptions, ClassLoader[] cls, boolean terminate) {
         innerMap = new ConcurrentHashMap<>(initialCapacity, loadFactor, 15);
         init(owner, channel, mapContextName, timeout, channelSendOptions, cls, terminate);
 
@@ -191,29 +217,57 @@ public abstract class AbstractReplicatedMap<K,V>
 
     /**
      * Helper methods, wraps a single member in an array
+     *
      * @param m Member
+     *
      * @return Member[]
      */
     protected Member[] wrap(Member m) {
-        if ( m == null ) return new Member[0];
-        else return new Member[] {m};
+        if (m == null) {
+            return new Member[0];
+        } else {
+            return new Member[] { m };
+        }
     }
 
     /**
-     * Initializes the map by creating the RPC channel, registering itself as a channel listener
-     * This method is also responsible for initiating the state transfer
-     * @param owner Object
-     * @param channel Channel
-     * @param mapContextName String
-     * @param timeout long
-     * @param channelSendOptions int
-     * @param cls ClassLoader[]
-     * @param terminate - Flag for whether to terminate this map that failed to start.
+     * Initializes the replicated map by configuring its internal state, registering with the channel,
+     * and performing state transfer from existing cluster members.
+     *
+     * This method performs the following steps:
+     * <ol>
+     *   <li>Stores the provided configuration parameters</li>
+     *   <li>Creates an {@link RpcChannel} for sending RPC messages</li>
+     *   <li>Registers this map as a {@link ChannelListener} and {@link MembershipListener} on the channel</li>
+     *   <li>Broadcasts a {@code MSG_INIT} message to announce this map to existing cluster members</li>
+     *   <li>Invokes {@link #transferState()} to receive the current map state from an existing member</li>
+     *   <li>Broadcasts a {@code MSG_START} message to signal that this map is ready for normal operation</li>
+     * </ol>
+     *
+     * If a {@link ChannelException} occurs during the broadcast or state transfer steps, the behavior
+     * depends on the {@code terminate} flag: when {@code true}, the map is torn down via {@link #breakdown()}
+     * and a {@link RuntimeException} is thrown; when {@code false}, the error is logged and the map
+     * continues in a partially initialized state.
+     *
+     * @param owner              the object that owns this map and receives notifications when entries
+     *                           become primary on this node
+     * @param channel            the channel used for cluster communication; must not be {@code null}
+     * @param mapContextName     a unique name for this map that distinguishes it from other maps
+     *                           sharing the same channel
+     * @param timeout            the timeout in milliseconds for RPC messages
+     * @param channelSendOptions the send options to use when transmitting messages through the channel
+     * @param cls                an array of class loaders used during deserialization of received objects,
+     *                           or {@code null} if no external loaders are needed
+     * @param terminate          if {@code true}, the map will terminate itself and throw a {@link RuntimeException}
+     *                           when initialization fails; if {@code false}, the failure is logged and the map
+     *                           continues in a degraded state
      */
-    protected void init(MapOwner owner, Channel channel, String mapContextName,
-            long timeout, int channelSendOptions,ClassLoader[] cls, boolean terminate) {
+    protected void init(MapOwner owner, Channel channel, String mapContextName, long timeout, int channelSendOptions,
+            ClassLoader[] cls, boolean terminate) {
         long start = System.currentTimeMillis();
-        if (log.isInfoEnabled()) log.info(sm.getString("abstractReplicatedMap.init.start", mapContextName));
+        if (log.isInfoEnabled()) {
+            log.info(sm.getString("abstractReplicatedMap.init.start", mapContextName));
+        }
         this.mapOwner = owner;
         this.externalLoaders = cls;
         this.channelSendOptions = channelSendOptions;
@@ -221,82 +275,82 @@ public abstract class AbstractReplicatedMap<K,V>
         this.rpcTimeout = timeout;
 
         this.mapname = mapContextName;
-        //unique context is more efficient if it is stored as bytes
+        // unique context is more efficient if it is stored as bytes
         this.mapContextName = mapContextName.getBytes(StandardCharsets.ISO_8859_1);
-        if ( log.isTraceEnabled() ) log.trace("Created Lazy Map with name:"+mapContextName+", bytes:"+Arrays.toString(this.mapContextName));
+        if (log.isTraceEnabled()) {
+            log.trace(
+                    "Created Lazy Map with name:" + mapContextName + ", bytes:" + Arrays.toString(this.mapContextName));
+        }
 
-        //create an rpc channel and add the map as a listener
+        // create a rpc channel and add the map as a listener
         this.rpcChannel = new RpcChannel(this.mapContextName, channel, this);
-        //add this map as a message listener
+        // add this map as a message listener
         this.channel.addChannelListener(this);
-        //listen for membership notifications
+        // listen for membership notifications
         this.channel.addMembershipListener(this);
 
         try {
-            //broadcast our map, this just notifies other members of our existence
+            // broadcast our map, this just notifies other members of our existence
             broadcast(MapMessage.MSG_INIT, true);
-            //transfer state from another map
+            // transfer state from another map
             transferState();
-            //state is transferred, we are ready for messaging
+            // state is transferred, we are ready for messaging
             broadcast(MapMessage.MSG_START, true);
         } catch (ChannelException x) {
-            log.warn(sm.getString("abstractReplicatedMap.unableSend.startMessage"));
             if (terminate) {
+                // Exception is logged further up stack
+                log.warn(sm.getString("abstractReplicatedMap.unableSend.startMessage"));
                 breakdown();
-                throw new RuntimeException(sm.getString("abstractReplicatedMap.unableStart"),x);
+                throw new RuntimeException(sm.getString("abstractReplicatedMap.unableStart"), x);
+            } else {
+                log.warn(sm.getString("abstractReplicatedMap.unableSend.startMessage"), x);
             }
         }
         this.state = State.INITIALIZED;
         long complete = System.currentTimeMillis() - start;
-        if (log.isInfoEnabled())
-            log.info(sm.getString("abstractReplicatedMap.init.completed",
-                    mapContextName, Long.toString(complete)));
+        if (log.isInfoEnabled()) {
+            log.info(sm.getString("abstractReplicatedMap.init.completed", mapContextName, Long.toString(complete)));
+        }
     }
 
 
     /**
-     * Sends a ping out to all the members in the cluster, not just map members
-     * that this map is alive.
+     * Sends a ping out to all the members in the cluster, not just map members that this map is alive.
+     *
      * @param timeout long
+     *
      * @throws ChannelException Send error
      */
     protected void ping(long timeout) throws ChannelException {
-        MapMessage msg = new MapMessage(this.mapContextName,
-                                        MapMessage.MSG_PING,
-                                        false,
-                                        null,
-                                        null,
-                                        null,
-                                        channel.getLocalMember(false),
-                                        null);
-        if ( channel.getMembers().length > 0 ) {
+        MapMessage msg = new MapMessage(this.mapContextName, MapMessage.MSG_PING, false, null, null, null,
+                channel.getLocalMember(false), null);
+        Member[] channelMembers = channel.getMembers();
+        if (channelMembers.length > 0) {
             try {
-                //send a ping, wait for all nodes to reply
-                Response[] resp = rpcChannel.send(channel.getMembers(),
-                                                  msg, RpcChannel.ALL_REPLY,
-                                                  (channelSendOptions),
-                                                  (int) accessTimeout);
-                for (int i = 0; i < resp.length; i++) {
-                    MapMessage mapMsg = (MapMessage)resp[i].getMessage();
+                // send a ping, wait for all nodes to reply
+                Response[] resp = rpcChannel.send(channelMembers, msg, RpcChannel.ALL_REPLY, (channelSendOptions),
+                        (int) accessTimeout);
+                for (Response response : resp) {
+                    MapMessage mapMsg = (MapMessage) response.getMessage();
                     try {
                         mapMsg.deserialize(getExternalLoaders());
-                        Member member = resp[i].getSource();
+                        Member member = response.getSource();
                         State state = (State) mapMsg.getValue();
                         if (state.isAvailable()) {
                             memberAlive(member);
                         } else if (state == State.STATETRANSFERRED) {
                             synchronized (mapMembers) {
-                                if (log.isInfoEnabled())
-                                    log.info(sm.getString("abstractReplicatedMap.ping.stateTransferredMember",
-                                            member));
-                                if (mapMembers.containsKey(member) ) {
+                                if (log.isInfoEnabled()) {
+                                    log.info(sm.getString("abstractReplicatedMap.ping.stateTransferredMember", member));
+                                }
+                                if (mapMembers.containsKey(member)) {
                                     mapMembers.put(member, Long.valueOf(System.currentTimeMillis()));
                                 }
                             }
                         } else {
-                            if (log.isInfoEnabled())
-                                log.info(sm.getString("abstractReplicatedMap.mapMember.unavailable",
-                                        member));
+                            if (log.isInfoEnabled()) {
+                                log.info(sm.getString("abstractReplicatedMap.mapMember.unavailable", member));
+                            }
                         }
                     } catch (ClassNotFoundException | IOException e) {
                         log.error(sm.getString("abstractReplicatedMap.unable.deserialize.MapMessage"), e);
@@ -311,22 +365,46 @@ public abstract class AbstractReplicatedMap<K,V>
                 throw ce;
             }
         }
-        //update our map of members, expire some if we didn't receive a ping back
+        // update our map of members, expire some if we didn't receive a ping back
+        List<Member> expiredMembers = new ArrayList<>();
         synchronized (mapMembers) {
-            Member[] members = mapMembers.keySet().toArray(new Member[mapMembers.size()]);
+            Member[] members = mapMembers.keySet().toArray(new Member[0]);
             long now = System.currentTimeMillis();
             for (Member member : members) {
                 long access = mapMembers.get(member).longValue();
-                if ( (now - access) > timeout ) {
-                    log.warn(sm.getString("abstractReplicatedMap.ping.timeout", member, mapname));
-                    memberDisappeared(member);
+                if ((now - access) > timeout) {
+                    expiredMembers.add(member);
                 }
             }
-        }//synch
+        } // synch
+        // The expiry handling relocates entries, which sends to other members and may block
+        // until they acknowledge, so it must not run while holding the map members lock
+        for (Member member : expiredMembers) {
+            boolean expired;
+            synchronized (mapMembers) {
+                Long access = mapMembers.get(member);
+                expired = access != null && (System.currentTimeMillis() - access.longValue()) > timeout;
+                if (expired) {
+                    mapMembers.remove(member);
+                    membersPendingDisappearance.add(member);
+                }
+            }
+            if (expired) {
+                log.warn(sm.getString("abstractReplicatedMap.ping.timeout", member, mapname));
+                try {
+                    memberDisappeared(member);
+                } finally {
+                    synchronized (mapMembers) {
+                        membersPendingDisappearance.remove(member);
+                    }
+                }
+            }
+        }
     }
 
     /**
      * We have received a member alive notification
+     *
      * @param member Member
      */
     protected void memberAlive(Member member) {
@@ -338,265 +416,361 @@ public abstract class AbstractReplicatedMap<K,V>
 
     /**
      * Helper method to broadcast a message to all members in a channel
+     *
      * @param msgtype int
-     * @param rpc boolean
+     * @param rpc     boolean
+     *
      * @throws ChannelException Send error
      */
     protected void broadcast(int msgtype, boolean rpc) throws ChannelException {
         Member[] members = channel.getMembers();
         // No destination.
-        if (members.length == 0 ) return;
-        //send out a map membership message, only wait for the first reply
-        MapMessage msg = new MapMessage(this.mapContextName, msgtype,
-                                        false, null, null, null, channel.getLocalMember(false), null);
-        if ( rpc) {
-            Response[] resp = rpcChannel.send(members, msg,
-                    RpcChannel.FIRST_REPLY, (channelSendOptions), rpcTimeout);
+        if (members.length == 0) {
+            return;
+        }
+        // send out a map membership message, only wait for the first reply
+        MapMessage msg = new MapMessage(this.mapContextName, msgtype, false, null, null, null,
+                channel.getLocalMember(false), null);
+        if (rpc) {
+            Response[] resp = rpcChannel.send(members, msg, RpcChannel.FIRST_REPLY, (channelSendOptions), rpcTimeout);
             if (resp.length > 0) {
-                for (int i = 0; i < resp.length; i++) {
-                    mapMemberAdded(resp[i].getSource());
-                    messageReceived(resp[i].getMessage(), resp[i].getSource());
+                for (Response response : resp) {
+                    mapMemberAdded(response.getSource());
+                    messageReceived(response.getMessage(), response.getSource());
                 }
             } else {
                 log.warn(sm.getString("abstractReplicatedMap.broadcast.noReplies"));
             }
         } else {
-            channel.send(channel.getMembers(),msg,channelSendOptions);
+            channel.send(members, msg, channelSendOptions);
         }
     }
 
+    /**
+     * Breaks down the map, removing all entries and closing channels.
+     */
     public void breakdown() {
         this.state = State.DESTROYED;
         if (this.rpcChannel != null) {
             this.rpcChannel.breakdown();
         }
         if (this.channel != null) {
-            try {broadcast(MapMessage.MSG_STOP,false); }catch ( Exception ignore){}
-            //cleanup
+            try {
+                broadcast(MapMessage.MSG_STOP, false);
+            } catch (Exception ignore) {
+                // Ignore
+            }
+            // cleanup
             this.channel.removeChannelListener(this);
             this.channel.removeMembershipListener(this);
         }
         this.rpcChannel = null;
         this.channel = null;
-        this.mapMembers.clear();
+        synchronized (mapMembers) {
+            this.mapMembers.clear();
+        }
         innerMap.clear();
         this.stateTransferred = false;
         this.externalLoaders = null;
     }
 
-    @Override
-    protected void finalize() throws Throwable {
-        try {
-            breakdown();
-        } finally {
-            super.finalize();
-        }
-    }
-
+    /**
+     * Returns the hash code for this map based on the map context name.
+     *
+     * @return the hash code
+     */
     @Override
     public int hashCode() {
         return Arrays.hashCode(this.mapContextName);
     }
 
+    /**
+     * Checks if this map is equal to another object.
+     *
+     * @param o the object to compare
+     *
+     * @return {@code true} if the maps have the same context name
+     */
     @Override
     public boolean equals(Object o) {
-        if ( !(o instanceof AbstractReplicatedMap)) return false;
-        if ( !(o.getClass().equals(this.getClass())) ) return false;
+        if (!(o instanceof AbstractReplicatedMap)) {
+            return false;
+        }
+        if (!(o.getClass().equals(this.getClass()))) {
+            return false;
+        }
         @SuppressWarnings("unchecked")
-        AbstractReplicatedMap<K,V> other = (AbstractReplicatedMap<K,V>)o;
-        return Arrays.equals(mapContextName,other.mapContextName);
+        AbstractReplicatedMap<K,V> other = (AbstractReplicatedMap<K,V>) o;
+        return Arrays.equals(mapContextName, other.mapContextName);
     }
 
-//------------------------------------------------------------------------------
-//              GROUP COM INTERFACES
-//------------------------------------------------------------------------------
-    public Member[] getMapMembers(HashMap<Member, Long> members) {
-        synchronized (members) {
-            Member[] result = new Member[members.size()];
-            members.keySet().toArray(result);
-            return result;
+    // ------------------------------------------------------------------------------
+    // GROUP COM INTERFACES
+    // ------------------------------------------------------------------------------
+    /**
+     * Gets the map members from the given map.
+     *
+     * @param members The member map
+     *
+     * @return an array of members
+     */
+    public Member[] getMapMembers(HashMap<Member,Long> members) {
+        return members.keySet().toArray(new Member[0]);
+    }
+
+    /**
+     * Gets the current map members.
+     *
+     * @return an array of members
+     */
+    public Member[] getMapMembers() {
+        synchronized (mapMembers) {
+            return getMapMembers(mapMembers);
         }
     }
-    public Member[] getMapMembers() {
-        return getMapMembers(this.mapMembers);
-    }
 
+    /**
+     * Gets the map members excluding the given members.
+     *
+     * @param exclude Members to exclude from the result
+     *
+     * @return an array of members excluding the specified ones
+     */
     public Member[] getMapMembersExcl(Member[] exclude) {
         if (exclude == null) {
             return null;
         }
         synchronized (mapMembers) {
             @SuppressWarnings("unchecked") // mapMembers has the correct type
-            HashMap<Member, Long> list = (HashMap<Member, Long>)mapMembers.clone();
-            for (int i=0; i<exclude.length;i++) list.remove(exclude[i]);
+            HashMap<Member,Long> list = (HashMap<Member,Long>) mapMembers.clone();
+            for (Member member : exclude) {
+                list.remove(member);
+            }
             return getMapMembers(list);
         }
     }
 
 
     /**
-     * Replicates any changes to the object since the last time
-     * The object has to be primary, ie, if the object is a proxy or a backup, it will not be replicated<br>
-     * @param key The object to replicate
-     * @param complete - if set to true, the object is replicated to its backup
-     * if set to false, only objects that implement ReplicatedMapEntry and the isDirty() returns true will
-     * be replicated
+     * Replicates any changes to the object since the last time The object has to be primary, ie, if the object is a
+     * proxy or a backup, it will not be replicated<br>
+     *
+     * @param key      The object to replicate
+     * @param complete - if set to true, the object is replicated to its backup if set to false, only objects that
+     *                     implement ReplicatedMapEntry and the isDirty() returns true will be replicated
      */
-    public void replicate(Object key, boolean complete) {
-        if ( log.isTraceEnabled() )
-            log.trace("Replicate invoked on key:"+key);
+    public void replicate(K key, boolean complete) {
+        if (log.isTraceEnabled()) {
+            log.trace("Replicate invoked on key:" + key);
+        }
         MapEntry<K,V> entry = innerMap.get(key);
-        if ( entry == null ) return;
-        if ( !entry.isSerializable() ) return;
-        if (entry.isPrimary() && entry.getBackupNodes()!= null && entry.getBackupNodes().length > 0) {
-            //check to see if we need to replicate this object isDirty()||complete || isAccessReplicate()
+        if (entry == null) {
+            return;
+        }
+        if (!entry.isSerializable()) {
+            return;
+        }
+        if (entry.isPrimary() && entry.getBackupNodes() != null && entry.getBackupNodes().length > 0) {
+            // check to see if we need to replicate this object isDirty()||complete || isAccessReplicate()
             ReplicatedMapEntry rentry = null;
-            if (entry.getValue() instanceof ReplicatedMapEntry) rentry = (ReplicatedMapEntry)entry.getValue();
+            if (entry.getValue() instanceof ReplicatedMapEntry) {
+                rentry = (ReplicatedMapEntry) entry.getValue();
+            }
             boolean isDirty = rentry != null && rentry.isDirty();
             boolean isAccess = rentry != null && rentry.isAccessReplicate();
             boolean repl = complete || isDirty || isAccess;
 
             if (!repl) {
-                if ( log.isTraceEnabled() )
-                    log.trace("Not replicating:"+key+", no change made");
+                if (log.isTraceEnabled()) {
+                    log.trace("Not replicating:" + key + ", no change made");
+                }
 
                 return;
             }
-            //check to see if the message is diffable
+            // check to see if the message is diffable
             MapMessage msg = null;
             if (rentry != null && rentry.isDiffable() && (isDirty || complete)) {
                 rentry.lock();
                 try {
-                    //construct a diff message
-                    msg = new MapMessage(mapContextName, getReplicateMessageType(),
-                                         true, (Serializable) entry.getKey(), null,
-                                         rentry.getDiff(),
-                                         entry.getPrimary(),
-                                         entry.getBackupNodes());
+                    // construct a diff message
+                    msg = createMapMessage(getReplicateMessageType(), true, (Serializable) entry.getKey(), null,
+                            rentry.getDiff(), entry.getPrimary(), entry.getBackupNodes());
+                    if (msg == null) {
+                        return;
+                    }
                     rentry.resetDiff();
-                } catch (IOException x) {
-                    log.error(sm.getString("abstractReplicatedMap.unable.diffObject"), x);
+                } catch (IOException ioe) {
+                    log.error(sm.getString("abstractReplicatedMap.unable.diffObject"), ioe);
                 } finally {
                     rentry.unlock();
                 }
             }
             if (msg == null && complete) {
-                //construct a complete
-                msg = new MapMessage(mapContextName, getReplicateMessageType(),
-                                     false, (Serializable) entry.getKey(),
-                                     (Serializable) entry.getValue(),
-                                     null, entry.getPrimary(),entry.getBackupNodes());
+                // construct a complete
+                msg = createMapMessage(getReplicateMessageType(), false, (Serializable) entry.getKey(),
+                        (Serializable) entry.getValue(), null, entry.getPrimary(), entry.getBackupNodes());
+                if (msg == null) {
+                    return;
+                }
             }
             if (msg == null) {
-                //construct a access message
-                msg = new MapMessage(mapContextName, MapMessage.MSG_ACCESS,
-                        false, (Serializable) entry.getKey(), null, null, entry.getPrimary(),
-                        entry.getBackupNodes());
+                // construct an access message
+                msg = createMapMessage(MapMessage.MSG_ACCESS, false, (Serializable) entry.getKey(), null,
+                        null, entry.getPrimary(), entry.getBackupNodes());
+                if (msg == null) {
+                    return;
+                }
             }
             try {
-                if ( channel!=null && entry.getBackupNodes()!= null && entry.getBackupNodes().length > 0 ) {
-                    if (rentry != null) rentry.setLastTimeReplicated(System.currentTimeMillis());
+                if (channel != null && entry.getBackupNodes() != null && entry.getBackupNodes().length > 0) {
+                    if (rentry != null) {
+                        rentry.setLastTimeReplicated(System.currentTimeMillis());
+                    }
                     channel.send(entry.getBackupNodes(), msg, channelSendOptions);
                 }
             } catch (ChannelException x) {
                 log.error(sm.getString("abstractReplicatedMap.unable.replicate"), x);
             }
-        } //end if
+        } // end if
 
     }
 
     /**
-     * This can be invoked by a periodic thread to replicate out any changes.
-     * For maps that don't store objects that implement ReplicatedMapEntry, this
-     * method should be used infrequently to avoid large amounts of data transfer
+     * This can be invoked by a periodic thread to replicate out any changes. For maps that don't store objects that
+     * implement ReplicatedMapEntry, this method should be used infrequently to avoid large amounts of data transfer
+     *
      * @param complete boolean
      */
     public void replicate(boolean complete) {
-        for (Entry<K, MapEntry<K, V>> e : innerMap.entrySet()) {
+        for (Entry<K,MapEntry<K,V>> e : innerMap.entrySet()) {
             replicate(e.getKey(), complete);
         }
     }
 
+    /**
+     * Transfers the current state from another map in the cluster.
+     */
     public void transferState() {
         try {
             Member[] members = getMapMembers();
             Member backup = members.length > 0 ? members[0] : null;
             if (backup != null) {
-                MapMessage msg = new MapMessage(mapContextName, getStateMessageType(), false,
-                                                null, null, null, null, null);
-                Response[] resp = rpcChannel.send(new Member[] {backup}, msg, RpcChannel.FIRST_REPLY, channelSendOptions, rpcTimeout);
+                MapMessage msg =
+                        new MapMessage(mapContextName, getStateMessageType(), false, null, null, null, null, null);
+                Response[] resp = rpcChannel.send(new Member[] { backup }, msg, RpcChannel.FIRST_REPLY,
+                        channelSendOptions, rpcTimeout);
                 if (resp.length > 0) {
+                    msg = (MapMessage) resp[0].getMessage();
+                    msg.deserialize(getExternalLoaders());
+                    ArrayList<?> list = (ArrayList<?>) msg.getValue();
+                    // Deserialize the state messages outside of the state lock below, so that
+                    // it is held only for the application of the entries to the map
+                    List<Serializable> messages = new ArrayList<>(list.size());
+                    for (Object o : list) {
+                        if (o instanceof MapMessage) {
+                            MapMessage mapMessage = (MapMessage) o;
+                            try {
+                                mapMessage.deserialize(getExternalLoaders());
+                            } catch (ClassNotFoundException | IOException x) {
+                                log.error(sm.getString("abstractReplicatedMap.unable.deserialize.MapMessage"), x);
+                                continue;
+                            }
+                        }
+                        messages.add((Serializable) o);
+                    }
                     synchronized (stateMutex) {
-                        msg = (MapMessage) resp[0].getMessage();
-                        msg.deserialize(getExternalLoaders());
-                        ArrayList<?> list = (ArrayList<?>) msg.getValue();
-                        for (int i = 0; i < list.size(); i++) {
-                            messageReceived( (Serializable) list.get(i), resp[0].getSource());
-                        } //for
+                        for (Serializable message : messages) {
+                            messageReceived(message, resp[0].getSource());
+                        } // for
                     }
                     stateTransferred = true;
                 } else {
                     log.warn(sm.getString("abstractReplicatedMap.transferState.noReplies"));
                 }
             }
-        } catch (ChannelException x) {
-            log.error(sm.getString("abstractReplicatedMap.unable.transferState"), x);
-        } catch (IOException x) {
-            log.error(sm.getString("abstractReplicatedMap.unable.transferState"), x);
-        } catch (ClassNotFoundException x) {
+        } catch (ChannelException | ClassNotFoundException | IOException x) {
             log.error(sm.getString("abstractReplicatedMap.unable.transferState"), x);
         }
         this.state = State.STATETRANSFERRED;
     }
 
     /**
-     * @param msg Serializable
-     * @return Serializable - null if no reply should be sent
+     * Handles a reply request message.
+     *
+     * @param msg    The message
+     * @param sender The sender
+     *
+     * @return the reply message or {@code null}
      */
     @Override
     public Serializable replyRequest(Serializable msg, final Member sender) {
-        if (! (msg instanceof MapMessage))return null;
+        if (!(msg instanceof MapMessage)) {
+            return null;
+        }
         MapMessage mapmsg = (MapMessage) msg;
 
-        //map init request
+        // map init request
         if (mapmsg.getMsgType() == MapMessage.MSG_INIT) {
             mapmsg.setPrimary(channel.getLocalMember(false));
             return mapmsg;
         }
 
-        //map start request
+        // map start request
         if (mapmsg.getMsgType() == MapMessage.MSG_START) {
             mapmsg.setPrimary(channel.getLocalMember(false));
             mapMemberAdded(sender);
             return mapmsg;
         }
 
-        //backup request
+        // backup request
         if (mapmsg.getMsgType() == MapMessage.MSG_RETRIEVE_BACKUP) {
-            MapEntry<K,V> entry = innerMap.get(mapmsg.getKey());
-            if (entry == null || (!entry.isSerializable()) )return null;
-            mapmsg.setValue( (Serializable) entry.getValue());
+            MapEntry<K,V> entry;
+            try {
+                // Deserialize the key with the external loaders, like the other receive paths do,
+                // since the default loaders cannot see the class of a key from an application
+                mapmsg.deserialize(getExternalLoaders());
+                entry = innerMap.get(mapmsg.getKey());
+            } catch (ClassNotFoundException | IOException x) {
+                log.error(sm.getString("abstractReplicatedMap.unable.deserialize.MapMessage"), x);
+                return null;
+            }
+            if (entry == null || (!entry.isSerializable())) {
+                return null;
+            }
+            try {
+                mapmsg.setValue((Serializable) entry.getValue());
+            } catch (RuntimeException x) {
+                log.error(sm.getString("abstractReplicatedMap.unable.serialize", entry.getKey()), x);
+                return null;
+            }
             return mapmsg;
         }
 
-        //state transfer request
+        // state transfer request
         if (mapmsg.getMsgType() == MapMessage.MSG_STATE || mapmsg.getMsgType() == MapMessage.MSG_STATE_COPY) {
-            synchronized (stateMutex) { //make sure we dont do two things at the same time
-                ArrayList<MapMessage> list = new ArrayList<>();
-                for (Entry<K, MapEntry<K, V>> e : innerMap.entrySet()) {
+            boolean copy = (mapmsg.getMsgType() == MapMessage.MSG_STATE_COPY);
+            List<MapState<K,V>> snapshot = new ArrayList<>();
+            synchronized (stateMutex) { // scan under the lock, so that a concurrent state operation cannot overlap it
+                for (Entry<K,MapEntry<K,V>> e : innerMap.entrySet()) {
                     MapEntry<K,V> entry = innerMap.get(e.getKey());
-                    if ( entry != null && entry.isSerializable() ) {
-                        boolean copy = (mapmsg.getMsgType() == MapMessage.MSG_STATE_COPY);
-                        MapMessage me = new MapMessage(mapContextName,
-                                                       copy?MapMessage.MSG_COPY:MapMessage.MSG_PROXY,
-                            false, (Serializable) entry.getKey(), copy?(Serializable) entry.getValue():null, null, entry.getPrimary(),entry.getBackupNodes());
-                        list.add(me);
+                    if (entry != null && entry.isSerializable()) {
+                        snapshot.add(new MapState<>(entry));
                     }
                 }
-                mapmsg.setValue(list);
-                return mapmsg;
-
-            } //synchronized
+            } // synchronized
+            // Serialize the snapshot outside of the state lock, as serializing the whole
+            // map content blocks every other state operation for a long time otherwise
+            ArrayList<MapMessage> list = new ArrayList<>(snapshot.size());
+            for (MapState<K,V> entry : snapshot) {
+                MapMessage me = createMapMessage(copy ? MapMessage.MSG_COPY : MapMessage.MSG_PROXY, false,
+                        (Serializable) entry.key, copy ? (Serializable) entry.value : null, null, entry.primary,
+                        entry.backupNodes);
+                if (me != null) {
+                    list.add(me);
+                }
+            }
+            mapmsg.setValue(list);
+            return mapmsg;
         }
 
         // ping
@@ -611,15 +785,17 @@ public abstract class AbstractReplicatedMap<K,V>
     }
 
     /**
-     * If the reply has already been sent to the requesting thread,
-     * the rpc callback can handle any data that comes in after the fact.
-     * @param msg Serializable
-     * @param sender Member
+     * Handles a left over membership message.
+     *
+     * @param msg    The message
+     * @param sender The sender
      */
     @Override
     public void leftOver(Serializable msg, Member sender) {
-        //left over membership messages
-        if (! (msg instanceof MapMessage))return;
+        // left over membership messages
+        if (!(msg instanceof MapMessage)) {
+            return;
+        }
 
         MapMessage mapmsg = (MapMessage) msg;
         try {
@@ -630,46 +806,51 @@ public abstract class AbstractReplicatedMap<K,V>
                 memberAlive(mapmsg.getPrimary());
             } else if (mapmsg.getMsgType() == MapMessage.MSG_PING) {
                 Member member = mapmsg.getPrimary();
-                if (log.isInfoEnabled())
+                if (log.isInfoEnabled()) {
                     log.info(sm.getString("abstractReplicatedMap.leftOver.pingMsg", member));
+                }
                 State state = (State) mapmsg.getValue();
                 if (state.isAvailable()) {
                     memberAlive(member);
                 }
             } else {
                 // other messages are ignored.
-                if (log.isInfoEnabled())
-                    log.info(sm.getString("abstractReplicatedMap.leftOver.ignored",
-                            mapmsg.getTypeDesc()));
+                if (log.isInfoEnabled()) {
+                    log.info(sm.getString("abstractReplicatedMap.leftOver.ignored", mapmsg.getTypeDesc()));
+                }
             }
-        } catch (IOException x ) {
-            log.error(sm.getString("abstractReplicatedMap.unable.deserialize.MapMessage"),x);
-        } catch (ClassNotFoundException x ) {
-            log.error(sm.getString("abstractReplicatedMap.unable.deserialize.MapMessage"),x);
+        } catch (IOException | ClassNotFoundException x) {
+            log.error(sm.getString("abstractReplicatedMap.unable.deserialize.MapMessage"), x);
         }
     }
 
+    /**
+     * Handles a received message.
+     *
+     * @param msg    The message
+     * @param sender The sender
+     */
     @SuppressWarnings("unchecked")
     @Override
     public void messageReceived(Serializable msg, Member sender) {
-        if (! (msg instanceof MapMessage)) return;
+        if (!(msg instanceof MapMessage)) {
+            return;
+        }
 
         MapMessage mapmsg = (MapMessage) msg;
-        if ( log.isTraceEnabled() ) {
-            log.trace("Map["+mapname+"] received message:"+mapmsg);
+        if (log.isTraceEnabled()) {
+            log.trace("Map[" + mapname + "] received message:" + mapmsg);
         }
 
         try {
             mapmsg.deserialize(getExternalLoaders());
-        } catch (IOException x) {
-            log.error(sm.getString("abstractReplicatedMap.unable.deserialize.MapMessage"), x);
-            return;
-        } catch (ClassNotFoundException x) {
+        } catch (IOException | ClassNotFoundException x) {
             log.error(sm.getString("abstractReplicatedMap.unable.deserialize.MapMessage"), x);
             return;
         }
-        if ( log.isTraceEnabled() )
-            log.trace("Map message received from:"+sender.getName()+" msg:"+mapmsg);
+        if (log.isTraceEnabled()) {
+            log.trace("Map message received from:" + sender.getName() + " msg:" + mapmsg);
+        }
         if (mapmsg.getMsgType() == MapMessage.MSG_START) {
             mapMemberAdded(mapmsg.getPrimary());
         }
@@ -680,7 +861,7 @@ public abstract class AbstractReplicatedMap<K,V>
 
         if (mapmsg.getMsgType() == MapMessage.MSG_PROXY) {
             MapEntry<K,V> entry = innerMap.get(mapmsg.getKey());
-            if ( entry==null ) {
+            if (entry == null) {
                 entry = new MapEntry<>((K) mapmsg.getKey(), (V) mapmsg.getValue());
                 MapEntry<K,V> old = innerMap.putIfAbsent(entry.getKey(), entry);
                 if (old != null) {
@@ -707,8 +888,8 @@ public abstract class AbstractReplicatedMap<K,V>
                 entry.setCopy(mapmsg.getMsgType() == MapMessage.MSG_COPY);
                 entry.setBackupNodes(mapmsg.getBackupNodes());
                 entry.setPrimary(mapmsg.getPrimary());
-                if (mapmsg.getValue() instanceof ReplicatedMapEntry ) {
-                    ((ReplicatedMapEntry)mapmsg.getValue()).setOwner(getMapOwner());
+                if (mapmsg.getValue() instanceof ReplicatedMapEntry) {
+                    ((ReplicatedMapEntry) mapmsg.getValue()).setOwner(getMapOwner());
                 }
             } else {
                 entry.setBackup(mapmsg.getMsgType() == MapMessage.MSG_BACKUP);
@@ -722,37 +903,39 @@ public abstract class AbstractReplicatedMap<K,V>
                         diff.lock();
                         try {
                             diff.applyDiff(mapmsg.getDiffValue(), 0, mapmsg.getDiffValue().length);
-                        } catch (Exception x) {
-                            log.error(sm.getString("abstractReplicatedMap.unableApply.diff", entry.getKey()), x);
+                        } catch (Exception e) {
+                            log.error(sm.getString("abstractReplicatedMap.unableApply.diff", entry.getKey()), e);
                         } finally {
                             diff.unlock();
                         }
                     } else {
-                        if ( mapmsg.getValue()!=null ) {
+                        if (mapmsg.getValue() != null) {
                             if (mapmsg.getValue() instanceof ReplicatedMapEntry) {
-                                ReplicatedMapEntry re = (ReplicatedMapEntry)mapmsg.getValue();
+                                ReplicatedMapEntry re = (ReplicatedMapEntry) mapmsg.getValue();
                                 re.setOwner(getMapOwner());
                                 entry.setValue((V) re);
                             } else {
                                 entry.setValue((V) mapmsg.getValue());
                             }
                         } else {
-                            ((ReplicatedMapEntry)entry.getValue()).setOwner(getMapOwner());
+                            ((ReplicatedMapEntry) entry.getValue()).setOwner(getMapOwner());
                         }
-                    } //end if
-                } else if  (mapmsg.getValue() instanceof ReplicatedMapEntry) {
-                    ReplicatedMapEntry re = (ReplicatedMapEntry)mapmsg.getValue();
+                    } // end if
+                } else if (mapmsg.getValue() instanceof ReplicatedMapEntry) {
+                    ReplicatedMapEntry re = (ReplicatedMapEntry) mapmsg.getValue();
                     re.setOwner(getMapOwner());
                     entry.setValue((V) re);
                 } else {
-                    if ( mapmsg.getValue()!=null ) entry.setValue((V) mapmsg.getValue());
-                } //end if
-            } //end if
+                    if (mapmsg.getValue() != null) {
+                        entry.setValue((V) mapmsg.getValue());
+                    }
+                } // end if
+            } // end if
             innerMap.put(entry.getKey(), entry);
-        } //end if
+        } // end if
 
         if (mapmsg.getMsgType() == MapMessage.MSG_ACCESS) {
-            MapEntry<K, V> entry = innerMap.get(mapmsg.getKey());
+            MapEntry<K,V> entry = innerMap.get(mapmsg.getKey());
             if (entry != null) {
                 entry.setBackupNodes(mapmsg.getBackupNodes());
                 entry.setPrimary(mapmsg.getPrimary());
@@ -763,7 +946,7 @@ public abstract class AbstractReplicatedMap<K,V>
         }
 
         if (mapmsg.getMsgType() == MapMessage.MSG_NOTIFY_MAPMEMBER) {
-            MapEntry<K, V> entry = innerMap.get(mapmsg.getKey());
+            MapEntry<K,V> entry = innerMap.get(mapmsg.getKey());
             if (entry != null) {
                 entry.setBackupNodes(mapmsg.getBackupNodes());
                 entry.setPrimary(mapmsg.getPrimary());
@@ -774,97 +957,190 @@ public abstract class AbstractReplicatedMap<K,V>
         }
     }
 
+    /**
+     * Accepts or rejects a message based on the map context.
+     *
+     * @param msg    The message
+     * @param sender The sender
+     *
+     * @return {@code true} if the message is accepted
+     */
     @Override
     public boolean accept(Serializable msg, Member sender) {
         boolean result = false;
         if (msg instanceof MapMessage) {
-            if ( log.isTraceEnabled() ) log.trace("Map["+mapname+"] accepting...."+msg);
-            result = Arrays.equals(mapContextName, ( (MapMessage) msg).getMapId());
-            if ( log.isTraceEnabled() ) log.trace("Msg["+mapname+"] accepted["+result+"]...."+msg);
+            if (log.isTraceEnabled()) {
+                log.trace("Map[" + mapname + "] accepting...." + msg);
+            }
+            result = Arrays.equals(mapContextName, ((MapMessage) msg).getMapId());
+            if (log.isTraceEnabled()) {
+                log.trace("Msg[" + mapname + "] accepted[" + result + "]...." + msg);
+            }
         }
         return result;
     }
 
+    /**
+     * Adds a member to this map.
+     *
+     * @param member The member to add
+     */
     public void mapMemberAdded(Member member) {
-        if ( member.equals(getChannel().getLocalMember(false)) ) return;
+        if (member.equals(getChannel().getLocalMember(false))) {
+            return;
+        }
         boolean memberAdded = false;
-        //select a backup node if we don't have one
+        // select a backup node if we don't have one
         Member mapMember = getChannel().getMember(member);
         if (mapMember == null) {
             log.warn(sm.getString("abstractReplicatedMap.mapMemberAdded.nullMember", member));
             return;
         }
         synchronized (mapMembers) {
-            if (!mapMembers.containsKey(mapMember) ) {
-                if (log.isInfoEnabled())
+            if (!mapMembers.containsKey(mapMember)) {
+                if (log.isInfoEnabled()) {
                     log.info(sm.getString("abstractReplicatedMap.mapMemberAdded.added", mapMember));
+                }
                 mapMembers.put(mapMember, Long.valueOf(System.currentTimeMillis()));
                 memberAdded = true;
             }
         }
-        if ( memberAdded ) {
+        if (memberAdded) {
+            List<MapEntry<K,V>> entriesWithoutBackup = new ArrayList<>();
             synchronized (stateMutex) {
-                for (Entry<K, MapEntry<K, V>> e : innerMap.entrySet()) {
+                for (Entry<K,MapEntry<K,V>> e : innerMap.entrySet()) {
                     MapEntry<K,V> entry = innerMap.get(e.getKey());
-                    if ( entry == null ) continue;
+                    if (entry == null) {
+                        continue;
+                    }
                     if (entry.isPrimary() && (entry.getBackupNodes() == null || entry.getBackupNodes().length == 0)) {
-                        try {
-                            Member[] backup = publishEntryInfo(entry.getKey(), entry.getValue());
-                            entry.setBackupNodes(backup);
-                            entry.setPrimary(channel.getLocalMember(false));
-                        } catch (ChannelException x) {
-                            log.error(sm.getString("abstractReplicatedMap.unableSelect.backup"), x);
-                        } //catch
-                    } //end if
-                } //while
-            } //synchronized
-        }//end if
+                        entriesWithoutBackup.add(entry);
+                    } // end if
+                } // while
+            } // synchronized
+            // Select and publish the backups outside of the state lock, as the replication
+            // blocks until the backup acknowledges, while session operations and the state
+            // transfer of joining members need that lock
+            for (MapEntry<K,V> entry : entriesWithoutBackup) {
+                synchronized (entry) {
+                    if (!entry.isPrimary() || (entry.getBackupNodes() != null && entry.getBackupNodes().length > 0)) {
+                        // The entry found its backup in the meantime
+                        continue;
+                    }
+                    try {
+                        Member[] backup = publishEntryInfo(entry.getKey(), entry.getValue());
+                        entry.setBackupNodes(backup);
+                        entry.setPrimary(channel.getLocalMember(false));
+                    } catch (ChannelException x) {
+                        log.error(sm.getString("abstractReplicatedMap.unableSelect.backup"), x);
+                    } // catch
+                }
+            } // for
+        } // end if
     }
 
+    /**
+     * Removes a map member unless it was already removed by ping expiry.
+     *
+     * @param member The member to remove
+     *
+     * @return {@code true} if the disappearance needs to be processed
+     */
+    protected boolean removeMapMember(Member member) {
+        synchronized (mapMembers) {
+            if (membersPendingDisappearance.remove(member)) {
+                // A ping response may have re-added the member after the expiry removed it
+                return !mapMembers.containsKey(member);
+            }
+            return mapMembers.remove(member) != null;
+        }
+    }
+
+    /**
+     * Checks if a member is in the given set.
+     *
+     * @param m  The member to check
+     * @param set The set to check against
+     *
+     * @return {@code true} if the member is in the set
+     */
     public boolean inSet(Member m, Member[] set) {
-        if ( set == null ) return false;
+        if (set == null) {
+            return false;
+        }
         boolean result = false;
-        for (int i=0; i<set.length && (!result); i++ )
-            if ( m.equals(set[i]) ) result = true;
+        for (Member member : set) {
+            if (m.equals(member)) {
+                result = true;
+                break;
+            }
+        }
         return result;
     }
 
+    /**
+     * Excludes members from the given set.
+     *
+     * @param mbrs The members to exclude
+     * @param set  The set to exclude from
+     *
+     * @return The resulting set after exclusion
+     */
     public Member[] excludeFromSet(Member[] mbrs, Member[] set) {
         List<Member> result = new ArrayList<>();
-        for (int i=0; i<set.length; i++ ) {
+        for (Member member : set) {
             boolean include = true;
-            for (int j=0; j<mbrs.length && include; j++ )
-                if ( mbrs[j].equals(set[i]) ) include = false;
-            if ( include ) result.add(set[i]);
-        }
-        return result.toArray(new Member[result.size()]);
-    }
-
-    @Override
-    public void memberAdded(Member member) {
-        //do nothing
-    }
-
-    @Override
-    public void memberDisappeared(Member member) {
-        boolean removed = false;
-        synchronized (mapMembers) {
-            removed = (mapMembers.remove(member) != null );
-            if (!removed) {
-                if (log.isDebugEnabled()) log.debug("Member["+member+"] disappeared, but was not present in the map.");
-                return; //the member was not part of our map.
+            for (Member mbr : mbrs) {
+                if (mbr.equals(member)) {
+                    include = false;
+                    break;
+                }
+            }
+            if (include) {
+                result.add(member);
             }
         }
-        if (log.isInfoEnabled())
-            log.info(sm.getString("abstractReplicatedMap.member.disappeared", member));
+        return result.toArray(new Member[0]);
+    }
+
+    /**
+     * Called when a member is added to the channel.
+     *
+     * @param member The member that was added
+     */
+    @Override
+    public void memberAdded(Member member) {
+        // do nothing
+    }
+
+    /**
+     * Called when a member disappears from the channel.
+     *
+     * @param member The member that disappeared
+     */
+    @Override
+    public void memberDisappeared(Member member) {
+        if (!removeMapMember(member)) {
+            if (log.isDebugEnabled()) {
+                log.debug(sm.getString("replicatedMap.member.disappeared.unknown", member));
+            }
+            return; // the member was not part of our map.
+        }
+        if (log.isInfoEnabled()) {
+            log.info(sm.getString("replicatedMap.member.disappeared", member));
+        }
         long start = System.currentTimeMillis();
         Iterator<Map.Entry<K,MapEntry<K,V>>> i = innerMap.entrySet().iterator();
         while (i.hasNext()) {
             Map.Entry<K,MapEntry<K,V>> e = i.next();
             MapEntry<K,V> entry = innerMap.get(e.getKey());
-            if (entry==null) continue;
-            if (entry.isPrimary() && inSet(member,entry.getBackupNodes())) {
-                if (log.isDebugEnabled()) log.debug("[1] Primary choosing a new backup");
+            if (entry == null) {
+                continue;
+            }
+            if (entry.isPrimary() && inSet(member, entry.getBackupNodes())) {
+                if (log.isDebugEnabled()) {
+                    log.debug(sm.getString("abstractReplicatedMap.newBackup"));
+                }
                 try {
                     Member[] backup = publishEntryInfo(entry.getKey(), entry.getValue());
                     entry.setBackupNodes(backup);
@@ -873,101 +1149,176 @@ public abstract class AbstractReplicatedMap<K,V>
                     log.error(sm.getString("abstractReplicatedMap.unable.relocate", entry.getKey()), x);
                 }
             } else if (member.equals(entry.getPrimary())) {
-                if (log.isDebugEnabled()) log.debug("[2] Primary disappeared");
+                if (log.isDebugEnabled()) {
+                    log.debug(sm.getString("abstractReplicatedMap.primaryDisappeared"));
+                }
                 entry.setPrimary(null);
-            } //end if
+            } // end if
 
-            if ( entry.isProxy() &&
-                 entry.getPrimary() == null &&
-                 entry.getBackupNodes()!=null &&
-                 entry.getBackupNodes().length == 1 &&
-                 entry.getBackupNodes()[0].equals(member) ) {
-                //remove proxies that have no backup nor primaries
-                if (log.isDebugEnabled()) log.debug("[3] Removing orphaned proxy");
+            if (entry.isProxy() && entry.getPrimary() == null && entry.getBackupNodes() != null &&
+                    entry.getBackupNodes().length == 1 && entry.getBackupNodes()[0].equals(member)) {
+                // remove proxies that have no backup nor primaries
+                if (log.isDebugEnabled()) {
+                    log.debug(sm.getString("abstractReplicatedMap.removeOrphan"));
+                }
                 i.remove();
-            } else if ( entry.getPrimary() == null &&
-                        entry.isBackup() &&
-                        entry.getBackupNodes()!=null &&
-                        entry.getBackupNodes().length == 1 &&
-                        entry.getBackupNodes()[0].equals(channel.getLocalMember(false)) ) {
+            } else if (entry.getPrimary() == null && entry.isBackup() && entry.getBackupNodes() != null &&
+                    entry.getBackupNodes().length == 1 &&
+                    entry.getBackupNodes()[0].equals(channel.getLocalMember(false))) {
                 try {
-                    if (log.isDebugEnabled()) log.debug("[4] Backup becoming primary");
+                    if (log.isDebugEnabled()) {
+                        log.debug(sm.getString("abstractReplicatedMap.newPrimary"));
+                    }
                     entry.setPrimary(channel.getLocalMember(false));
                     entry.setBackup(false);
                     entry.setProxy(false);
                     entry.setCopy(false);
                     Member[] backup = publishEntryInfo(entry.getKey(), entry.getValue());
                     entry.setBackupNodes(backup);
-                    if ( mapOwner!=null ) mapOwner.objectMadePrimary(entry.getKey(),entry.getValue());
+                    if (mapOwner != null) {
+                        mapOwner.objectMadePrimary(entry.getKey(), entry.getValue());
+                    }
 
                 } catch (ChannelException x) {
                     log.error(sm.getString("abstractReplicatedMap.unable.relocate", entry.getKey()), x);
                 }
             }
 
-        } //while
+        } // while
         long complete = System.currentTimeMillis() - start;
-        if (log.isInfoEnabled()) log.info(sm.getString("abstractReplicatedMap.relocate.complete",
-                Long.toString(complete)));
+        if (log.isInfoEnabled()) {
+            log.info(sm.getString("abstractReplicatedMap.relocate.complete", Long.toString(complete)));
+        }
     }
 
+    /**
+     * Gets the next backup index using round-robin rotation.
+     *
+     * @return The next backup index, or -1 if no members exist
+     *
+     * @deprecated Unused. Will be removed in Tomcat 12
+     */
+    @Deprecated
     public int getNextBackupIndex() {
-        int size = mapMembers.size();
-        if (mapMembers.size() == 0)return -1;
-        int node = currentNode++;
-        if (node >= size) {
-            node = 0;
-            currentNode = 1;
+        synchronized (mapMembers) {
+            return getNextBackupIndex(mapMembers.size());
         }
-        return node;
     }
+
+    /**
+     * Gets the next backup index using round-robin rotation, for a list of the given size. Use this variant with the
+     * size of a snapshot of the members so that the index is always within that snapshot, even if members are added
+     * or removed concurrently.
+     *
+     * @param size The number of members in the list the index is used for
+     *
+     * @return The next backup index, which is less than {@code size}, or -1 if {@code size} is not positive
+     */
+    public int getNextBackupIndex(int size) {
+        synchronized (mapMembers) {
+            if (size <= 0) {
+                return -1;
+            }
+            int node = currentNode++;
+            if (node >= size) {
+                node = 0;
+                currentNode = 1;
+            }
+            return node;
+        }
+    }
+
+    /**
+     * Gets the next backup node using round-robin rotation.
+     *
+     * @return The next backup node, or {@code null} if no members exist
+     */
     public Member getNextBackupNode() {
         Member[] members = getMapMembers();
-        int node = getNextBackupIndex();
-        if ( members.length == 0 || node==-1) return null;
-        if ( node >= members.length ) node = 0;
+        int node = getNextBackupIndex(members.length);
+        if (node == -1) {
+            return null;
+        }
         return members[node];
     }
 
+    /**
+     * Publish info about a map pair (key/value) to other nodes in the cluster.
+     *
+     * @param key   Object
+     * @param value Object
+     *
+     * @return Member[] - the backup nodes
+     *
+     * @throws ChannelException Cluster error
+     */
     protected abstract Member[] publishEntryInfo(Object key, Object value) throws ChannelException;
 
+    /**
+     * Sends a heartbeat to all members in the cluster.
+     */
     @Override
     public void heartbeat() {
         try {
-            if (this.state.isAvailable()) ping(accessTimeout);
-        }catch ( Exception x ) {
-            log.error(sm.getString("abstractReplicatedMap.heartbeat.failed"),x);
+            if (this.state.isAvailable()) {
+                ping(accessTimeout);
+            }
+        } catch (Exception e) {
+            log.error(sm.getString("abstractReplicatedMap.heartbeat.failed"), e);
         }
     }
 
-//------------------------------------------------------------------------------
-//              METHODS TO OVERRIDE
-//------------------------------------------------------------------------------
+   // ------------------------------------------------------------------------------
+    // METHODS TO OVERRIDE
+    // ------------------------------------------------------------------------------
 
     /**
-     * Removes an object from this map, it will also remove it from
+     * Removes the entry for the specified key from the map.
      *
-     * @param key Object
-     * @return Object
+     * @param key The key to remove
+     *
+     * @return The previous value associated with the key, or {@code null}
      */
     @Override
     public V remove(Object key) {
-        return remove(key,true);
+        return remove(key, true);
     }
+
+    /**
+     * Removes the entry for the specified key from the map.
+     *
+     * @param key    The key to remove
+     * @param notify Whether to notify other members
+     *
+     * @return The previous value associated with the key, or {@code null}
+     */
     public V remove(Object key, boolean notify) {
         MapEntry<K,V> entry = innerMap.remove(key);
 
         try {
-            if (getMapMembers().length > 0 && notify) {
-                MapMessage msg = new MapMessage(getMapContextName(), MapMessage.MSG_REMOVE, false, (Serializable) key, null, null, null,null);
+            // Skip the notification for a key that cannot be serialized, as the message
+            // construction would fail on it, like the replication of put does
+            if (getMapMembers().length > 0 && notify && entry != null && key instanceof Serializable) {
+                MapMessage msg =
+                        createMapMessage(MapMessage.MSG_REMOVE, false, (Serializable) key, null, null, null, null);
+                if (msg == null) {
+                    return entry.getValue();
+                }
                 getChannel().send(getMapMembers(), msg, getChannelSendOptions());
             }
-        } catch ( ChannelException x ) {
-            log.error(sm.getString("abstractReplicatedMap.unable.remove"),x);
+        } catch (ChannelException x) {
+            log.error(sm.getString("abstractReplicatedMap.unable.remove"), x);
         }
-        return entry!=null?entry.getValue():null;
+        return entry != null ? entry.getValue() : null;
     }
 
+    /**
+     * Gets the internal map entry for a key.
+     *
+     * @param key The key
+     *
+     * @return the internal map entry, or {@code null} if not found
+     */
     public MapEntry<K,V> getInternal(Object key) {
         return innerMap.get(key);
     }
@@ -976,53 +1327,73 @@ public abstract class AbstractReplicatedMap<K,V>
     @Override
     public V get(Object key) {
         MapEntry<K,V> entry = innerMap.get(key);
-        if (log.isTraceEnabled()) log.trace("Requesting id:"+key+" entry:"+entry);
-        if ( entry == null ) return null;
-        if ( !entry.isPrimary() ) {
-            //if the message is not primary, we need to retrieve the latest value
+        if (log.isTraceEnabled()) {
+            log.trace("Requesting id:" + key + " entry:" + entry);
+        }
+        if (entry == null) {
+            return null;
+        }
+        if (!entry.isPrimary()) {
+            // if the message is not primary, we need to retrieve the latest value
             try {
                 Member[] backup = null;
-                MapMessage msg = null;
+                MapMessage msg;
                 if (entry.isBackup()) {
-                    //select a new backup node
+                    // select a new backup node
                     backup = publishEntryInfo(key, entry.getValue());
-                } else if ( entry.isProxy() ) {
-                    //make sure we don't retrieve from ourselves
-                    msg = new MapMessage(getMapContextName(), MapMessage.MSG_RETRIEVE_BACKUP, false,
-                                         (Serializable) key, null, null, null,null);
-                    Response[] resp = getRpcChannel().send(entry.getBackupNodes(),msg, RpcChannel.FIRST_REPLY, getChannelSendOptions(), getRpcTimeout());
+                } else if (entry.isProxy()) {
+                    // make sure we don't retrieve from ourselves
+                    msg = createMapMessage(MapMessage.MSG_RETRIEVE_BACKUP, false, (Serializable) key, null, null, null,
+                            null);
+                    if (msg == null) {
+                        return null;
+                    }
+                    Response[] resp = getRpcChannel().send(entry.getBackupNodes(), msg, RpcChannel.FIRST_REPLY,
+                            getChannelSendOptions(), getRpcTimeout());
                     if (resp == null || resp.length == 0 || resp[0].getMessage() == null) {
-                        //no responses
+                        // no responses
                         log.warn(sm.getString("abstractReplicatedMap.unable.retrieve", key));
                         return null;
                     }
                     msg = (MapMessage) resp[0].getMessage();
                     msg.deserialize(getExternalLoaders());
                     backup = entry.getBackupNodes();
-                    if ( msg.getValue()!=null ) entry.setValue((V) msg.getValue());
+                    if (msg.getValue() != null) {
+                        entry.setValue((V) msg.getValue());
+                    }
 
                     // notify member
-                    msg = new MapMessage(getMapContextName(), MapMessage.MSG_NOTIFY_MAPMEMBER,false,
-                            (Serializable)entry.getKey(), null, null, channel.getLocalMember(false), backup);
-                    if ( backup != null && backup.length > 0) {
+                    msg = createMapMessage(MapMessage.MSG_NOTIFY_MAPMEMBER, false, (Serializable) entry.getKey(), null,
+                            null, channel.getLocalMember(false), backup);
+                    if (msg == null) {
+                        return null;
+                    }
+                    if (backup != null && backup.length > 0) {
                         getChannel().send(backup, msg, getChannelSendOptions());
                     }
 
-                    //invalidate the previous primary
-                    msg = new MapMessage(getMapContextName(),MapMessage.MSG_PROXY,false,(Serializable)key,null,null,channel.getLocalMember(false),backup);
+                    // invalidate the previous primary
+                    msg = createMapMessage(MapMessage.MSG_PROXY, false, (Serializable) key, null, null,
+                            channel.getLocalMember(false), backup);
+                    if (msg == null) {
+                        return null;
+                    }
                     Member[] dest = getMapMembersExcl(backup);
-                    if ( dest!=null && dest.length >0) {
+                    if (dest != null && dest.length > 0) {
                         getChannel().send(dest, msg, getChannelSendOptions());
                     }
                     if (entry.getValue() instanceof ReplicatedMapEntry) {
-                        ReplicatedMapEntry val = (ReplicatedMapEntry)entry.getValue();
+                        ReplicatedMapEntry val = (ReplicatedMapEntry) entry.getValue();
                         val.setOwner(getMapOwner());
                     }
-                } else if ( entry.isCopy() ) {
+                } else if (entry.isCopy()) {
                     backup = getMapMembers();
                     if (backup.length > 0) {
-                        msg = new MapMessage(getMapContextName(), MapMessage.MSG_NOTIFY_MAPMEMBER,false,
-                                (Serializable)key,null,null,channel.getLocalMember(false),backup);
+                        msg = createMapMessage(MapMessage.MSG_NOTIFY_MAPMEMBER, false, (Serializable) key, null, null,
+                                channel.getLocalMember(false), backup);
+                        if (msg == null) {
+                            return null;
+                        }
                         getChannel().send(backup, msg, getChannelSendOptions());
                     }
                 }
@@ -1031,46 +1402,57 @@ public abstract class AbstractReplicatedMap<K,V>
                 entry.setBackup(false);
                 entry.setProxy(false);
                 entry.setCopy(false);
-                if ( getMapOwner()!=null ) getMapOwner().objectMadePrimary(key, entry.getValue());
+                if (getMapOwner() != null) {
+                    getMapOwner().objectMadePrimary(key, entry.getValue());
+                }
 
             } catch (RuntimeException | ChannelException | ClassNotFoundException | IOException x) {
                 log.error(sm.getString("abstractReplicatedMap.unable.get"), x);
                 return null;
             }
         }
-        if (log.isTraceEnabled()) log.trace("Requesting id:"+key+" result:"+entry.getValue());
+        if (log.isTraceEnabled()) {
+            log.trace("Requesting id:" + key + " result:" + entry.getValue());
+        }
         return entry.getValue();
     }
 
 
+    /**
+     * Prints the contents of the map for debugging purposes.
+     *
+     * @param header Header string to print before the map contents
+     */
     protected void printMap(String header) {
         try {
-            System.out.println("\nDEBUG MAP:"+header);
-            System.out.println("Map[" +
-                    new String(mapContextName, StandardCharsets.ISO_8859_1) +
-                    ", Map Size:" + innerMap.size());
+            System.out.println("\nDEBUG MAP:" + header);
+            System.out.println(
+                    "Map[" + new String(mapContextName, StandardCharsets.ISO_8859_1) + ", Map Size:" + innerMap.size());
             Member[] mbrs = getMapMembers();
-            for ( int i=0; i<mbrs.length;i++ ) {
-                System.out.println("Mbr["+(i+1)+"="+mbrs[i].getName());
+            for (int i = 0; i < mbrs.length; i++) {
+                System.out.println("Mbr[" + (i + 1) + "=" + mbrs[i].getName());
             }
             Iterator<Map.Entry<K,MapEntry<K,V>>> i = innerMap.entrySet().iterator();
             int cnt = 0;
 
             while (i.hasNext()) {
-                Map.Entry<?,?> e = i.next();
-                System.out.println( (++cnt) + ". " + innerMap.get(e.getKey()));
+                Map.Entry<K,?> e = i.next();
+                System.out.println((++cnt) + ". " + innerMap.get(e.getKey()));
             }
             System.out.println("EndMap]\n\n");
-        }catch ( Exception ignore) {
-            ignore.printStackTrace();
+        } catch (Exception e) {
+            if (log.isTraceEnabled()) {
+                log.trace("Error printing map", e);
+            }
         }
     }
 
     /**
-     * Returns true if the key has an entry in the map.
-     * The entry can be a proxy or a backup entry, invoking <code>get(key)</code>
-     * will make this entry primary for the group
+     * Returns true if the key has an entry in the map. The entry can be a proxy or a backup entry, invoking
+     * <code>get(key)</code> will make this entry primary for the group
+     *
      * @param key Object
+     *
      * @return boolean
      */
     @Override
@@ -1078,11 +1460,28 @@ public abstract class AbstractReplicatedMap<K,V>
         return innerMap.containsKey(key);
     }
 
+    /**
+     * Puts a key-value pair into the map.
+     *
+     * @param key   The key
+     * @param value The value
+     *
+     * @return The previous value associated with the key, or {@code null}
+     */
     @Override
     public V put(K key, V value) {
         return put(key, value, true);
     }
 
+    /**
+     * Puts a key-value pair into the map.
+     *
+     * @param key    The key
+     * @param value  The value
+     * @param notify Whether to notify other members
+     *
+     * @return The previous value associated with the key, or {@code null}
+     */
     public V put(K key, V value, boolean notify) {
         MapEntry<K,V> entry = new MapEntry<>(key, value);
         entry.setBackup(false);
@@ -1090,34 +1489,32 @@ public abstract class AbstractReplicatedMap<K,V>
         entry.setCopy(false);
         entry.setPrimary(channel.getLocalMember(false));
 
-        V old = null;
-
-        //make sure that any old values get removed
-        if ( containsKey(key) ) old = remove(key);
+        // Make sure that any old values get removed, even if ours was only a proxy
+        V old = remove(key, notify);
         try {
-            if ( notify ) {
+            if (notify) {
                 Member[] backup = publishEntryInfo(key, value);
                 entry.setBackupNodes(backup);
             }
         } catch (ChannelException x) {
             log.error(sm.getString("abstractReplicatedMap.unable.put"), x);
         }
-        innerMap.put(key,entry);
+        innerMap.put(key, entry);
         return old;
     }
 
 
     /**
-     * Copies all values from one map to this instance
-     * @param m Map
+     * Copies all mappings from the specified map to this map.
+     *
+     * @param m The map whose mappings are to be copied
      */
     @Override
-    public void putAll(Map<? extends K, ? extends V> m) {
-        Iterator<?> i = m.entrySet().iterator();
-        while ( i.hasNext() ) {
+    public void putAll(Map<? extends K,? extends V> m) {
+        for (Entry<? extends K,? extends V> value : m.entrySet()) {
             @SuppressWarnings("unchecked")
-            Map.Entry<K,V> entry = (Map.Entry<K,V>) i.next();
-            put(entry.getKey(),entry.getValue());
+            Entry<K,V> entry = (Entry<K,V>) value;
+            put(entry.getKey(), entry.getValue());
         }
     }
 
@@ -1126,9 +1523,14 @@ public abstract class AbstractReplicatedMap<K,V>
         clear(true);
     }
 
+    /**
+     * Clears entries from the map.
+     *
+     * @param notify Whether to notify other members
+     */
     public void clear(boolean notify) {
-        if ( notify ) {
-            //only delete active keys
+        if (notify) {
+            // only delete active keys
             for (K k : keySet()) {
                 remove(k);
             }
@@ -1139,180 +1541,343 @@ public abstract class AbstractReplicatedMap<K,V>
 
     @Override
     public boolean containsValue(Object value) {
-        Objects.requireNonNull(value);
-        for (Entry<K, MapEntry<K, V>> e : innerMap.entrySet()) {
+        for (Entry<K,MapEntry<K,V>> e : innerMap.entrySet()) {
             MapEntry<K,V> entry = innerMap.get(e.getKey());
-            if (entry!=null && entry.isActive() && value.equals(entry.getValue())) return true;
+            if (entry != null && entry.isActive() && Objects.equals(value, entry.getValue())) {
+                return true;
+            }
         }
         return false;
     }
 
     /**
-     * Returns the entire contents of the map
-     * Map.Entry.getValue() will return a LazyReplicatedMap.MapEntry object containing all the information
-     * about the object.
+     * Returns the entire contents of the map Map.Entry.getValue() will return a AbstractReplicatedMap.MapEntry object
+     * containing all the information about the object.
+     *
      * @return Set
      */
     public Set<Map.Entry<K,MapEntry<K,V>>> entrySetFull() {
         return innerMap.entrySet();
     }
 
+    /**
+     * Gets the complete set of keys in the map.
+     *
+     * @return The complete set of keys
+     */
     public Set<K> keySetFull() {
         return innerMap.keySet();
     }
 
+    /**
+     * Gets the complete size of the map.
+     *
+     * @return The complete size of the map
+     */
     public int sizeFull() {
         return innerMap.size();
     }
 
+    /**
+     * Returns a set view of the mappings contained in this map.
+     *
+     * @return a set view of the mappings
+     */
     @Override
     public Set<Map.Entry<K,V>> entrySet() {
         LinkedHashSet<Map.Entry<K,V>> set = new LinkedHashSet<>(innerMap.size());
-        for (Entry<K, MapEntry<K, V>> e : innerMap.entrySet()) {
-            Object key = e.getKey();
-            MapEntry<K,V> entry = innerMap.get(key);
-            if ( entry != null && entry.isActive() ) {
+        for (Entry<K,MapEntry<K,V>> e : innerMap.entrySet()) {
+            MapEntry<K,V> entry = e.getValue();
+            if (entry != null && entry.isActive()) {
                 set.add(entry);
             }
         }
         return Collections.unmodifiableSet(set);
     }
 
+    /**
+     * Returns a set view of the keys contained in this map.
+     *
+     * @return a set view of the keys
+     */
     @Override
     public Set<K> keySet() {
-        //todo implement
-        //should only return keys where this is active.
         LinkedHashSet<K> set = new LinkedHashSet<>(innerMap.size());
-        for (Entry<K, MapEntry<K, V>> e : innerMap.entrySet()) {
+        for (Entry<K,MapEntry<K,V>> e : innerMap.entrySet()) {
             K key = e.getKey();
-            MapEntry<K,V> entry = innerMap.get(key);
-            if ( entry!=null && entry.isActive() ) set.add(key);
+            MapEntry<K,V> entry = e.getValue();
+            if (entry != null && entry.isActive()) {
+                set.add(key);
+            }
         }
         return Collections.unmodifiableSet(set);
 
     }
 
 
+    /**
+     * Returns the number of active entries in this map.
+     *
+     * @return the number of active entries
+     */
     @Override
     public int size() {
-        //todo, implement a counter variable instead
-        //only count active members in this node
+        // only count active members in this node
         int counter = 0;
-        Iterator<Map.Entry<K,MapEntry<K,V>>> it = innerMap.entrySet().iterator();
-        while (it!=null && it.hasNext() ) {
-            Map.Entry<?,?> e = it.next();
-            if ( e != null ) {
-                MapEntry<K,V> entry = innerMap.get(e.getKey());
-                if (entry!=null && entry.isActive() && entry.getValue() != null) counter++;
+        for (Entry<K,MapEntry<K,V>> e : innerMap.entrySet()) {
+            MapEntry<K,V> entry = e.getValue();
+            if (entry != null && entry.isActive()) {
+                counter++;
             }
         }
         return counter;
     }
 
+    /**
+     * Checks if this map is empty.
+     *
+     * @return {@code true} if the map is empty
+     */
     @Override
     public boolean isEmpty() {
-        return size()==0;
+        return size() == 0;
     }
 
+    /**
+     * Returns a collection view of the values contained in this map.
+     *
+     * @return a collection view of the values
+     */
     @Override
     public Collection<V> values() {
         List<V> values = new ArrayList<>();
-        for (Entry<K, MapEntry<K, V>> e : innerMap.entrySet()) {
-            MapEntry<K,V> entry = innerMap.get(e.getKey());
-            if (entry!=null && entry.isActive() && entry.getValue()!=null) values.add(entry.getValue());
+        for (Entry<K,MapEntry<K,V>> e : innerMap.entrySet()) {
+            MapEntry<K,V> entry = e.getValue();
+            if (entry != null && entry.isActive()) {
+                values.add(entry.getValue());
+            }
         }
         return Collections.unmodifiableCollection(values);
     }
 
 
-//------------------------------------------------------------------------------
-//                Map Entry class
-//------------------------------------------------------------------------------
-    public static class MapEntry<K,V> implements Map.Entry<K,V> {
+    // ------------------------------------------------------------------------------
+    // Map state snapshot class
+    // ------------------------------------------------------------------------------
+    private static final class MapState<K, V> {
+
+        private final K key;
+        private final V value;
+        private final Member primary;
+        private final Member[] backupNodes;
+
+        private MapState(MapEntry<K,V> entry) {
+            key = entry.getKey();
+            value = entry.getValue();
+            primary = entry.getPrimary();
+            Member[] nodes = entry.getBackupNodes();
+            backupNodes = nodes == null ? null : nodes.clone();
+        }
+    }
+
+    // ------------------------------------------------------------------------------
+    // Map Entry class
+    // ------------------------------------------------------------------------------
+    /**
+     * Represents an entry in the replicated map, including metadata about its role (primary, backup, proxy).
+     *
+     * @param <K> The type of keys maintained by this map
+     * @param <V> The type of mapped values
+     */
+    public static class MapEntry<K, V> implements Map.Entry<K,V> {
+        /** Whether this entry is a backup. */
         private boolean backup;
+        /** Whether this entry is a proxy. */
         private boolean proxy;
+        /** Whether this entry is a copy. */
         private boolean copy;
+        /** The backup nodes for this entry. */
         private Member[] backupNodes;
+        /** The primary member for this entry. */
         private Member primary;
+        /** The key for this entry. */
         private K key;
+        /** The value for this entry. */
         private V value;
 
+        /**
+         * Creates a new map entry with the specified key and value.
+         *
+         * @param key   The key
+         * @param value The value
+         */
         public MapEntry(K key, V value) {
             setKey(key);
             setValue(value);
 
         }
 
+        /**
+         * Checks if the key is serializable.
+         *
+         * @return {@code true} if the key is serializable or null
+         */
         public boolean isKeySerializable() {
             return (key == null) || (key instanceof Serializable);
         }
 
+        /**
+         * Checks if the value is serializable.
+         *
+         * @return {@code true} if the value is serializable or null
+         */
         public boolean isValueSerializable() {
             return (value == null) || (value instanceof Serializable);
         }
 
+        /**
+         * Checks if both the key and value are serializable.
+         *
+         * @return {@code true} if both key and value are serializable
+         */
         public boolean isSerializable() {
             return isKeySerializable() && isValueSerializable();
         }
 
+        /**
+         * Checks if this entry is a backup.
+         *
+         * @return {@code true} if this entry is a backup
+         */
         public boolean isBackup() {
             return backup;
         }
 
+        /**
+         * Sets whether this entry is a backup.
+         *
+         * @param backup {@code true} if this entry is a backup
+         */
         public void setBackup(boolean backup) {
             this.backup = backup;
         }
 
+        /**
+         * Checks if this entry is a proxy.
+         *
+         * @return {@code true} if this entry is a proxy
+         */
         public boolean isProxy() {
             return proxy;
         }
 
+        /**
+         * Checks if this entry is primary.
+         *
+         * @return {@code true} if this entry is primary
+         */
         public boolean isPrimary() {
             return (!proxy && !backup && !copy);
         }
 
+        /**
+         * Checks if this entry is active.
+         *
+         * @return {@code true} if this entry is active
+         */
         public boolean isActive() {
             return !proxy;
         }
 
+        /**
+         * Sets whether this entry is a proxy.
+         *
+         * @param proxy {@code true} if this entry is a proxy
+         */
         public void setProxy(boolean proxy) {
             this.proxy = proxy;
         }
 
+        /**
+         * Checks if this entry is a copy.
+         *
+         * @return {@code true} if this entry is a copy
+         */
         public boolean isCopy() {
             return copy;
         }
 
+        /**
+         * Sets whether this entry is a copy.
+         *
+         * @param copy {@code true} if this entry is a copy
+         */
         public void setCopy(boolean copy) {
             this.copy = copy;
         }
 
+        /**
+         * Checks if this entry is diffable.
+         *
+         * @return {@code true} if this entry is diffable
+         */
         public boolean isDiffable() {
-            return (value instanceof ReplicatedMapEntry) &&
-                   ((ReplicatedMapEntry)value).isDiffable();
+            return (value instanceof ReplicatedMapEntry) && ((ReplicatedMapEntry) value).isDiffable();
         }
 
+        /**
+         * Sets the backup nodes for this entry.
+         *
+         * @param nodes The backup nodes
+         */
         public void setBackupNodes(Member[] nodes) {
             this.backupNodes = nodes;
         }
 
+        /**
+         * Gets the backup nodes for this entry.
+         *
+         * @return The backup nodes
+         */
         public Member[] getBackupNodes() {
             return backupNodes;
         }
 
+        /**
+         * Sets the primary member for this entry.
+         *
+         * @param m The primary member
+         */
         public void setPrimary(Member m) {
             primary = m;
         }
 
+        /**
+         * Gets the primary member for this entry.
+         *
+         * @return The primary member
+         */
         public Member getPrimary() {
             return primary;
         }
 
+        /**
+         * Gets the value for this entry.
+         *
+         * @return The value
+         */
         @Override
         public V getValue() {
             return value;
         }
 
+        /**
+         * Sets the value for this entry.
+         *
+         * @param value The new value
+         *
+         * @return The previous value
+         */
         @Override
         public V setValue(V value) {
             V old = this.value;
@@ -1320,11 +1885,23 @@ public abstract class AbstractReplicatedMap<K,V>
             return old;
         }
 
+        /**
+         * Gets the key for this entry.
+         *
+         * @return The key
+         */
         @Override
         public K getKey() {
             return key;
         }
 
+        /**
+         * Sets the key for this entry.
+         *
+         * @param key The new key
+         *
+         * @return The previous key
+         */
         public K setKey(K key) {
             K old = this.key;
             this.key = key;
@@ -1333,25 +1910,36 @@ public abstract class AbstractReplicatedMap<K,V>
 
         @Override
         public int hashCode() {
-            return key.hashCode();
+            return Objects.hashCode(key) ^ Objects.hashCode(value);
         }
 
         @Override
-        public boolean equals(Object o) {
-            return key.equals(o);
+        public boolean equals(Object obj) {
+            if (this == obj) {
+                return true;
+            }
+            if (!(obj instanceof MapEntry)) {
+                return false;
+            }
+            @SuppressWarnings("rawtypes")
+            MapEntry other = (MapEntry) obj;
+            return Objects.equals(key, other.key) && Objects.equals(value, other.value);
         }
 
         /**
          * apply a diff, or an entire object
-         * @param data byte[]
+         *
+         * @param data   byte[]
          * @param offset int
          * @param length int
-         * @param diff boolean
-         * @throws IOException IO error
+         * @param diff   boolean
+         *
+         * @throws IOException            IO error
          * @throws ClassNotFoundException Deserialization error
          */
         @SuppressWarnings("unchecked")
-        public void apply(byte[] data, int offset, int length, boolean diff) throws IOException, ClassNotFoundException {
+        public void apply(byte[] data, int offset, int length, boolean diff)
+                throws IOException, ClassNotFoundException {
             if (isDiffable() && diff) {
                 ReplicatedMapEntry rentry = (ReplicatedMapEntry) value;
                 rentry.lock();
@@ -1368,86 +1956,139 @@ public abstract class AbstractReplicatedMap<K,V>
             }
         }
 
+        /**
+         * Returns a string representation of this map entry.
+         *
+         * @return a string representation of this map entry
+         */
         @Override
         public String toString() {
-            StringBuilder buf = new StringBuilder("MapEntry[key:");
-            buf.append(getKey()).append("; ");
-            buf.append("value:").append(getValue()).append("; ");
-            buf.append("primary:").append(isPrimary()).append("; ");
-            buf.append("backup:").append(isBackup()).append("; ");
-            buf.append("proxy:").append(isProxy()).append(";]");
-            return buf.toString();
+            return "MapEntry[key:" + getKey() + "; " + "value:" + getValue() + "; " + "primary:" + isPrimary() + "; " +
+                    "backup:" + isBackup() + "; " + "proxy:" + isProxy() + ";]";
         }
 
     }
 
-//------------------------------------------------------------------------------
-//                map message to send to and from other maps
-//------------------------------------------------------------------------------
+    // ------------------------------------------------------------------------------
+    // map message to send to and from other maps
+    // ------------------------------------------------------------------------------
 
+    /**
+     * Represents a message sent between replicated map instances.
+     */
     public static class MapMessage implements Serializable, Cloneable {
         private static final long serialVersionUID = 1L;
+        /** Message type: backup. */
         public static final int MSG_BACKUP = 1;
+        /** Message type: retrieve backup. */
         public static final int MSG_RETRIEVE_BACKUP = 2;
+        /** Message type: proxy. */
         public static final int MSG_PROXY = 3;
+        /** Message type: remove. */
         public static final int MSG_REMOVE = 4;
+        /** Message type: state. */
         public static final int MSG_STATE = 5;
+        /** Message type: start. */
         public static final int MSG_START = 6;
+        /** Message type: stop. */
         public static final int MSG_STOP = 7;
+        /** Message type: init. */
         public static final int MSG_INIT = 8;
+        /** Message type: copy. */
         public static final int MSG_COPY = 9;
+        /** Message type: state copy. */
         public static final int MSG_STATE_COPY = 10;
+        /** Message type: access. */
         public static final int MSG_ACCESS = 11;
+        /** Message type: notify map member. */
         public static final int MSG_NOTIFY_MAPMEMBER = 12;
+        /** Message type: ping. */
         public static final int MSG_PING = 13;
 
+        /** The map identifier. */
         private final byte[] mapId;
+        /** The message type. */
         private final int msgtype;
+        /** Whether this is a diff message. */
         private final boolean diff;
+        /** The key for this message. */
         private transient Serializable key;
+        /** The value for this message. */
         private transient Serializable value;
+        /** The serialized value data. */
         private byte[] valuedata;
+        /** The serialized key data. */
         private byte[] keydata;
+        /** The diff value data. */
         private final byte[] diffvalue;
+        /** The backup nodes. */
         private final Member[] nodes;
+        /** The primary member. */
         private Member primary;
 
+        /**
+         * Returns a string representation of this map message.
+         *
+         * @return a string representation of this map message
+         */
         @Override
         public String toString() {
-            StringBuilder buf = new StringBuilder("MapMessage[context=");
-            buf.append(new String(mapId));
-            buf.append("; type=");
-            buf.append(getTypeDesc());
-            buf.append("; key=");
-            buf.append(key);
-            buf.append("; value=");
-            buf.append(value);
-            buf.append("]");
-            return buf.toString();
+            return "MapMessage[context=" + new String(mapId, StandardCharsets.ISO_8859_1) + "; type=" + getTypeDesc() +
+                    "; key=" + key + "; value=" + value + ']';
         }
 
+        /**
+         * Gets a description of the message type.
+         *
+         * @return A string description of the message type
+         */
         public String getTypeDesc() {
             switch (msgtype) {
-                case MSG_BACKUP: return "MSG_BACKUP";
-                case MSG_RETRIEVE_BACKUP: return "MSG_RETRIEVE_BACKUP";
-                case MSG_PROXY: return "MSG_PROXY";
-                case MSG_REMOVE: return "MSG_REMOVE";
-                case MSG_STATE: return "MSG_STATE";
-                case MSG_START: return "MSG_START";
-                case MSG_STOP: return "MSG_STOP";
-                case MSG_INIT: return "MSG_INIT";
-                case MSG_STATE_COPY: return "MSG_STATE_COPY";
-                case MSG_COPY: return "MSG_COPY";
-                case MSG_ACCESS: return "MSG_ACCESS";
-                case MSG_NOTIFY_MAPMEMBER: return "MSG_NOTIFY_MAPMEMBER";
-                case MSG_PING: return "MSG_PING";
-                default : return "UNKNOWN";
+                case MSG_BACKUP:
+                    return "MSG_BACKUP";
+                case MSG_RETRIEVE_BACKUP:
+                    return "MSG_RETRIEVE_BACKUP";
+                case MSG_PROXY:
+                    return "MSG_PROXY";
+                case MSG_REMOVE:
+                    return "MSG_REMOVE";
+                case MSG_STATE:
+                    return "MSG_STATE";
+                case MSG_START:
+                    return "MSG_START";
+                case MSG_STOP:
+                    return "MSG_STOP";
+                case MSG_INIT:
+                    return "MSG_INIT";
+                case MSG_STATE_COPY:
+                    return "MSG_STATE_COPY";
+                case MSG_COPY:
+                    return "MSG_COPY";
+                case MSG_ACCESS:
+                    return "MSG_ACCESS";
+                case MSG_NOTIFY_MAPMEMBER:
+                    return "MSG_NOTIFY_MAPMEMBER";
+                case MSG_PING:
+                    return "MSG_PING";
+                default:
+                    return "UNKNOWN";
             }
         }
 
-        public MapMessage(byte[] mapId,int msgtype, boolean diff,
-                          Serializable key, Serializable value,
-                          byte[] diffvalue, Member primary, Member[] nodes)  {
+        /**
+         * Creates a new map message with the specified parameters.
+         *
+         * @param mapId    The map identifier
+         * @param msgtype  The message type
+         * @param diff     Whether this is a diff message
+         * @param key      The key
+         * @param value    The value
+         * @param diffvalue The serialized diff value
+         * @param primary  The primary member
+         * @param nodes    The backup nodes
+         */
+        public MapMessage(byte[] mapId, int msgtype, boolean diff, Serializable key, Serializable value,
+                byte[] diffvalue, Member primary, Member[] nodes) {
             this.mapId = mapId;
             this.msgtype = msgtype;
             this.diff = diff;
@@ -1460,100 +2101,206 @@ public abstract class AbstractReplicatedMap<K,V>
             setKey(key);
         }
 
+        /**
+         * Deserializes the key and value using the given class loaders.
+         *
+         * @param cls The class loaders to use for deserialization
+         *
+         * @throws IOException            If deserialization fails
+         * @throws ClassNotFoundException If a class is not found
+         */
         public void deserialize(ClassLoader[] cls) throws IOException, ClassNotFoundException {
             key(cls);
             value(cls);
         }
 
+        /**
+         * Gets the message type.
+         *
+         * @return the message type
+         */
         public int getMsgType() {
             return msgtype;
         }
 
+        /**
+         * Checks if this is a diff message.
+         *
+         * @return {@code true} if this is a diff message
+         */
         public boolean isDiff() {
             return diff;
         }
 
+        /**
+         * Gets the key for this message.
+         *
+         * @return The key
+         */
         public Serializable getKey() {
             try {
                 return key(null);
-            } catch ( Exception x ) {
-                throw new RuntimeException(sm.getString("mapMessage.deserialize.error.key"), x);
-            }
-        }
-
-        public Serializable key(ClassLoader[] cls) throws IOException, ClassNotFoundException {
-            if ( key!=null ) return key;
-            if ( keydata == null || keydata.length == 0 ) return null;
-            key = XByteBuffer.deserialize(keydata,0,keydata.length,cls);
-            keydata = null;
-            return key;
-        }
-
-        public byte[] getKeyData() {
-            return keydata;
-        }
-
-        public Serializable getValue() {
-            try {
-                return value(null);
-            } catch ( Exception x ) {
-                throw new RuntimeException(sm.getString("mapMessage.deserialize.error.value"), x);
-            }
-        }
-
-        public Serializable value(ClassLoader[] cls) throws IOException, ClassNotFoundException  {
-            if ( value!=null ) return value;
-            if ( valuedata == null || valuedata.length == 0 ) return null;
-            value = XByteBuffer.deserialize(valuedata,0,valuedata.length,cls);
-            valuedata = null;
-            return value;
-        }
-
-        public byte[] getValueData() {
-            return valuedata;
-        }
-
-        public byte[] getDiffValue() {
-            return diffvalue;
-        }
-
-        public Member[] getBackupNodes() {
-            return nodes;
-        }
-
-        public Member getPrimary() {
-            return primary;
-        }
-
-        private void setPrimary(Member m) {
-            primary = m;
-        }
-
-        public byte[] getMapId() {
-            return mapId;
-        }
-
-        public void setValue(Serializable value) {
-            try {
-                if ( value != null ) valuedata = XByteBuffer.serialize(value);
-                this.value = value;
-            }catch ( IOException x ) {
-                throw new RuntimeException(x);
-            }
-        }
-
-        public void setKey(Serializable key) {
-            try {
-                if (key != null) keydata = XByteBuffer.serialize(key);
-                this.key = key;
-            } catch (IOException x) {
-                throw new RuntimeException(x);
+            } catch (Exception e) {
+                throw new RuntimeException(sm.getString("mapMessage.deserialize.error.key"), e);
             }
         }
 
         /**
-         * shallow clone
-         * @return Object
+         * Deserializes the key using the given class loaders.
+         *
+         * @param cls The class loaders to use for deserialization
+         *
+         * @return The deserialized key
+         *
+         * @throws IOException            If deserialization fails
+         * @throws ClassNotFoundException If the key class is not found
+         */
+        public Serializable key(ClassLoader[] cls) throws IOException, ClassNotFoundException {
+            if (key != null) {
+                return key;
+            }
+            if (keydata == null || keydata.length == 0) {
+                return null;
+            }
+            key = XByteBuffer.deserialize(keydata, 0, keydata.length, cls);
+            keydata = null;
+            return key;
+        }
+
+        /**
+         * Gets the serialized key data.
+         *
+         * @return The serialized key data
+         */
+        public byte[] getKeyData() {
+            return keydata;
+        }
+
+        /**
+         * Gets the value for this message.
+         *
+         * @return The value
+         */
+        public Serializable getValue() {
+            try {
+                return value(null);
+            } catch (Exception e) {
+                throw new RuntimeException(sm.getString("mapMessage.deserialize.error.value"), e);
+            }
+        }
+
+        /**
+         * Deserializes the value using the given class loaders.
+         *
+         * @param cls The class loaders to use for deserialization
+         *
+         * @return The deserialized value
+         *
+         * @throws IOException            If deserialization fails
+         * @throws ClassNotFoundException If the value class is not found
+         */
+        public Serializable value(ClassLoader[] cls) throws IOException, ClassNotFoundException {
+            if (value != null) {
+                return value;
+            }
+            if (valuedata == null || valuedata.length == 0) {
+                return null;
+            }
+            value = XByteBuffer.deserialize(valuedata, 0, valuedata.length, cls);
+            valuedata = null;
+            return value;
+        }
+
+        /**
+         * Gets the serialized value data.
+         *
+         * @return The serialized value data
+         */
+        public byte[] getValueData() {
+            return valuedata;
+        }
+
+        /**
+         * Gets the diff value data.
+         *
+         * @return The diff value data
+         */
+        public byte[] getDiffValue() {
+            return diffvalue;
+        }
+
+        /**
+         * Gets the backup nodes.
+         *
+         * @return The backup nodes
+         */
+        public Member[] getBackupNodes() {
+            return nodes;
+        }
+
+        /**
+         * Gets the primary member.
+         *
+         * @return The primary member
+         */
+        public Member getPrimary() {
+            return primary;
+        }
+
+        /**
+         * Sets the primary member.
+         *
+         * @param m The primary member
+         */
+        private void setPrimary(Member m) {
+            primary = m;
+        }
+
+        /**
+         * Gets the map identifier.
+         *
+         * @return the map identifier
+         */
+        public byte[] getMapId() {
+            return mapId;
+        }
+
+        /**
+         * Sets the value for this message.
+         *
+         * @param value The value
+         */
+        public void setValue(Serializable value) {
+            try {
+                if (value != null) {
+                    valuedata = XByteBuffer.serialize(value);
+                }
+                this.value = value;
+            } catch (IOException ioe) {
+                throw new RuntimeException(ioe);
+            }
+        }
+
+        /**
+         * Sets the key for this message.
+         *
+         * @param key The key
+         */
+        public void setKey(Serializable key) {
+            try {
+                if (key != null) {
+                    keydata = XByteBuffer.serialize(key);
+                }
+                this.key = key;
+            } catch (IOException ioe) {
+                throw new RuntimeException(ioe);
+            }
+        }
+
+        /**
+         * Creates a shallow copy of this map message.
+         *
+         * @return a shallow copy of this map message
          */
         @Override
         public MapMessage clone() {
@@ -1564,77 +2311,188 @@ public abstract class AbstractReplicatedMap<K,V>
                 throw new AssertionError();
             }
         }
-    } //MapMessage
+    } // MapMessage
 
 
+    /**
+     * Gets the channel used for communication.
+     *
+     * @return the channel
+     */
     public Channel getChannel() {
         return channel;
     }
 
+    /**
+     * Gets the map context name.
+     *
+     * @return the map context name as bytes
+     */
     public byte[] getMapContextName() {
         return mapContextName;
     }
 
+    /**
+     * Creates a map message, or returns {@code null} when its key or value cannot be serialized.
+     *
+     * @param msgtype   The message type
+     * @param diff      Whether this is a diff message
+     * @param key       The key
+     * @param value     The value
+     * @param diffvalue The serialized diff value
+     * @param primary   The primary member
+     * @param nodes     The backup members
+     *
+     * @return The map message, or {@code null} if serialization fails
+     */
+    protected MapMessage createMapMessage(int msgtype, boolean diff, Serializable key, Serializable value,
+            byte[] diffvalue, Member primary, Member[] nodes) {
+        try {
+            return new MapMessage(mapContextName, msgtype, diff, key, value, diffvalue, primary, nodes);
+        } catch (RuntimeException x) {
+            log.error(sm.getString("abstractReplicatedMap.unable.serialize", key), x);
+            return null;
+        }
+    }
+
+    /**
+     * Gets the RPC channel.
+     *
+     * @return the RPC channel
+     */
     public RpcChannel getRpcChannel() {
         return rpcChannel;
     }
 
+    /**
+     * Gets the RPC timeout.
+     *
+     * @return the RPC timeout in milliseconds
+     */
     public long getRpcTimeout() {
         return rpcTimeout;
     }
 
+    /**
+     * Gets the state mutex object.
+     *
+     * @return the state mutex
+     */
     public Object getStateMutex() {
         return stateMutex;
     }
 
+    /**
+     * Checks if state has been transferred.
+     *
+     * @return {@code true} if state has been transferred
+     */
     public boolean isStateTransferred() {
         return stateTransferred;
     }
 
+    /**
+     * Gets the map owner.
+     *
+     * @return the map owner
+     */
     public MapOwner getMapOwner() {
         return mapOwner;
     }
 
+    /**
+     * Gets the external class loaders.
+     *
+     * @return the external class loaders
+     */
     public ClassLoader[] getExternalLoaders() {
         return externalLoaders;
     }
 
+    /**
+     * Gets the channel send options.
+     *
+     * @return the channel send options
+     */
     public int getChannelSendOptions() {
         return channelSendOptions;
     }
 
+    /**
+     * Gets the access timeout.
+     *
+     * @return the access timeout in milliseconds
+     */
     public long getAccessTimeout() {
         return accessTimeout;
     }
 
+    /**
+     * Sets the map owner.
+     *
+     * @param mapOwner The map owner
+     */
     public void setMapOwner(MapOwner mapOwner) {
         this.mapOwner = mapOwner;
     }
 
+    /**
+     * Sets the external class loaders.
+     *
+     * @param externalLoaders The external class loaders
+     */
     public void setExternalLoaders(ClassLoader[] externalLoaders) {
         this.externalLoaders = externalLoaders;
     }
 
+    /**
+     * Sets the channel send options.
+     *
+     * @param channelSendOptions The channel send options
+     */
     public void setChannelSendOptions(int channelSendOptions) {
         this.channelSendOptions = channelSendOptions;
     }
 
+    /**
+     * Sets the access timeout.
+     *
+     * @param accessTimeout The access timeout in milliseconds
+     */
     public void setAccessTimeout(long accessTimeout) {
         this.accessTimeout = accessTimeout;
     }
 
+    /**
+     * Represents the state of this replicated map.
+     */
     private enum State {
+        /** The map has been created but not yet initialized. */
         NEW(false),
+        /** The map has received state from another map but is not yet ready. */
         STATETRANSFERRED(false),
+        /** The map is initialized and ready for messaging. */
         INITIALIZED(true),
+        /** The map has been destroyed. */
         DESTROYED(false);
 
+        /** Whether this state accepts messages. */
         private final boolean available;
 
-        private State(boolean available) {
+        /**
+         * Creates a new state with the specified availability.
+         *
+         * @param available whether this state accepts messages
+         */
+        State(boolean available) {
             this.available = available;
         }
 
+        /**
+         * Checks if this state accepts messages.
+         *
+         * @return {@code true} if this state accepts messages
+         */
         public boolean isAvailable() {
             return available;
         }

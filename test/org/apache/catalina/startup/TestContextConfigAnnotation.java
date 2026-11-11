@@ -46,8 +46,6 @@ import org.apache.tomcat.util.descriptor.web.WebXml;
 /**
  * Check Servlet 3.0 Spec 8.2.3.3: Override annotation parameter from web.xml or
  * fragment.
- *
- * @author Peter Rossbach
  */
 public class TestContextConfigAnnotation {
 
@@ -213,7 +211,7 @@ public class TestContextConfigAnnotation {
 
         webxml.addFilter(filterDef);
         FilterMap filterMap = new FilterMap();
-        filterMap.addURLPatternDecoded("/param1");
+        filterMap.addURLPattern("/param1");
         filterMap.setFilterName("paramFilter");
         webxml.addFilterMapping(filterMap);
 
@@ -271,6 +269,33 @@ public class TestContextConfigAnnotation {
     }
 
     @Test
+    public void testUrlPatternsEncoded() throws Exception {
+        doTestUrlPatterns(false, "%");
+    }
+
+    @Test
+    public void testUrlPatternsDecoded() throws Exception {
+        doTestUrlPatterns(true, "%25");
+    }
+
+    @SuppressWarnings("deprecation")
+    private void doTestUrlPatterns(boolean urlPatternsProvidedInDecodedForm, String expectedSuffix) throws Exception {
+        WebXml webXml = new WebXml(urlPatternsProvidedInDecodedForm);
+        Map<String,JavaClassCacheEntry> javaClassCache = new HashMap<>();
+        ContextConfig config = new ContextConfig();
+
+        File servletFile = paramClassResource("org/apache/catalina/startup/UrlPatternServlet");
+        config.processAnnotationsFile(servletFile, webXml, false, javaClassCache);
+        Assert.assertEquals("urlPatternServlet",
+                webXml.getServletMappings().get("/servlet" + expectedSuffix));
+
+        File filterFile = paramClassResource("org/apache/catalina/startup/UrlPatternFilter");
+        config.processAnnotationsFile(filterFile, webXml, false, javaClassCache);
+        FilterMap filterMap = webXml.getFilterMappings().iterator().next();
+        Assert.assertArrayEquals(new String[] { "/filter" + expectedSuffix }, filterMap.getURLPatterns());
+    }
+
+    @Test
     public void testCheckHandleTypes() throws Exception {
         Map<String,JavaClassCacheEntry> javaClassCache = new HashMap<>();
         ContextConfig config = new ContextConfig();
@@ -284,20 +309,18 @@ public class TestContextConfigAnnotation {
 
         // Add an SCI that has no interest in any type
         SCI sciNone = new SCI();
-        config.initializerClassMap.put(sciNone, new HashSet<Class<?>>());
+        config.initializerClassMap.put(sciNone, new HashSet<>());
 
         // Add an SCI with an interest in Servlets
         SCI sciServlet = new SCI();
-        config.initializerClassMap.put(sciServlet, new HashSet<Class<?>>());
-        config.typeInitializerMap.put(Servlet.class,
-                new HashSet<ServletContainerInitializer>());
+        config.initializerClassMap.put(sciServlet, new HashSet<>());
+        config.typeInitializerMap.put(Servlet.class, new HashSet<>());
         config.typeInitializerMap.get(Servlet.class).add(sciServlet);
 
         // Add an SCI with an interest in Objects - i.e. everything
         SCI sciObject = new SCI();
-        config.initializerClassMap.put(sciObject, new HashSet<Class<?>>());
-        config.typeInitializerMap.put(Object.class,
-                new HashSet<ServletContainerInitializer>());
+        config.initializerClassMap.put(sciObject, new HashSet<>());
+        config.typeInitializerMap.put(Object.class, new HashSet<>());
         config.typeInitializerMap.get(Object.class).add(sciObject);
 
         // Scan Servlet, Filter, Servlet, Listener
@@ -355,12 +378,8 @@ public class TestContextConfigAnnotation {
         public void removePropertyChangeListener(PropertyChangeListener l) {}
     }
 
-    /**
+    /*
      * Find compiled test class
-     *
-     * @param className
-     * @return File Resource
-     * @throws URISyntaxException
      */
     private File paramClassResource(String className) throws URISyntaxException {
         URL url = getClass().getClassLoader().getResource(className + ".class");

@@ -16,31 +16,80 @@
  */
 package org.apache.catalina.tribes.group.interceptors;
 
+/**
+ * MBean interface for managing the TcpFailureDetector interceptor.
+ */
 public interface TcpFailureDetectorMBean {
 
-    public int getOptionFlag();
+    /**
+     * Returns the socket option flag used for member checks.
+     * @return the option flag
+     */
+    int getOptionFlag();
 
-    // Attributes
-    public long getConnectTimeout();
+    /**
+     * Returns the connection timeout in milliseconds.
+     * @return the connection timeout
+     */
+    long getConnectTimeout();
 
-    public boolean getPerformSendTest();
+    /**
+     * Returns whether send tests are performed.
+     * @return true if send tests are enabled
+     */
+    boolean getPerformSendTest();
 
-    public boolean getPerformReadTest();
+    /**
+     * Returns whether read tests are performed.
+     * @return true if read tests are enabled
+     */
+    boolean getPerformReadTest();
 
-    public long getReadTestTimeout();
+    /**
+     * Returns the read test timeout in milliseconds.
+     * @return the read test timeout
+     */
+    long getReadTestTimeout();
 
-    public int getRemoveSuspectsTimeout();
+    /**
+     * Returns the timeout for removing suspects.
+     * @return the remove suspects timeout
+     */
+    int getRemoveSuspectsTimeout();
 
-    public void setPerformReadTest(boolean performReadTest);
+    /**
+     * Sets whether read tests should be performed.
+     * @param performReadTest true to enable read tests
+     */
+    void setPerformReadTest(boolean performReadTest);
 
-    public void setPerformSendTest(boolean performSendTest);
+    /**
+     * Sets whether send tests should be performed.
+     * @param performSendTest true to enable send tests
+     */
+    void setPerformSendTest(boolean performSendTest);
 
-    public void setReadTestTimeout(long readTestTimeout);
+    /**
+     * Sets the read test timeout in milliseconds.
+     * @param readTestTimeout the timeout value
+     */
+    void setReadTestTimeout(long readTestTimeout);
 
-    public void setConnectTimeout(long connectTimeout);
+    /**
+     * Sets the connection timeout in milliseconds.
+     * @param connectTimeout the timeout value
+     */
+    void setConnectTimeout(long connectTimeout);
 
-    public void setRemoveSuspectsTimeout(int removeSuspectsTimeout);
+    /**
+     * Sets the timeout for removing suspects.
+     * @param removeSuspectsTimeout the timeout value
+     */
+    void setRemoveSuspectsTimeout(int removeSuspectsTimeout);
 
-    // Operations
-    public void checkMembers(boolean checkAll);
+    /**
+     * Checks the status of cluster members.
+     * @param checkAll true to check all members, false to check only suspects
+     */
+    void checkMembers(boolean checkAll);
 }

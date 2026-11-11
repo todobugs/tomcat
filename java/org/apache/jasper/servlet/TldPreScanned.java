@@ -16,6 +16,7 @@
  */
 package org.apache.jasper.servlet;
 
+import java.net.URI;
 import java.net.URL;
 import java.util.Collection;
 
@@ -24,27 +25,42 @@ import javax.servlet.ServletContext;
 import org.apache.jasper.compiler.Localizer;
 import org.apache.tomcat.util.descriptor.tld.TldResourcePath;
 
+/**
+ * TLD scanner that processes only pre-scanned TLD URLs, skipping JAR scanning.
+ */
 public class TldPreScanned extends TldScanner {
 
+    /**
+     * The collection of pre-scanned TLD URLs.
+     */
     private final Collection<URL> preScannedURLs;
 
-    public TldPreScanned (ServletContext context, boolean namespaceAware, boolean validation,
-            boolean blockExternal, Collection<URL> preScannedTlds) {
+    /**
+     * Creates a new TldPreScanned scanner.
+     *
+     * @param context the servlet context
+     * @param namespaceAware whether namespace processing is enabled
+     * @param validation whether XML validation is enabled
+     * @param blockExternal whether external entities should be blocked
+     * @param preScannedTlds the collection of pre-scanned TLD URLs
+     */
+    public TldPreScanned(ServletContext context, boolean namespaceAware, boolean validation, boolean blockExternal,
+            Collection<URL> preScannedTlds) {
         super(context, namespaceAware, validation, blockExternal);
         preScannedURLs = preScannedTlds;
     }
 
     @Override
     public void scanJars() {
-        for (URL url : preScannedURLs){
+        for (URL url : preScannedURLs) {
             String str = url.toExternalForm();
             int a = str.indexOf("jar:");
             int b = str.indexOf("!/");
-            if (a >= 0 && b> 0) {
+            if (a >= 0 && b > 0) {
                 String fileUrl = str.substring(a + 4, b);
                 String path = str.substring(b + 2);
                 try {
-                    parseTld(new TldResourcePath(new URL(fileUrl), null, path));
+                    parseTld(new TldResourcePath(new URI(fileUrl).toURL(), null, path));
                 } catch (Exception e) {
                     throw new IllegalStateException(e);
                 }

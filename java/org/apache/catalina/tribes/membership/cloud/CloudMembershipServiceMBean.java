@@ -20,21 +20,61 @@ import java.util.Properties;
 
 import org.apache.catalina.tribes.Member;
 
+/**
+ * MBean interface for the CloudMembershipService.
+ */
 public interface CloudMembershipServiceMBean {
 
     // Attributes
-    public int getConnectTimeout();
+    /**
+     * Returns the connection timeout in milliseconds.
+     *
+     * @return the connection timeout
+     */
+    int getConnectTimeout();
 
-    public int getReadTimeout();
+    /**
+     * Returns the read timeout in milliseconds.
+     *
+     * @return the read timeout
+     */
+    int getReadTimeout();
 
-    public long getExpirationTime();
+    /**
+     * Returns the member expiration time in milliseconds.
+     *
+     * @return the expiration time
+     */
+    long getExpirationTime();
 
     // Operation
-    public Properties getProperties();
+    /**
+     * Returns the properties for this service.
+     *
+     * @return the properties
+     */
+    Properties getProperties();
 
-    public boolean hasMembers();
+    /**
+     * Returns whether there are members in the cluster.
+     *
+     * @return {@code true} if there are members
+     */
+    boolean hasMembers();
 
-    public String[] getMembersByName();
+    /**
+     * Returns the names of all members in the cluster.
+     *
+     * @return the member names
+     */
+    String[] getMembersByName();
 
-    public Member findMemberByName(String name);
+    /**
+     * Finds a member by name.
+     *
+     * @param name the member name
+     *
+     * @return the member, or {@code null} if not found
+     */
+    Member findMemberByName(String name);
 }

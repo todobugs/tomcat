@@ -18,6 +18,7 @@ package org.apache.catalina.connector;
 
 import java.io.IOException;
 import java.io.Reader;
+import java.net.SocketTimeoutException;
 import java.nio.Buffer;
 import java.nio.ByteBuffer;
 import java.nio.CharBuffer;
@@ -27,14 +28,14 @@ import java.security.PrivilegedActionException;
 import java.security.PrivilegedExceptionAction;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.atomic.AtomicBoolean;
 
 import javax.servlet.ReadListener;
+import javax.servlet.RequestDispatcher;
+import javax.servlet.http.HttpServletResponse;
 
 import org.apache.catalina.security.SecurityUtil;
 import org.apache.coyote.ActionCode;
-import org.apache.coyote.ContainerThreadMarker;
-import org.apache.coyote.Request;
+import org.apache.coyote.BadRequestException;
 import org.apache.juli.logging.Log;
 import org.apache.juli.logging.LogFactory;
 import org.apache.tomcat.util.buf.B2CConverter;
@@ -44,15 +45,11 @@ import org.apache.tomcat.util.net.ApplicationBufferHandler;
 import org.apache.tomcat.util.res.StringManager;
 
 /**
- * The buffer used by Tomcat request. This is a derivative of the Tomcat 3.3
- * OutputBuffer, adapted to handle input instead of output. This allows
- * complete recycling of the facade objects (the ServletInputStream and the
+ * The buffer used by Tomcat request. This is a derivative of the Tomcat 3.3 OutputBuffer, adapted to handle input
+ * instead of output. This allows complete recycling of the facade objects (the ServletInputStream and the
  * BufferedReader).
- *
- * @author Remy Maucherat
  */
-public class InputBuffer extends Reader
-    implements ByteChunk.ByteInputChannel, ApplicationBufferHandler {
+public class InputBuffer extends Reader implements ByteChunk.ByteInputChannel, ApplicationBufferHandler {
 
     /**
      * The string manager for this package.
@@ -61,24 +58,41 @@ public class InputBuffer extends Reader
 
     private static final Log log = LogFactory.getLog(InputBuffer.class);
 
+    private static final ByteBuffer EMPTY_BUFFER = ByteBuffer.allocate(0);
+
+    /**
+     * Default buffer size in bytes.
+     */
     public static final int DEFAULT_BUFFER_SIZE = 8 * 1024;
 
     // The buffer can be used for byte[] and char[] reading
     // ( this is needed to support ServletInputStream and BufferedReader )
+    /**
+     * Initial state before any read operation.
+     */
     public final int INITIAL_STATE = 0;
+    /**
+     * State when reading character data.
+     */
     public final int CHAR_STATE = 1;
+    /**
+     * State when reading byte data.
+     */
     public final int BYTE_STATE = 2;
 
 
     /**
      * Encoder cache.
      */
-    private static final Map<Charset, SynchronizedStack<B2CConverter>> encoders = new ConcurrentHashMap<>();
+    private static final Map<Charset,SynchronizedStack<B2CConverter>> encoders = new ConcurrentHashMap<>();
 
     // ----------------------------------------------------- Instance Variables
 
-    /**
-     * The byte buffer.
+    /*
+     * The byte buffer. Data is always injected into this class by calling {@link #setByteBuffer(ByteBuffer)} rather
+     * than copying data into any existing buffer. It is initialised to an empty buffer as there are code paths that
+     * access the buffer when it is expected to be empty and an empty buffer gives cleaner code than lots of null
+     * checks.
      */
     private ByteBuffer bb;
 
@@ -90,7 +104,7 @@ public class InputBuffer extends Reader
 
 
     /**
-     * State of the output buffer.
+     * State of the input buffer.
      */
     private int state = 0;
 
@@ -110,7 +124,7 @@ public class InputBuffer extends Reader
     /**
      * Associated Coyote request.
      */
-    private Request coyoteRequest;
+    private org.apache.coyote.Request coyoteRequest;
 
 
     /**
@@ -120,7 +134,7 @@ public class InputBuffer extends Reader
 
 
     /**
-     * Char buffer limit.
+     * Maximum buffer growth position, set by {@link #mark(int)} and used as a limit when growing the char buffer.
      */
     private int readLimit;
 
@@ -152,8 +166,8 @@ public class InputBuffer extends Reader
     public InputBuffer(int size) {
 
         this.size = size;
-        bb = ByteBuffer.allocate(size);
-        clear(bb);
+        // Will be replaced when there is data to read so initialise to empty buffer.
+        bb = EMPTY_BUFFER;
         cb = CharBuffer.allocate(size);
         clear(cb);
         readLimit = size;
@@ -169,7 +183,7 @@ public class InputBuffer extends Reader
      *
      * @param coyoteRequest Associated Coyote request
      */
-    public void setRequest(Request coyoteRequest) {
+    public void setRequest(org.apache.coyote.Request coyoteRequest) {
         this.coyoteRequest = coyoteRequest;
     }
 
@@ -177,7 +191,7 @@ public class InputBuffer extends Reader
     // --------------------------------------------------------- Public Methods
 
     /**
-     * Recycle the output buffer.
+     * Recycle the input buffer.
      */
     public void recycle() {
 
@@ -192,7 +206,11 @@ public class InputBuffer extends Reader
         }
         readLimit = size;
         markPos = -1;
-        clear(bb);
+        /*
+         * This buffer will have been replaced if there was data to read so re-initialise to an empty buffer to clear
+         * any reference to an injected buffer.
+         */
+        bb = EMPTY_BUFFER;
         closed = false;
 
         if (conv != null) {
@@ -203,22 +221,21 @@ public class InputBuffer extends Reader
     }
 
 
-    /**
-     * Close the input buffer.
-     *
-     * @throws IOException An underlying IOException occurred
-     */
     @Override
     public void close() throws IOException {
         closed = true;
     }
 
 
+    /**
+     * Returns the number of bytes or characters available in the buffer.
+     *
+     * @return the number of bytes or characters available
+     */
     public int available() {
         int available = availableInThisBuffer();
         if (available == 0) {
-            coyoteRequest.action(ActionCode.AVAILABLE,
-                    Boolean.valueOf(coyoteRequest.getReadListener() != null));
+            coyoteRequest.action(ActionCode.AVAILABLE, Boolean.valueOf(coyoteRequest.getReadListener() != null));
             available = (coyoteRequest.getAvailable() > 0) ? 1 : 0;
         }
         return available;
@@ -236,27 +253,21 @@ public class InputBuffer extends Reader
     }
 
 
+    /**
+     * Sets the read listener for async request processing.
+     *
+     * @param listener the read listener to set
+     */
     public void setReadListener(ReadListener listener) {
         coyoteRequest.setReadListener(listener);
-
-        // The container is responsible for the first call to
-        // listener.onDataAvailable(). If isReady() returns true, the container
-        // needs to call listener.onDataAvailable() from a new thread. If
-        // isReady() returns false, the socket will be registered for read and
-        // the container will call listener.onDataAvailable() once data arrives.
-        // Must call isFinished() first as a call to isReady() if the request
-        // has been finished will register the socket for read interest and that
-        // is not required.
-        if (!coyoteRequest.isFinished() && isReady()) {
-            coyoteRequest.action(ActionCode.DISPATCH_READ, null);
-            if (!ContainerThreadMarker.isContainerThread()) {
-                // Not on a container thread so need to execute the dispatch
-                coyoteRequest.action(ActionCode.DISPATCH_EXECUTE, null);
-            }
-        }
     }
 
 
+    /**
+     * Checks if all data has been read from the input buffer.
+     *
+     * @return {@code true} if all data has been read
+     */
     public boolean isFinished() {
         int available = 0;
         if (state == BYTE_STATE) {
@@ -272,6 +283,11 @@ public class InputBuffer extends Reader
     }
 
 
+    /**
+     * Checks if the input buffer is ready for reading.
+     *
+     * @return {@code true} if the buffer is ready
+     */
     public boolean isReady() {
         if (coyoteRequest.getReadListener() == null) {
             if (log.isDebugEnabled()) {
@@ -283,7 +299,7 @@ public class InputBuffer extends Reader
             // If this is a non-container thread, need to trigger a read
             // which will eventually lead to a call to onAllDataRead() via a
             // container thread.
-            if (!ContainerThreadMarker.isContainerThread()) {
+            if (!coyoteRequest.isRequestThread()) {
                 coyoteRequest.action(ActionCode.DISPATCH_READ, null);
                 coyoteRequest.action(ActionCode.DISPATCH_EXECUTE, null);
             }
@@ -296,14 +312,12 @@ public class InputBuffer extends Reader
         // threads for each stream. For HTTP/2 the two operations have to be
         // performed atomically else it is possible for the connection thread to
         // read more data in to the buffer after the stream thread checks for
-        // available network data but before it registers for read.
+        // available network data, but before it registers for read.
         if (availableInThisBuffer() > 0) {
             return true;
         }
 
-        AtomicBoolean result = new AtomicBoolean();
-        coyoteRequest.action(ActionCode.NB_READ_INTEREST, result);
-        return result.get();
+        return coyoteRequest.isReady();
     }
 
 
@@ -314,17 +328,9 @@ public class InputBuffer extends Reader
 
     // ------------------------------------------------- Bytes Handling Methods
 
-    /**
-     * Reads new bytes in the byte chunk.
-     *
-     * @throws IOException An underlying IOException occurred
-     */
     @Override
     public int realReadBytes() throws IOException {
         if (closed) {
-            return -1;
-        }
-        if (coyoteRequest == null) {
             return -1;
         }
 
@@ -334,18 +340,56 @@ public class InputBuffer extends Reader
 
         try {
             return coyoteRequest.doRead(this);
+        } catch (BadRequestException bre) {
+            // Make the exception visible to the application
+            handleReadException(bre);
+            throw bre;
         } catch (IOException ioe) {
-            // An IOException on a read is almost always due to
-            // the remote client aborting the request.
+            handleReadException(ioe);
+            // Any other IOException on a read is almost always due to the remote client aborting the request.
+            // Make the exception visible to the application
             throw new ClientAbortException(ioe);
         }
     }
 
 
-    public int readByte() throws IOException {
-        if (closed) {
-            throw new IOException(sm.getString("inputBuffer.streamClosed"));
+    @SuppressWarnings("deprecation")
+    private void handleReadException(Exception e) throws IOException {
+        // Set flag used by asynchronous processing to detect errors on non-container threads
+        coyoteRequest.setErrorException(e);
+        // In synchronous processing, this exception may be swallowed by the application so set error flags here.
+        Request request = (Request) coyoteRequest.getNote(CoyoteAdapter.ADAPTER_NOTES);
+        Response response = request.getResponse();
+        request.setAttribute(RequestDispatcher.ERROR_EXCEPTION, e);
+        if (e instanceof SocketTimeoutException) {
+            try {
+                response.sendError(HttpServletResponse.SC_REQUEST_TIMEOUT);
+            } catch (IllegalStateException ex) {
+                // Response already committed
+                response.setStatus(HttpServletResponse.SC_REQUEST_TIMEOUT);
+                response.setError();
+            }
+        } else {
+            try {
+                response.sendError(HttpServletResponse.SC_BAD_REQUEST);
+            } catch (IllegalStateException ex) {
+                // Response already committed
+                response.setStatus(HttpServletResponse.SC_BAD_REQUEST);
+                response.setError();
+            }
         }
+    }
+
+
+    /**
+     * Reads a single byte from the buffer.
+     *
+     * @return the byte read, or -1 if end of stream
+     *
+     * @throws IOException if an I/O error occurs
+     */
+    public int readByte() throws IOException {
+        throwIfClosed();
 
         if (checkByteBufferEof()) {
             return -1;
@@ -354,9 +398,22 @@ public class InputBuffer extends Reader
     }
 
 
+    /**
+     * Reads bytes into the specified array.
+     *
+     * @param b the buffer into which the data is read
+     * @param off the start offset in the destination array
+     * @param len the maximum number of bytes to read
+     *
+     * @return the number of bytes read, or -1 if end of stream
+     *
+     * @throws IOException if an I/O error occurs
+     */
     public int read(byte[] b, int off, int len) throws IOException {
-        if (closed) {
-            throw new IOException(sm.getString("inputBuffer.streamClosed"));
+        throwIfClosed();
+
+        if (len == 0) {
+            return 0;
         }
 
         if (checkByteBufferEof()) {
@@ -369,20 +426,18 @@ public class InputBuffer extends Reader
 
 
     /**
-     * Transfers bytes from the buffer to the specified ByteBuffer. After the
-     * operation the position of the ByteBuffer will be returned to the one
-     * before the operation, the limit will be the position incremented by
-     * the number of the transferred bytes.
+     * Transfers bytes from the buffer to the specified ByteBuffer. After the operation the position of the ByteBuffer
+     * will be returned to the one before the operation, the limit will be the position incremented by the number of the
+     * transferred bytes.
      *
      * @param to the ByteBuffer into which bytes are to be written.
-     * @return an integer specifying the actual number of bytes read, or -1 if
-     *         the end of the stream is reached
+     *
+     * @return an integer specifying the actual number of bytes read, or -1 if the end of the stream is reached
+     *
      * @throws IOException if an input or output exception has occurred
      */
     public int read(ByteBuffer to) throws IOException {
-        if (closed) {
-            throw new IOException(sm.getString("inputBuffer.streamClosed"));
-        }
+        throwIfClosed();
 
         if (checkByteBufferEof()) {
             return -1;
@@ -399,6 +454,13 @@ public class InputBuffer extends Reader
 
     // ------------------------------------------------- Chars Handling Methods
 
+    /**
+     * Reads characters from the byte buffer using the current converter.
+     *
+     * @return the number of characters read, or -1 if end of stream
+     *
+     * @throws IOException if an I/O error occurs
+     */
     public int realReadChars() throws IOException {
         checkConverter();
 
@@ -436,10 +498,7 @@ public class InputBuffer extends Reader
 
     @Override
     public int read() throws IOException {
-
-        if (closed) {
-            throw new IOException(sm.getString("inputBuffer.streamClosed"));
-        }
+        throwIfClosed();
 
         if (checkCharBufferEof()) {
             return -1;
@@ -450,20 +509,17 @@ public class InputBuffer extends Reader
 
     @Override
     public int read(char[] cbuf) throws IOException {
-
-        if (closed) {
-            throw new IOException(sm.getString("inputBuffer.streamClosed"));
-        }
-
+        throwIfClosed();
         return read(cbuf, 0, cbuf.length);
     }
 
 
     @Override
     public int read(char[] cbuf, int off, int len) throws IOException {
+        throwIfClosed();
 
-        if (closed) {
-            throw new IOException(sm.getString("inputBuffer.streamClosed"));
+        if (len == 0) {
+            return 0;
         }
 
         if (checkCharBufferEof()) {
@@ -477,9 +533,7 @@ public class InputBuffer extends Reader
 
     @Override
     public long skip(long n) throws IOException {
-        if (closed) {
-            throw new IOException(sm.getString("inputBuffer.streamClosed"));
-        }
+        throwIfClosed();
 
         if (n < 0) {
             throw new IllegalArgumentException();
@@ -487,8 +541,8 @@ public class InputBuffer extends Reader
 
         long nRead = 0;
         while (nRead < n) {
-            if (cb.remaining() >= n) {
-                cb.position(cb.position() + (int) n);
+            if (cb.remaining() >= (n - nRead)) {
+                cb.position(cb.position() + (int) (n - nRead));
                 nRead = n;
             } else {
                 nRead += cb.remaining();
@@ -505,9 +559,7 @@ public class InputBuffer extends Reader
 
     @Override
     public boolean ready() throws IOException {
-        if (closed) {
-            throw new IOException(sm.getString("inputBuffer.streamClosed"));
-        }
+        throwIfClosed();
         if (state == INITIAL_STATE) {
             state = CHAR_STATE;
         }
@@ -524,9 +576,7 @@ public class InputBuffer extends Reader
     @Override
     public void mark(int readAheadLimit) throws IOException {
 
-        if (closed) {
-            throw new IOException(sm.getString("inputBuffer.streamClosed"));
-        }
+        throwIfClosed();
 
         if (cb.remaining() <= 0) {
             clear(cb);
@@ -544,15 +594,15 @@ public class InputBuffer extends Reader
     @Override
     public void reset() throws IOException {
 
-        if (closed) {
-            throw new IOException(sm.getString("inputBuffer.streamClosed"));
-        }
+        throwIfClosed();
 
         if (state == CHAR_STATE) {
             if (markPos < 0) {
                 clear(cb);
                 markPos = -1;
-                throw new IOException();
+                IOException ioe = new IOException();
+                coyoteRequest.setErrorException(ioe);
+                throw ioe;
             } else {
                 cb.position(markPos);
             }
@@ -562,15 +612,25 @@ public class InputBuffer extends Reader
     }
 
 
+    private void throwIfClosed() throws IOException {
+        if (closed) {
+            IOException ioe = new IOException(sm.getString("inputBuffer.streamClosed"));
+            coyoteRequest.setErrorException(ioe);
+            throw ioe;
+        }
+    }
+
+    /**
+     * Ensures a byte-to-char converter is available, initializing one if necessary.
+     *
+     * @throws IOException if an I/O error occurs
+     */
     public void checkConverter() throws IOException {
         if (conv != null) {
             return;
         }
 
-        Charset charset = null;
-        if (coyoteRequest != null) {
-            charset = coyoteRequest.getCharset();
-        }
+        Charset charset = coyoteRequest.getCharset();
 
         if (charset == null) {
             charset = org.apache.coyote.Constants.DEFAULT_BODY_CHARSET;
@@ -629,20 +689,14 @@ public class InputBuffer extends Reader
 
     private boolean checkByteBufferEof() throws IOException {
         if (bb.remaining() == 0) {
-            int n = realReadBytes();
-            if (n < 0) {
-                return true;
-            }
+            return realReadBytes() < 0;
         }
         return false;
     }
 
     private boolean checkCharBufferEof() throws IOException {
         if (cb.remaining() == 0) {
-            int n = realReadChars();
-            if (n < 0) {
-                return true;
-            }
+            return realReadChars() < 0;
         }
         return false;
     }
@@ -653,17 +707,17 @@ public class InputBuffer extends Reader
 
     private void makeSpace(int count) {
         int desiredSize = cb.limit() + count;
-        if(desiredSize > readLimit) {
+        if (desiredSize > readLimit) {
             desiredSize = readLimit;
         }
 
-        if(desiredSize <= cb.capacity()) {
+        if (desiredSize <= cb.capacity()) {
             return;
         }
 
         int newSize = 2 * cb.capacity();
-        if(desiredSize >= newSize) {
-            newSize= 2 * cb.capacity() + count;
+        if (desiredSize >= newSize) {
+            newSize = 2 * cb.capacity() + count;
         }
 
         if (newSize > readLimit) {
@@ -677,16 +731,14 @@ public class InputBuffer extends Reader
         tmp.flip();
         tmp.position(oldPosition);
         cb = tmp;
-        tmp = null;
     }
 
 
-    private static class PrivilegedCreateConverter
-            implements PrivilegedExceptionAction<B2CConverter> {
+    private static class PrivilegedCreateConverter implements PrivilegedExceptionAction<B2CConverter> {
 
         private final Charset charset;
 
-        public PrivilegedCreateConverter(Charset charset) {
+        PrivilegedCreateConverter(Charset charset) {
             this.charset = charset;
         }
 

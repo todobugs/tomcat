@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.catalina.storeconfig;
 
 import java.util.ArrayList;
@@ -30,6 +29,7 @@ import java.util.List;
  *  standard=&quot;true&quot;
  *  default=&quot;true&quot;
  *  externalAllowed=&quot;true&quot;
+ *  externalOnly=&quot;true&quot;
  *  storeSeparate=&quot;true&quot;
  *  backup=&quot;true&quot;
  *  children=&quot;true&quot;
@@ -42,20 +42,27 @@ import java.util.List;
  *     &lt;TransientAttribute&gt;displayName&lt;/TransientAttribute&gt;
  *     &lt;TransientAttribute&gt;distributable&lt;/TransientAttribute&gt;
  *     &lt;TransientAttribute&gt;domain&lt;/TransientAttribute&gt;
- *     &lt;TransientAttribute&gt;engineName&lt;/TransientAttribute&gt;
  *     &lt;TransientAttribute&gt;name&lt;/TransientAttribute&gt;
  *     &lt;TransientAttribute&gt;publicId&lt;/TransientAttribute&gt;
+ *     &lt;TransientAttribute&gt;originalDocBase&lt;/TransientAttribute&gt;
  *     &lt;TransientAttribute&gt;replaceWelcomeFiles&lt;/TransientAttribute&gt;
- *     &lt;TransientAttribute&gt;saveConfig&lt;/TransientAttribute&gt;
  *     &lt;TransientAttribute&gt;sessionTimeout&lt;/TransientAttribute&gt;
  *     &lt;TransientAttribute&gt;startupTime&lt;/TransientAttribute&gt;
  *     &lt;TransientAttribute&gt;tldScanTime&lt;/TransientAttribute&gt;
+ *     &lt;TransientAttribute&gt;effectiveMajorVersion&lt;/TransientAttribute&gt;
+ *     &lt;TransientAttribute&gt;effectiveMinorVersion&lt;/TransientAttribute&gt;
+ *     &lt;TransientAttribute&gt;webappVersion&lt;/TransientAttribute&gt;
+ *     &lt;TransientAttribute&gt;metadataComplete&lt;/TransientAttribute&gt;
  *  &lt;/Description&gt;
- *
- *
  * </pre>
  */
 public class StoreDescription {
+
+    /**
+     * Constructs a new StoreDescription with default settings.
+     */
+    public StoreDescription() {
+    }
 
     private String id;
 
@@ -90,209 +97,290 @@ public class StoreDescription {
     private boolean storeSeparate = false;
 
     /**
-     * @return Returns the external.
+     * Indicates whether external (separate file) storage is allowed for this description.
+     *
+     * @return true if external storage is allowed
      */
     public boolean isExternalAllowed() {
         return externalAllowed;
     }
 
     /**
-     * @param external
-     *            The external to set.
+     * Sets whether external (separate file) storage is allowed for this description.
+     *
+     * @param external true if external storage is allowed
      */
     public void setExternalAllowed(boolean external) {
         this.externalAllowed = external;
     }
 
+    /**
+     * Indicates whether this description is restricted to external storage only.
+     *
+     * @return true if external storage is the only allowed option
+     */
     public boolean isExternalOnly() {
         return externalOnly;
     }
 
+    /**
+     * Sets whether this description is restricted to external storage only.
+     *
+     * @param external true if external storage is the only allowed option
+     */
     public void setExternalOnly(boolean external) {
         this.externalOnly = external;
     }
 
     /**
-     * @return Returns the standard.
+     * Indicates whether this description represents a standard component.
+     *
+     * @return true if this is a standard component
      */
     public boolean isStandard() {
         return standard;
     }
 
     /**
-     * @param standard
-     *            The standard to set.
+     * Sets whether this description represents a standard component.
+     *
+     * @param standard true if this is a standard component
      */
     public void setStandard(boolean standard) {
         this.standard = standard;
     }
 
     /**
-     * @return Returns the backup.
+     * Indicates whether a backup of the configuration should be created.
+     *
+     * @return true if backup is enabled
      */
     public boolean isBackup() {
         return backup;
     }
 
     /**
-     * @param backup
-     *            The backup to set.
+     * Sets whether a backup of the configuration should be created.
+     *
+     * @param backup true if backup is enabled
      */
     public void setBackup(boolean backup) {
         this.backup = backup;
     }
 
     /**
-     * @return Returns the myDefault.
+     * Indicates whether this description represents a default component.
+     *
+     * @return true if this is a default component
      */
     public boolean isDefault() {
         return myDefault;
     }
 
     /**
-     * @param aDefault
-     *            The myDefault to set.
+     * Sets whether this description represents a default component.
+     *
+     * @param aDefault true if this is a default component
      */
     public void setDefault(boolean aDefault) {
         this.myDefault = aDefault;
     }
 
     /**
-     * @return Returns the storeFactory.
+     * Returns the fully qualified class name of the StoreFactory implementation.
+     *
+     * @return the StoreFactory class name
      */
     public String getStoreFactoryClass() {
         return storeFactoryClass;
     }
 
     /**
-     * @param storeFactoryClass
-     *            The storeFactory to set.
+     * Sets the fully qualified class name of the StoreFactory implementation.
+     *
+     * @param storeFactoryClass the StoreFactory class name
      */
     public void setStoreFactoryClass(String storeFactoryClass) {
         this.storeFactoryClass = storeFactoryClass;
     }
 
     /**
-     * @return Returns the storeFactory.
+     * Returns the StoreFactory instance used to create objects for this description.
+     *
+     * @return the StoreFactory instance
      */
     public IStoreFactory getStoreFactory() {
         return storeFactory;
     }
 
     /**
-     * @param storeFactory
-     *            The storeFactory to set.
+     * Sets the StoreFactory instance used to create objects for this description.
+     *
+     * @param storeFactory the StoreFactory instance
      */
     public void setStoreFactory(IStoreFactory storeFactory) {
         this.storeFactory = storeFactory;
     }
 
     /**
-     * @return Returns the storeWriterClass.
+     * Returns the fully qualified class name of the StoreWriter implementation.
+     *
+     * @return the StoreWriter class name
+     * @deprecated Will be removed in Tomcat 12
      */
+    @Deprecated
     public String getStoreWriterClass() {
         return storeWriterClass;
     }
 
     /**
-     * @param storeWriterClass
-     *            The storeWriterClass to set.
+     * Sets the fully qualified class name of the StoreWriter implementation.
+     *
+     * @param storeWriterClass the StoreWriter class name
+     * @deprecated Will be removed in Tomcat 12
      */
+    @Deprecated
     public void setStoreWriterClass(String storeWriterClass) {
         this.storeWriterClass = storeWriterClass;
     }
 
     /**
-     * @return Returns the tagClass.
+     * Returns the XML tag name for this description.
+     *
+     * @return the XML tag name
      */
     public String getTag() {
         return tag;
     }
 
     /**
-     * @param tag
-     *            The tag to set.
+     * Sets the XML tag name for this description.
+     *
+     * @param tag the XML tag name
      */
     public void setTag(String tag) {
         this.tag = tag;
     }
 
     /**
-     * @return Returns the tagClass.
+     * Returns the fully qualified class name associated with this description's tag.
+     *
+     * @return the tag class name
      */
     public String getTagClass() {
         return tagClass;
     }
 
     /**
-     * @param tagClass
-     *            The tagClass to set.
+     * Sets the fully qualified class name associated with this description's tag.
+     *
+     * @param tagClass the tag class name
      */
     public void setTagClass(String tagClass) {
         this.tagClass = tagClass;
     }
 
     /**
-     * @return Returns the transientAttributes.
+     * Returns the list of attribute names that should not be persisted.
+     *
+     * @return the list of transient attribute names
+     * @deprecated Will be removed in Tomcat 12
      */
+    @Deprecated
     public List<String> getTransientAttributes() {
         return transientAttributes;
     }
 
     /**
-     * @param transientAttributes
-     *            The transientAttributes to set.
+     * Sets the list of attribute names that should not be persisted.
+     *
+     * @param transientAttributes the list of transient attribute names
+     * @deprecated Will be removed in Tomcat 12
      */
+    @Deprecated
     public void setTransientAttributes(List<String> transientAttributes) {
         this.transientAttributes = transientAttributes;
     }
 
+    /**
+     * Adds an attribute name to the list of transient attributes that should not be persisted.
+     *
+     * @param attribute the attribute name to add
+     */
     public void addTransientAttribute(String attribute) {
-        if (transientAttributes == null)
+        if (transientAttributes == null) {
             transientAttributes = new ArrayList<>();
+        }
         transientAttributes.add(attribute);
     }
 
+    /**
+     * Removes an attribute name from the list of transient attributes.
+     *
+     * @param attribute the attribute name to remove
+     */
     public void removeTransientAttribute(String attribute) {
-        if (transientAttributes != null)
+        if (transientAttributes != null) {
             transientAttributes.remove(attribute);
+        }
     }
 
     /**
-     * @return Returns the transientChildren.
+     * Returns the list of child class names that should not be persisted.
+     *
+     * @return the list of transient child class names
+     * @deprecated Will be removed in Tomcat 12
      */
+    @Deprecated
     public List<String> getTransientChildren() {
         return transientChildren;
     }
 
     /**
-     * @param transientChildren
-     *            The transientChildren to set.
+     * Sets the list of child class names that should not be persisted.
+     *
+     * @param transientChildren the list of transient child class names
+     * @deprecated Will be removed in Tomcat 12
      */
+    @Deprecated
     public void setTransientChildren(List<String> transientChildren) {
         this.transientChildren = transientChildren;
     }
 
+    /**
+     * Adds a child class name to the list of transient children that should not be persisted.
+     *
+     * @param classname the child class name to add
+     */
     public void addTransientChild(String classname) {
-        if (transientChildren == null)
+        if (transientChildren == null) {
             transientChildren = new ArrayList<>();
+        }
         transientChildren.add(classname);
     }
 
+    /**
+     * Removes a child class name from the list of transient children.
+     *
+     * @param classname the child class name to remove
+     */
     public void removeTransientChild(String classname) {
-        if (transientChildren != null)
+        if (transientChildren != null) {
             transientChildren.remove(classname);
+        }
     }
 
     /**
      * Is child transient, please don't save this.
      *
      * @param classname The class name to check
-     * @return is classname attribute?
+     *
+     * @return true if the classname is a transient child
      */
     public boolean isTransientChild(String classname) {
-        if (transientChildren != null)
+        if (transientChildren != null) {
             return transientChildren.contains(classname);
+        }
         return false;
     }
 
@@ -300,11 +388,13 @@ public class StoreDescription {
      * Is attribute transient, please don't save this.
      *
      * @param attribute The attribute name to check
-     * @return is transient attribute?
+     *
+     * @return true if the attribute is transient
      */
     public boolean isTransientAttribute(String attribute) {
-        if (transientAttributes != null)
+        if (transientAttributes != null) {
             return transientAttributes.contains(attribute);
+        }
         return false;
     }
 
@@ -314,56 +404,71 @@ public class StoreDescription {
      * @return Returns the id.
      */
     public String getId() {
-        if (id != null)
+        if (id != null) {
             return id;
-        else
+        } else {
             return getTagClass();
+        }
     }
 
     /**
-     * @param id
-     *            The id to set.
+     * Sets the unique identifier for this description.
+     *
+     * @param id the unique identifier
      */
     public void setId(String id) {
         this.id = id;
     }
 
     /**
-     * @return Returns the attributes.
+     * Indicates whether the attributes of this component should be stored.
+     *
+     * @return true if attributes should be stored
      */
     public boolean isAttributes() {
         return attributes;
     }
 
     /**
-     * @param attributes
-     *            The attributes to set.
+     * Sets whether the attributes of this component should be stored.
+     *
+     * @param attributes true if attributes should be stored
      */
     public void setAttributes(boolean attributes) {
         this.attributes = attributes;
     }
 
     /**
-     * @return True if it's a separate store
+     * Indicates whether this component should be stored in a separate file.
+     *
+     * @return true if it's a separate store
      */
     public boolean isStoreSeparate() {
         return storeSeparate;
     }
 
+    /**
+     * Sets whether this component should be stored in a separate file.
+     *
+     * @param storeSeparate true if it should be stored separately
+     */
     public void setStoreSeparate(boolean storeSeparate) {
         this.storeSeparate = storeSeparate;
     }
 
     /**
-     * @return Returns the children.
+     * Indicates whether child components should be stored.
+     *
+     * @return true if children should be stored
      */
     public boolean isChildren() {
         return children;
     }
 
     /**
-     * @param children
-     *            The children to set.
+     * Sets whether child components should be stored.
+     *
+     * @param children true if children should be stored
      */
     public void setChildren(boolean children) {
         this.children = children;

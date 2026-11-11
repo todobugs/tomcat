@@ -25,6 +25,10 @@ import org.apache.catalina.tribes.transport.MultiPointSender;
 import org.apache.catalina.tribes.transport.PooledSender;
 import org.apache.catalina.tribes.util.StringManager;
 
+/**
+ * @deprecated This will be removed in Tomcat 10
+ */
+@Deprecated
 public class PooledMultiSender extends PooledSender {
 
     protected static final StringManager sm = StringManager.getManager(PooledMultiSender.class);
@@ -37,26 +41,30 @@ public class PooledMultiSender extends PooledSender {
     public void sendMessage(Member[] destination, ChannelMessage msg) throws ChannelException {
         MultiPointSender sender = null;
         try {
-            sender = (MultiPointSender)getSender();
+            sender = (MultiPointSender) getSender();
             if (sender == null) {
-                ChannelException cx = new ChannelException(sm.getString(
-                        "pooledMultiSender.unable.retrieve.sender", Long.toString(getMaxWait())));
-                for (int i = 0; i < destination.length; i++)
-                    cx.addFaultyMember(destination[i], new NullPointerException(sm.getString("pooledMultiSender.retrieve.fail")));
+                ChannelException cx = new ChannelException(
+                        sm.getString("pooledMultiSender.unable.retrieve.sender", Long.toString(getMaxWait())));
+                for (int i = 0; i < destination.length; i++) {
+                    cx.addFaultyMember(destination[i],
+                            new NullPointerException(sm.getString("pooledMultiSender.retrieve.fail")));
+                }
                 throw cx;
             } else {
                 sender.sendMessage(destination, msg);
             }
             sender.keepalive();
-        }finally {
-            if ( sender != null ) returnSender(sender);
+        } finally {
+            if (sender != null) {
+                returnSender(sender);
+            }
         }
     }
 
     @Override
     public DataSender getNewDataSender() {
         MultipointBioSender sender = new MultipointBioSender();
-        AbstractSender.transferProperties(this,sender);
+        AbstractSender.transferProperties(this, sender);
         return sender;
     }
 }

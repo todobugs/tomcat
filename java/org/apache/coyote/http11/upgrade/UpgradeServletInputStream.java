@@ -17,11 +17,13 @@
 package org.apache.coyote.http11.upgrade;
 
 import java.io.IOException;
+import java.util.Objects;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import javax.servlet.ReadListener;
 import javax.servlet.ServletInputStream;
 
-import org.apache.coyote.ContainerThreadMarker;
+import org.apache.coyote.Request;
 import org.apache.juli.logging.Log;
 import org.apache.juli.logging.LogFactory;
 import org.apache.tomcat.util.ExceptionUtils;
@@ -29,34 +31,82 @@ import org.apache.tomcat.util.net.DispatchType;
 import org.apache.tomcat.util.net.SocketWrapperBase;
 import org.apache.tomcat.util.res.StringManager;
 
+/**
+ * Input stream for an HTTP upgraded connection.
+ */
 public class UpgradeServletInputStream extends ServletInputStream {
 
     private static final Log log = LogFactory.getLog(UpgradeServletInputStream.class);
-    private static final StringManager sm =
-            StringManager.getManager(UpgradeServletInputStream.class);
+    private static final StringManager sm = StringManager.getManager(UpgradeServletInputStream.class);
 
+    /**
+     * The processor handling this connection.
+     */
     private final UpgradeProcessorBase processor;
+
+    /**
+     * The underlying socket wrapper.
+     */
     private final SocketWrapperBase<?> socketWrapper;
 
+    /**
+     * Statistics for this connection.
+     */
+    private final UpgradeInfo upgradeInfo;
+
+    /**
+     * Whether the stream has been closed.
+     */
     private volatile boolean closed = false;
+
+    /**
+     * Whether end-of-file has been reached.
+     */
     private volatile boolean eof = false;
+
     // Start in blocking-mode
+    /**
+     * Whether data is ready to read.
+     */
     private volatile Boolean ready = Boolean.TRUE;
+
+    /**
+     * Whether the error call-back has been triggered. No further call-backs
+     * are permitted once the error call-back has been triggered.
+     */
+    private final AtomicBoolean errorReported = new AtomicBoolean();
+
+    /**
+     * Whether the all data read call-back has been triggered. It is only
+     * permitted to trigger the all data read call-back once.
+     */
+    private volatile boolean allDataReadReported = false;
+
+    /**
+     * The async read listener.
+     */
     private volatile ReadListener listener = null;
 
 
-    public UpgradeServletInputStream(UpgradeProcessorBase processor,
-            SocketWrapperBase<?> socketWrapper) {
+    /**
+     * Constructs a new UpgradeServletInputStream.
+     *
+     * @param processor the processor
+     * @param socketWrapper the socket wrapper
+     * @param upgradeInfo the statistics object
+     */
+    public UpgradeServletInputStream(UpgradeProcessorBase processor, SocketWrapperBase<?> socketWrapper,
+            UpgradeInfo upgradeInfo) {
         this.processor = processor;
         this.socketWrapper = socketWrapper;
+        this.upgradeInfo = upgradeInfo;
     }
 
 
     @Override
     public final boolean isFinished() {
         if (listener == null) {
-            throw new IllegalStateException(
-                    sm.getString("upgrade.sis.isFinished.ise"));
+            throw new IllegalStateException(sm.getString("upgrade.sis.isFinished.ise"));
         }
         return eof;
     }
@@ -65,8 +115,7 @@ public class UpgradeServletInputStream extends ServletInputStream {
     @Override
     public final boolean isReady() {
         if (listener == null) {
-            throw new IllegalStateException(
-                    sm.getString("upgrade.sis.isReady.ise"));
+            throw new IllegalStateException(sm.getString("upgrade.sis.isReady.ise"));
         }
 
         if (eof || closed) {
@@ -80,22 +129,22 @@ public class UpgradeServletInputStream extends ServletInputStream {
 
         try {
             ready = Boolean.valueOf(socketWrapper.isReadyForRead());
-        } catch (IOException e) {
-            onError(e);
+            return ready.booleanValue();
+        } catch (IOException ioe) {
+            this.ready = Boolean.FALSE;
+            onError(ioe);
         }
-        return ready.booleanValue();
+        return false;
     }
 
 
     @Override
     public final void setReadListener(ReadListener listener) {
         if (listener == null) {
-            throw new IllegalArgumentException(
-                    sm.getString("upgrade.sis.readListener.null"));
+            throw new IllegalArgumentException(sm.getString("upgrade.sis.readListener.null"));
         }
         if (this.listener != null) {
-            throw new IllegalArgumentException(
-                    sm.getString("upgrade.sis.readListener.set"));
+            throw new IllegalArgumentException(sm.getString("upgrade.sis.readListener.set"));
         }
         if (closed) {
             throw new IllegalStateException(sm.getString("upgrade.sis.read.closed"));
@@ -103,8 +152,10 @@ public class UpgradeServletInputStream extends ServletInputStream {
 
         this.listener = listener;
 
-        // Container is responsible for first call to onDataAvailable().
-        if (ContainerThreadMarker.isContainerThread()) {
+        // The first call to onDataAvailable() will be triggered by the poller
+        // once read interest is registered.
+        Request request = processor.getRequest();
+        if (request != null && request.isRequestThread()) {
             processor.addDispatch(DispatchType.NON_BLOCKING_READ);
         } else {
             socketWrapper.registerReadInterest();
@@ -126,10 +177,12 @@ public class UpgradeServletInputStream extends ServletInputStream {
     @Override
     public final int readLine(byte[] b, int off, int len) throws IOException {
         preReadChecks();
+        bufferChecks(b, off, len);
 
-        if (len <= 0) {
+        if (len == 0) {
             return 0;
         }
+
         int count = 0, c;
 
         while ((c = readInternal()) != -1) {
@@ -139,18 +192,31 @@ public class UpgradeServletInputStream extends ServletInputStream {
                 break;
             }
         }
-        return count > 0 ? count : -1;
+
+        if (count > 0) {
+            return count;
+        } else {
+            return -1;
+        }
     }
 
 
     @Override
     public final int read(byte[] b, int off, int len) throws IOException {
         preReadChecks();
+        bufferChecks(b, off, len);
+
+        // The input must not be touched if the caller requested zero bytes.
+        if (len == 0) {
+            return 0;
+        }
 
         try {
             int result = socketWrapper.read(listener == null, b, off, len);
             if (result == -1) {
                 eof = true;
+            } else {
+                upgradeInfo.addBytesReceived(result);
             }
             return result;
         } catch (IOException ioe) {
@@ -158,7 +224,6 @@ public class UpgradeServletInputStream extends ServletInputStream {
             throw ioe;
         }
     }
-
 
 
     @Override
@@ -180,6 +245,15 @@ public class UpgradeServletInputStream extends ServletInputStream {
     }
 
 
+    private void bufferChecks(byte[] b, int off, int len) {
+        Objects.requireNonNull(b);
+        if (off < 0 || len < 0 || off > b.length - len) {
+            throw new IndexOutOfBoundsException(sm.getString("upgrade.sis.read.ioobe",
+                    Integer.valueOf(off), Integer.valueOf(len), Integer.valueOf(b.length)));
+        }
+    }
+
+
     private int readInternal() throws IOException {
         // Single byte reads for non-blocking need special handling so all
         // single byte reads run through this method.
@@ -192,23 +266,32 @@ public class UpgradeServletInputStream extends ServletInputStream {
             throw ioe;
         }
         if (result == 0) {
-            return -1;
+            throw new IllegalStateException(sm.getString("upgrade.sis.read.ise"));
         } else if (result == -1) {
             eof = true;
             return -1;
         } else {
+            upgradeInfo.addBytesReceived(1);
             return b[0] & 0xFF;
         }
     }
 
 
     final void onDataAvailable() {
+        if (errorReported.get() || allDataReadReported) {
+            // No further call-backs are permitted once an error has been
+            // reported or once the end of the data has been reported.
+            return;
+        }
         try {
             if (listener == null || !socketWrapper.isReadyForRead()) {
                 return;
             }
-        } catch (IOException e) {
-            onError(e);
+        } catch (IOException ioe) {
+            onError(ioe);
+            // Once an error has been reported to the listener, no further
+            // listener call-backs are permitted so stop processing here.
+            return;
         }
         ready = Boolean.TRUE;
         ClassLoader oldCL = processor.getUpgradeToken().getContextBind().bind(false, null);
@@ -216,7 +299,8 @@ public class UpgradeServletInputStream extends ServletInputStream {
             if (!eof) {
                 listener.onDataAvailable();
             }
-            if (eof) {
+            if (eof && !errorReported.get()) {
+                allDataReadReported = true;
                 listener.onAllDataRead();
             }
         } catch (Throwable t) {
@@ -228,8 +312,8 @@ public class UpgradeServletInputStream extends ServletInputStream {
     }
 
 
-    private final void onError(Throwable t) {
-        if (listener == null) {
+    final void onError(Throwable t) {
+        if (listener == null || !errorReported.compareAndSet(false, true)) {
             return;
         }
         ClassLoader oldCL = processor.getUpgradeToken().getContextBind().bind(false, null);
@@ -254,5 +338,10 @@ public class UpgradeServletInputStream extends ServletInputStream {
 
     final boolean isClosed() {
         return closed;
+    }
+
+
+    final boolean isEof() {
+        return eof;
     }
 }

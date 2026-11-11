@@ -22,16 +22,12 @@ import org.junit.Assert;
 import org.junit.Test;
 
 /**
- * Unit tests for Section 4.1 of
- * <a href="https://tools.ietf.org/html/rfc7540">RFC 7540</a>.
- * <br>
- * The order of tests in this class is aligned with the order of the
- * requirements in the RFC.
+ * Unit tests for Section 4.1 of <a href="https://tools.ietf.org/html/rfc7540">RFC 7540</a>. <br>
+ * The order of tests in this class is aligned with the order of the requirements in the RFC.
  */
 public class TestHttp2Section_4_1 extends Http2TestBase {
 
-    private static final byte[] UNKNOWN_FRAME = new byte[] {
-        0x00, 0x00, 0x00, 0x7F, 0x00, 0x00, 0x00, 0x00, 0x00 };
+    private static final byte[] UNKNOWN_FRAME = new byte[] { 0x00, 0x00, 0x00, 0x7F, 0x00, 0x00, 0x00, 0x00, 0x00 };
 
     // TODO: Tests for over-sized frames. Better located in tests for section 6?
 
@@ -47,7 +43,25 @@ public class TestHttp2Section_4_1 extends Http2TestBase {
     }
 
 
-    // TODO: Tests for unexpected flags. Better located in tests for section 6?
+    @Test
+    public void testUnknownFlagsIgnored() throws Exception {
+        // HTTP2 upgrade
+        http2Connect();
+
+        // Build the simple request
+        byte[] frameHeader = new byte[9];
+        ByteBuffer headersPayload = ByteBuffer.allocate(128);
+        buildSimpleGetRequest(frameHeader, headersPayload, null, 3);
+
+        // Set an undefined flag
+        frameHeader[4] = (byte) (frameHeader[4] | 0x02);
+
+        // Process the request
+        writeFrame(frameHeader, headersPayload);
+
+        readSimpleGetResponse();
+        Assert.assertEquals(getSimpleResponseTrace(3), output.getTrace());
+    }
 
 
     @Test

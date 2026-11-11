@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.catalina.tribes.transport.bio;
 
 import java.io.InputStream;
@@ -33,15 +32,15 @@ import org.apache.juli.logging.Log;
 import org.apache.juli.logging.LogFactory;
 
 /**
- * A worker thread class which can drain channels and echo-back the input. Each
- * instance is constructed with a reference to the owning thread pool object.
- * When started, the thread loops forever waiting to be awakened to service the
- * channel associated with a SelectionKey object. The worker is tasked by
- * calling its serviceChannel() method with a SelectionKey object. The
- * serviceChannel() method stores the key reference in the thread object then
- * calls notify() to wake it up. When the channel has been drained, the worker
- * thread returns itself to its parent pool.
+ * A worker thread class which can drain channels and echo-back the input. Each instance is constructed with a reference
+ * to the owning thread pool object. When started, the thread loops forever waiting to be awakened to service the
+ * channel associated with a SelectionKey object. The worker is tasked by calling its serviceChannel() method with a
+ * SelectionKey object. The serviceChannel() method stores the key reference in the thread object then calls notify() to
+ * wake it up. When the channel has been drained, the worker thread returns itself to its parent pool.
+ *
+ * @deprecated This will be removed in Tomcat 10
  */
+@Deprecated
 public class BioReplicationTask extends AbstractRxTask {
 
     private static final Log log = LogFactory.getLog(BioReplicationTask.class);
@@ -51,30 +50,31 @@ public class BioReplicationTask extends AbstractRxTask {
     protected Socket socket;
     protected ObjectReader reader;
 
-    public BioReplicationTask (ListenCallback callback) {
+    public BioReplicationTask(ListenCallback callback) {
         super(callback);
     }
 
     // loop forever waiting for work to do
     @Override
-    public synchronized void run()
-    {
-        if ( socket == null ) return;
+    public synchronized void run() {
+        if (socket == null) {
+            return;
+        }
         try {
             drainSocket();
-        } catch ( Exception x ) {
+        } catch (Exception x) {
             log.error(sm.getString("bioReplicationTask.unable.service"), x);
-        }finally {
+        } finally {
             try {
                 socket.close();
-            }catch (Exception e) {
+            } catch (Exception e) {
                 if (log.isDebugEnabled()) {
                     log.debug(sm.getString("bioReplicationTask.socket.closeFailed"), e);
                 }
             }
             try {
                 reader.close();
-            }catch (Exception e) {
+            } catch (Exception e) {
                 if (log.isDebugEnabled()) {
                     log.debug(sm.getString("bioReplicationTask.reader.closeFailed"), e);
                 }
@@ -83,7 +83,9 @@ public class BioReplicationTask extends AbstractRxTask {
             socket = null;
         }
         // done, ready for more, return to pool
-        if ( getTaskPool() != null ) getTaskPool().returnWorker (this);
+        if (getTaskPool() != null) {
+            getTaskPool().returnWorker(this);
+        }
     }
 
 
@@ -92,32 +94,36 @@ public class BioReplicationTask extends AbstractRxTask {
         this.reader = reader;
     }
 
-    protected void execute(ObjectReader reader) throws Exception{
+    protected void execute(ObjectReader reader) throws Exception {
         int pkgcnt = reader.count();
 
-        if ( pkgcnt > 0 ) {
+        if (pkgcnt > 0) {
             ChannelMessage[] msgs = reader.execute();
-            for ( int i=0; i<msgs.length; i++ ) {
-                /**
-                 * Use send ack here if you want to ack the request to the remote
-                 * server before completing the request
+            for (int i = 0; i < msgs.length; i++) {
+                /*
+                 * Use send ack here if you want to ack the request to the remote server before completing the request
                  * This is considered an asynchronous request
                  */
-                if (ChannelData.sendAckAsync(msgs[i].getOptions())) sendAck(Constants.ACK_COMMAND);
-                try {
-                    //process the message
-                    getCallback().messageDataReceived(msgs[i]);
-                    /**
-                     * Use send ack here if you want the request to complete on this
-                     * server before sending the ack to the remote server
-                     * This is considered a synchronized request
-                     */
-                    if (ChannelData.sendAckSync(msgs[i].getOptions())) sendAck(Constants.ACK_COMMAND);
-                }catch  ( Exception x ) {
-                    if (ChannelData.sendAckSync(msgs[i].getOptions())) sendAck(Constants.FAIL_ACK_COMMAND);
-                    log.error(sm.getString("bioReplicationTask.messageDataReceived.error"),x);
+                if (ChannelData.sendAckAsync(msgs[i].getOptions())) {
+                    sendAck(Constants.ACK_COMMAND);
                 }
-                if ( getUseBufferPool() ) {
+                try {
+                    // process the message
+                    getCallback().messageDataReceived(msgs[i]);
+                    /*
+                     * Use send ack here if you want the request to complete on this server before sending the ack to
+                     * the remote server This is considered a synchronized request
+                     */
+                    if (ChannelData.sendAckSync(msgs[i].getOptions())) {
+                        sendAck(Constants.ACK_COMMAND);
+                    }
+                } catch (Exception x) {
+                    if (ChannelData.sendAckSync(msgs[i].getOptions())) {
+                        sendAck(Constants.FAIL_ACK_COMMAND);
+                    }
+                    log.error(sm.getString("bioReplicationTask.messageDataReceived.error"), x);
+                }
+                if (getUseBufferPool()) {
                     BufferPool.getBufferPool().returnBuffer(msgs[i].getMessage());
                     msgs[i].setMessage(null);
                 }
@@ -128,12 +134,10 @@ public class BioReplicationTask extends AbstractRxTask {
     }
 
     /**
-     * The actual code which drains the channel associated with
-     * the given key.  This method assumes the key has been
-     * modified prior to invocation to turn off selection
-     * interest in OP_READ.  When this method completes it
-     * re-enables OP_READ and calls wakeup() on the selector
-     * so the selector will resume watching this channel.
+     * The actual code which drains the channel associated with the given key. This method assumes the key has been
+     * modified prior to invocation to turn off selection interest in OP_READ. When this method completes it re-enables
+     * OP_READ and calls wakeup() on the selector so the selector will resume watching this channel.
+     *
      * @throws Exception IO exception or execute exception
      */
     protected void drainSocket() throws Exception {
@@ -141,9 +145,11 @@ public class BioReplicationTask extends AbstractRxTask {
         // loop while data available, channel is non-blocking
         byte[] buf = new byte[1024];
         int length = in.read(buf);
-        while ( length >= 0 ) {
-            int count = reader.append(buf,0,length,true);
-            if ( count > 0 ) execute(reader);
+        while (length >= 0) {
+            int count = reader.append(buf, 0, length, true);
+            if (count > 0) {
+                execute(reader);
+            }
             length = in.read(buf);
         }
     }
@@ -151,6 +157,7 @@ public class BioReplicationTask extends AbstractRxTask {
 
     /**
      * Send a reply-acknowledgment (6,2,3)
+     *
      * @param command The command to write
      */
     protected void sendAck(byte[] command) {
@@ -161,7 +168,7 @@ public class BioReplicationTask extends AbstractRxTask {
             if (log.isTraceEnabled()) {
                 log.trace("ACK sent to " + socket.getPort());
             }
-        } catch ( java.io.IOException x ) {
+        } catch (java.io.IOException x) {
             log.warn(sm.getString("bioReplicationTask.unable.sendAck", x.getMessage()));
         }
     }
@@ -170,14 +177,14 @@ public class BioReplicationTask extends AbstractRxTask {
     public void close() {
         try {
             socket.close();
-        }catch (Exception e) {
+        } catch (Exception e) {
             if (log.isDebugEnabled()) {
                 log.debug(sm.getString("bioReplicationTask.socket.closeFailed"), e);
             }
         }
         try {
             reader.close();
-        }catch (Exception e) {
+        } catch (Exception e) {
             if (log.isDebugEnabled()) {
                 log.debug(sm.getString("bioReplicationTask.reader.closeFailed"), e);
             }

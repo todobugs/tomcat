@@ -42,10 +42,8 @@ public class TestImportHandlerStandardPackages {
         f.setAccessible(true);
         Object obj = f.get(null);
 
-        Assert.assertTrue("Not Map", obj instanceof Map);
-
         @SuppressWarnings("unchecked")
-        Map<String,Set<String>> standardPackageName = (Map<String, Set<String>>) obj;
+        Map<String,Set<String>> standardPackageName = (Map<String,Set<String>>) obj;
 
         for (Map.Entry<String,Set<String>> entry : standardPackageName.entrySet()) {
             checkPackageClassList(entry.getKey(), entry.getValue());
@@ -62,29 +60,29 @@ public class TestImportHandlerStandardPackages {
             // every test run. The intention is that it will catch new classes
             // when the tests are run on a newer JRE.
             // The latest version of the JRE where this test is known to pass is
-            // - OpenJDK 14 EA 27
+            // - OpenJDK 24 EA 2
             if (!JreCompat.isJre9Available()) {
                 return;
             }
-            getJavaBaseClasses().filter(c -> (c.startsWith("java/lang/")))
-                    .filter(c -> c.lastIndexOf('/') == 9)             // Exclude sub-packages
-                    .filter(c -> c.endsWith(".class"))                // Exclude non-class resources
-                    .map(c -> c.substring(10, c.length() - 6))        // Extract class name
-                    .map(c-> {
+            getJavaBaseClasses().filter(c -> (c.startsWith("java/lang/"))).filter(c -> c.lastIndexOf('/') == 9) // Exclude
+                                                                                                                // sub-packages
+                    .filter(c -> c.endsWith(".class")) // Exclude non-class resources
+                    .map(c -> c.substring(10, c.length() - 6)) // Extract class name
+                    .map(c -> {
                         try {
-                            return Class.forName("java.lang." + c);   // Get the class object
+                            return Class.forName("java.lang." + c, false,
+                                    TesterImportHandlerPerformance.class.getClassLoader()); // Get the class object
                         } catch (ClassNotFoundException e) {
-                            throw new RuntimeException();
+                            throw new RuntimeException(c);
                         }
-                    })
-                    .filter(c -> Modifier.isPublic(c.getModifiers())) // Exclude non-public classes
-                    .map(c -> c.getName().substring(10))              // Back to the class name
-                    .map(c -> c.replace('$',  '.'))
-                    .filter(c -> !classNames.contains(c))             // Skip classes already listed
-                    .filter(c -> !c.startsWith("FdLibm."))            // Skip public inner class
-                    .filter(c -> !c.startsWith("LiveStackFrame."))    // Skip public inner class
-                    .filter(c -> !c.startsWith("WeakPairMap."))       // Skip public inner class
-                    .forEach(c -> Assert.fail("java.lang." + c));     // Should have in list
+                    }).filter(c -> null != c).filter(c -> Modifier.isPublic(c.getModifiers())) // Exclude non-public
+                                                                                               // classes
+                    .map(c -> c.getName().substring(10)) // Back to the class name
+                    .map(c -> c.replace('$', '.')).filter(c -> !classNames.contains(c)) // Skip classes already listed
+                    .filter(c -> !c.startsWith("FdLibm.")) // Skip public inner class
+                    .filter(c -> !c.startsWith("LiveStackFrame.")) // Skip public inner class
+                    .filter(c -> !c.startsWith("WeakPairMap.")) // Skip public inner class
+                    .forEach(c -> Assert.fail("java.lang." + c)); // Should have in list
         } else {
             // When this test runs, the class loader will be loading resources
             // from a directory for each of these packages.
@@ -105,10 +103,10 @@ public class TestImportHandlerStandardPackages {
                 Assert.assertNotNull(files);
                 for (String file : files) {
                     if (!file.endsWith(".class")) {
-                        // Skip non-class resoucres
+                        // Skip non-class resources
                         continue;
                     }
-                    if (file.startsWith("Test")) {
+                    if (file.startsWith("Test") || file.endsWith("BaseTest.class")) {
                         // Skip test resources
                         continue;
                     }
@@ -122,12 +120,12 @@ public class TestImportHandlerStandardPackages {
                         // Skip classes already known
                         continue;
                     }
-                    File f = new File (dir, file);
+                    File f = new File(dir, file);
                     if (!f.isFile()) {
                         // Skip directories
                         continue;
                     }
-                    Class<?> clazz = Class.forName(packageName + "." + name);
+                    Class<?> clazz = Class.forName(packageName + "." + name.replace(".", "$"));
                     if (!Modifier.isPublic(clazz.getModifiers())) {
                         // Skip non-public classes
                         continue;
@@ -151,8 +149,7 @@ public class TestImportHandlerStandardPackages {
         // Returns ModuleFinder
         Object mf = clazzModuleFinder.getMethod("ofSystem").invoke(null);
         // Returns ModuleReference
-        Object mRef = ((Optional<?>) clazzModuleFinder.getMethod(
-                "find", String.class).invoke(mf, "java.base")).get();
+        Object mRef = ((Optional<?>) clazzModuleFinder.getMethod("find", String.class).invoke(mf, "java.base")).get();
         // Returns ModuleReader
         Object mr = clazzModuleReference.getMethod("open").invoke(mRef);
         // Returns the contents of the module

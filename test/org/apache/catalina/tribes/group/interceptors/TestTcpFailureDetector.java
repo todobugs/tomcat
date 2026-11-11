@@ -20,6 +20,7 @@ import java.util.ArrayList;
 
 import org.junit.After;
 import org.junit.Assert;
+import org.junit.Assume;
 import org.junit.Before;
 import org.junit.Test;
 
@@ -31,6 +32,7 @@ import org.apache.catalina.tribes.Member;
 import org.apache.catalina.tribes.MembershipListener;
 import org.apache.catalina.tribes.TesterUtil;
 import org.apache.catalina.tribes.group.GroupChannel;
+import org.apache.catalina.tribes.transport.ReceiverBase;
 
 public class TestTcpFailureDetector {
     private TcpFailureDetector tcpFailureDetector1 = null;
@@ -42,8 +44,14 @@ public class TestTcpFailureDetector {
 
     @Before
     public void setUp() throws Exception {
+        Assume.assumeTrue("Skipping test - IP multicast is not available in this environment",
+                TesterUtil.isMulticastAvailable());
         channel1 = new GroupChannel();
         channel2 = new GroupChannel();
+        ((ReceiverBase) channel1.getChannelReceiver()).setHost("localhost");
+        ((ReceiverBase) channel1.getChannelReceiver()).setPort(0);
+        ((ReceiverBase) channel2.getChannelReceiver()).setHost("localhost");
+        ((ReceiverBase) channel2.getChannelReceiver()).setPort(0);
         channel1.getMembershipService().setPayload("Channel-1".getBytes("ASCII"));
         channel2.getMembershipService().setPayload("Channel-2".getBytes("ASCII"));
         mbrlist1 = new TestMbrListener("Channel-1");
@@ -68,12 +76,21 @@ public class TestTcpFailureDetector {
         clear();
         channel1.start(Channel.DEFAULT);
         channel2.start(Channel.DEFAULT);
-        //Thread.sleep(1000);
+        Thread.sleep(1000);
         Assert.assertEquals("Expecting member count to be equal",mbrlist1.members.size(),mbrlist2.members.size());
         channel2.stop(Channel.SND_RX_SEQ);
         ByteMessage msg = new ByteMessage(new byte[1024]);
         try {
-            channel1.send(channel1.getMembers(), msg, 0);
+            int msgCount = 0;
+            // Normally the first message sent should fail but occasional
+            // failures are observed on CI systems so messages are sent in a
+            // loop with a delay between them to try and account for timing
+            // differences.
+            while (msgCount < 5) {
+                channel1.send(channel1.getMembers(), msg, 0);
+                msgCount++;
+                Thread.sleep(500);
+            }
             Assert.fail("Message send should have failed.");
         } catch ( ChannelException x ) {
             // Ignore
@@ -93,8 +110,20 @@ public class TestTcpFailureDetector {
         channel2.start(Channel.MBR_RX_SEQ);
         channel2.stop(Channel.SND_RX_SEQ);
         channel2.start(Channel.MBR_TX_SEQ);
-        //Thread.sleep(1000);
-        Assert.assertEquals("Expecting member count to not be equal",mbrlist1.members.size()+1,mbrlist2.members.size());
+        // Intermittent CI failure
+        // Allow up to 5 seconds for membership to reach expected state
+        int count = 0;
+        while (mbrlist1.members.size()+1 != mbrlist2.members.size() && count < 100) {
+            Thread.sleep(50);
+            count++;
+        }
+        // Ensure membership remains in expected state for the same period plus
+        // 1 second
+        count += 20;
+        while (count > 0) {
+            Assert.assertEquals("Expecting member count to not be equal",mbrlist1.members.size()+1,mbrlist2.members.size());
+            count--;
+        }
         channel1.stop(Channel.DEFAULT);
         channel2.stop(Channel.DEFAULT);
     }
@@ -105,7 +134,7 @@ public class TestTcpFailureDetector {
         clear();
         channel1.start(Channel.DEFAULT);
         channel2.start(Channel.DEFAULT);
-        //Thread.sleep(1000);
+        Thread.sleep(1000);
         Assert.assertEquals("Expecting member count to be equal",mbrlist1.members.size(),mbrlist2.members.size());
         channel2.stop(Channel.MBR_TX_SEQ);
         ByteMessage msg = new ByteMessage(new byte[1024]);

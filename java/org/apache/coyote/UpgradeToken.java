@@ -14,7 +14,6 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  */
-
 package org.apache.coyote;
 
 import javax.servlet.http.HttpUpgradeHandler;
@@ -30,24 +29,49 @@ public final class UpgradeToken {
     private final ContextBind contextBind;
     private final HttpUpgradeHandler httpUpgradeHandler;
     private final InstanceManager instanceManager;
+    private final String protocol;
 
-    public UpgradeToken(HttpUpgradeHandler httpUpgradeHandler,
-            ContextBind contextBind, InstanceManager instanceManager) {
+    public UpgradeToken(HttpUpgradeHandler httpUpgradeHandler, ContextBind contextBind, InstanceManager instanceManager,
+            String protocol) {
         this.contextBind = contextBind;
         this.httpUpgradeHandler = httpUpgradeHandler;
         this.instanceManager = instanceManager;
+        this.protocol = protocol;
     }
 
-    public final ContextBind getContextBind() {
+    /**
+     * Returns the context binder for this upgrade.
+     *
+     * @return the context binder
+     */
+    public ContextBind getContextBind() {
         return contextBind;
     }
 
-    public final HttpUpgradeHandler getHttpUpgradeHandler() {
+    /**
+     * Returns the HTTP upgrade handler.
+     *
+     * @return the upgrade handler
+     */
+    public HttpUpgradeHandler getHttpUpgradeHandler() {
         return httpUpgradeHandler;
     }
 
-    public final InstanceManager getInstanceManager() {
+    /**
+     * Returns the instance manager for creating servlets and filters.
+     *
+     * @return the instance manager
+     */
+    public InstanceManager getInstanceManager() {
         return instanceManager;
     }
 
+    /**
+     * Returns the protocol name for the upgrade.
+     *
+     * @return the protocol name
+     */
+    public String getProtocol() {
+        return protocol;
+    }
 }

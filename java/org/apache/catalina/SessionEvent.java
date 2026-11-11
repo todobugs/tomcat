@@ -14,8 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
-
 package org.apache.catalina;
 
 
@@ -24,8 +22,6 @@ import java.util.EventObject;
 
 /**
  * General event for notifying listeners of significant changes on a Session.
- *
- * @author Craig R. McClanahan
  */
 public final class SessionEvent extends EventObject {
 
@@ -54,8 +50,8 @@ public final class SessionEvent extends EventObject {
      * Construct a new SessionEvent with the specified parameters.
      *
      * @param session Session on which this event occurred
-     * @param type Event type
-     * @param data Event data
+     * @param type    Event type
+     * @param data    Event data
      */
     public SessionEvent(Session session, String type, Object data) {
 
@@ -68,23 +64,24 @@ public final class SessionEvent extends EventObject {
 
 
     /**
-     * @return the event data of this event.
+     * Returns the event data of this event.
+     * @return the event data
      */
     public Object getData() {
         return this.data;
     }
 
-
     /**
-     * @return the Session on which this event occurred.
+     * Returns the Session on which this event occurred.
+     * @return the session
      */
     public Session getSession() {
         return this.session;
     }
 
-
     /**
-     * @return the event type of this event.
+     * Returns the event type of this event.
+     * @return the event type
      */
     public String getType() {
         return this.type;

@@ -24,24 +24,28 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.regex.PatternSyntaxException;
 
+import org.apache.tomcat.util.ExceptionUtils;
 import org.apache.tomcat.util.res.StringManager;
+
 /**
  * Represents a parsed expression.
- *
- * @author Paul Speed
  */
 public class ExpressionParseTree {
     private static final StringManager sm = StringManager.getManager(ExpressionParseTree.class);
     /**
-     * Contains the current set of completed nodes. This is a workspace for the
-     * parser.
+     * Contains the current set of completed nodes. This is a workspace for the parser. Needs to be LinkedList since it
+     * can contain {@code null}s.
      */
     private final LinkedList<Node> nodeStack = new LinkedList<>();
     /**
-     * Contains operator nodes that don't yet have values. This is a workspace
-     * for the parser.
+     * Contains operator nodes that don't yet have values. This is a workspace for the parser. Needs to be LinkedList
+     * since it can contain {@code null}s.
      */
     private final LinkedList<OppNode> oppStack = new LinkedList<>();
+    /**
+     * Contains the node stack size at the start of each group.
+     */
+    private final LinkedList<Integer> groupNodeCounts = new LinkedList<>();
     /**
      * The root node after the expression has been parsed.
      */
@@ -54,171 +58,223 @@ public class ExpressionParseTree {
 
     /**
      * Creates a new parse tree for the specified expression.
-     * @param expr The expression string
-     * @param ssiMediator Used to evaluated the expressions
+     *
+     * @param expr        The expression string
+     * @param ssiMediator Used to evaluate the expressions
+     *
      * @throws ParseException a parsing error occurred
      */
-    public ExpressionParseTree(String expr, SSIMediator ssiMediator)
-            throws ParseException {
+    public ExpressionParseTree(String expr, SSIMediator ssiMediator) throws ParseException {
         this.ssiMediator = ssiMediator;
         parseExpression(expr);
     }
 
 
     /**
-     * Evaluates the tree and returns true or false. The specified SSIMediator
-     * is used to resolve variable references.
+     * Evaluates the tree and returns true or false. The specified SSIMediator is used to resolve variable references.
+     *
      * @return the evaluation result
+     *
+     * @throws SSIStopProcessingException If an error occurs evaluating the tree
      */
-    public boolean evaluateTree() {
-        return root.evaluate();
+    public boolean evaluateTree() throws SSIStopProcessingException {
+        try {
+            return root.evaluate();
+        } catch (Throwable t) {
+            ExceptionUtils.handleThrowable(t);
+            throw new SSIStopProcessingException(t);
+        }
     }
 
 
     /**
-     * Pushes a new operator onto the opp stack, resolving existing opps as
-     * needed.
-     * @param node The operator node
+     * Pushes a new operator onto the opp stack, resolving existing opps as needed.
+     *
+     * @param node  The operator node
+     * @param index The current tokenizer index, for error reporting
+     *
+     * @throws ParseException An operator was missing one of its operands
      */
-    private void pushOpp(OppNode node) {
+    private void pushOpp(OppNode node, int index) throws ParseException {
         // If node is null then it's just a group marker
         if (node == null) {
-            oppStack.add(0, node);
+            oppStack.addFirst(null);
+            groupNodeCounts.addFirst(Integer.valueOf(nodeStack.size()));
             return;
         }
         while (true) {
-            if (oppStack.size() == 0) break;
-            OppNode top = oppStack.get(0);
+            if (oppStack.isEmpty()) {
+                break;
+            }
+            OppNode top = oppStack.getFirst();
             // If the top is a spacer then don't pop
             // anything
-            if (top == null) break;
+            if (top == null) {
+                break;
+            }
             // If the top node has a lower precedence then
             // let it stay
-            if (top.getPrecedence() < node.getPrecedence()) break;
+            if (top.getPrecedence() < node.getPrecedence()) {
+                break;
+            }
+            checkOperands(top, index);
             // Remove the top node
-            oppStack.remove(0);
+            oppStack.removeFirst();
             // Let it fill its branches
             top.popValues(nodeStack);
             // Stick it on the resolved node stack
-            nodeStack.add(0, top);
+            nodeStack.addFirst(top);
         }
         // Add the new node to the opp stack
-        oppStack.add(0, node);
+        oppStack.addFirst(node);
     }
 
 
     /**
-     * Resolves all pending opp nodes on the stack until the next group marker
-     * is reached.
+     * Checks that the node stack holds at least the number of operands the given
+     * operator needs.
+     *
+     * @param node  The operator to check the operands for
+     * @param index The current tokenizer index, for error reporting
+     *
+     * @throws ParseException The operator is missing one of its operands
      */
-    private void resolveGroup() {
-        OppNode top = null;
-        while ((top = oppStack.remove(0)) != null) {
+    private void checkOperands(OppNode node, int index) throws ParseException {
+        int groupNodeCount = nodeStack.size() - groupNodeCounts.getFirst().intValue();
+        if (groupNodeCount < node.getOperandCount()) {
+            throw new ParseException(sm.getString("expressionParseTree.missingOperand"), index);
+        }
+    }
+
+
+    /**
+     * Resolves all pending opp nodes on the stack until the next group marker is reached.
+     *
+     * @param index The current tokenizer index, for error reporting
+     *
+     * @throws ParseException An operator was missing one of its operands
+     */
+    private void resolveGroup(int index) throws ParseException {
+        OppNode top;
+        while ((top = oppStack.removeFirst()) != null) {
+            checkOperands(top, index);
             // Let it fill its branches
             top.popValues(nodeStack);
             // Stick it on the resolved node stack
-            nodeStack.add(0, top);
+            nodeStack.addFirst(top);
         }
+        groupNodeCounts.removeFirst();
     }
 
 
     /**
      * Parses the specified expression into a tree of parse nodes.
+     *
      * @param expr The expression to parse
+     *
      * @throws ParseException a parsing error occurred
      */
     private void parseExpression(String expr) throws ParseException {
         StringNode currStringNode = null;
         // We cheat a little and start an artificial
         // group right away. It makes finishing easier.
-        pushOpp(null);
+        pushOpp(null, 0);
         ExpressionTokenizer et = new ExpressionTokenizer(expr);
         while (et.hasMoreTokens()) {
             int token = et.nextToken();
-            if (token != ExpressionTokenizer.TOKEN_STRING)
+            if (token != ExpressionTokenizer.TOKEN_STRING) {
                 currStringNode = null;
+            }
             switch (token) {
-                case ExpressionTokenizer.TOKEN_STRING :
+                case ExpressionTokenizer.TOKEN_STRING:
                     if (currStringNode == null) {
                         currStringNode = new StringNode(et.getTokenValue());
-                        nodeStack.add(0, currStringNode);
+                        nodeStack.addFirst(currStringNode);
                     } else {
                         // Add to the existing
-                        currStringNode.value.append(" ");
+                        currStringNode.value.append(' ');
                         currStringNode.value.append(et.getTokenValue());
                     }
                     break;
-                case ExpressionTokenizer.TOKEN_AND :
-                    pushOpp(new AndNode());
+                case ExpressionTokenizer.TOKEN_AND:
+                    pushOpp(new AndNode(), et.getIndex());
                     break;
-                case ExpressionTokenizer.TOKEN_OR :
-                    pushOpp(new OrNode());
+                case ExpressionTokenizer.TOKEN_OR:
+                    pushOpp(new OrNode(), et.getIndex());
                     break;
-                case ExpressionTokenizer.TOKEN_NOT :
-                    pushOpp(new NotNode());
+                case ExpressionTokenizer.TOKEN_NOT:
+                    pushOpp(new NotNode(), et.getIndex());
                     break;
-                case ExpressionTokenizer.TOKEN_EQ :
-                    pushOpp(new EqualNode());
+                case ExpressionTokenizer.TOKEN_EQ:
+                    pushOpp(new EqualNode(), et.getIndex());
                     break;
-                case ExpressionTokenizer.TOKEN_NOT_EQ :
-                    pushOpp(new NotNode());
-                    // Sneak the regular node in. The NOT will
+                case ExpressionTokenizer.TOKEN_NOT_EQ:
+                    pushOpp(new NotNode(), et.getIndex());
+                    // Sneak the regular node in. They will NOT
                     // be resolved when the next opp comes along.
-                    oppStack.add(0, new EqualNode());
+                    oppStack.addFirst(new EqualNode());
                     break;
-                case ExpressionTokenizer.TOKEN_RBRACE :
+                case ExpressionTokenizer.TOKEN_RBRACE:
+                    if (groupNodeCounts.size() == 1) {
+                        throw new ParseException(sm.getString("expressionParseTree.unmatchedClosingParenthesis"),
+                                et.getIndex());
+                    }
                     // Closeout the current group
-                    resolveGroup();
+                    resolveGroup(et.getIndex());
                     break;
-                case ExpressionTokenizer.TOKEN_LBRACE :
+                case ExpressionTokenizer.TOKEN_LBRACE:
                     // Push a group marker
-                    pushOpp(null);
+                    pushOpp(null, et.getIndex());
                     break;
-                case ExpressionTokenizer.TOKEN_GE :
-                    pushOpp(new NotNode());
+                case ExpressionTokenizer.TOKEN_GE:
+                    pushOpp(new NotNode(), et.getIndex());
                     // Similar strategy to NOT_EQ above, except this
                     // is NOT less than
-                    oppStack.add(0, new LessThanNode());
+                    oppStack.addFirst(new LessThanNode());
                     break;
-                case ExpressionTokenizer.TOKEN_LE :
-                    pushOpp(new NotNode());
+                case ExpressionTokenizer.TOKEN_LE:
+                    pushOpp(new NotNode(), et.getIndex());
                     // Similar strategy to NOT_EQ above, except this
                     // is NOT greater than
-                    oppStack.add(0, new GreaterThanNode());
+                    oppStack.addFirst(new GreaterThanNode());
                     break;
-                case ExpressionTokenizer.TOKEN_GT :
-                    pushOpp(new GreaterThanNode());
+                case ExpressionTokenizer.TOKEN_GT:
+                    pushOpp(new GreaterThanNode(), et.getIndex());
                     break;
-                case ExpressionTokenizer.TOKEN_LT :
-                    pushOpp(new LessThanNode());
+                case ExpressionTokenizer.TOKEN_LT:
+                    pushOpp(new LessThanNode(), et.getIndex());
                     break;
-                case ExpressionTokenizer.TOKEN_END :
+                case ExpressionTokenizer.TOKEN_END:
                     break;
+                case ExpressionTokenizer.TOKEN_ERROR:
+                    throw new ParseException(sm.getString("expressionParseTree.unterminatedLiteral"),
+                            et.getIndex());
             }
         }
         // Finish off the rest of the opps
-        resolveGroup();
-        if (nodeStack.size() == 0) {
+        resolveGroup(et.getIndex());
+        if (nodeStack.isEmpty()) {
             throw new ParseException(sm.getString("expressionParseTree.noNodes"), et.getIndex());
         }
         if (nodeStack.size() > 1) {
             throw new ParseException(sm.getString("expressionParseTree.extraNodes"), et.getIndex());
         }
-        if (oppStack.size() != 0) {
+        if (!oppStack.isEmpty()) {
             throw new ParseException(sm.getString("expressionParseTree.unusedOpCodes"), et.getIndex());
         }
-        root = nodeStack.get(0);
+        root = nodeStack.getFirst();
     }
 
     /**
      * A node in the expression parse tree.
      */
-    private abstract class Node {
+    private abstract static class Node {
         /**
          * @return {@code true} if the node evaluates to true.
          */
         public abstract boolean evaluate();
     }
+
     /**
      * A node the represents a String value
      */
@@ -227,7 +283,7 @@ public class ExpressionParseTree {
         String resolved = null;
 
 
-        public StringNode(String value) {
+        StringNode(String value) {
             this.value = new StringBuilder(value);
         }
 
@@ -238,8 +294,9 @@ public class ExpressionParseTree {
          * @return the value string
          */
         public String getValue() {
-            if (resolved == null)
+            if (resolved == null) {
                 resolved = ssiMediator.substituteVariables(value.toString());
+            }
             return resolved;
         }
 
@@ -249,7 +306,7 @@ public class ExpressionParseTree {
          */
         @Override
         public boolean evaluate() {
-            return !(getValue().length() == 0);
+            return !(getValue().isEmpty());
         }
 
 
@@ -261,12 +318,13 @@ public class ExpressionParseTree {
 
     private static final int PRECEDENCE_NOT = 5;
     private static final int PRECEDENCE_COMPARE = 4;
-    private static final int PRECEDENCE_LOGICAL = 1;
+    private static final int PRECEDENCE_AND = 2;
+    private static final int PRECEDENCE_OR = 1;
 
     /**
      * A node implementation that represents an operation.
      */
-    private abstract class OppNode extends Node {
+    private abstract static class OppNode extends Node {
         /**
          * The left branch.
          */
@@ -278,15 +336,21 @@ public class ExpressionParseTree {
 
 
         /**
-         * @return a precedence level suitable for comparison to other OppNode
-         * preference levels.
+         * @return a precedence level suitable for comparison to other OppNode preference levels.
          */
         public abstract int getPrecedence();
 
 
         /**
-         * Lets the node pop its own branch nodes off the front of the
-         * specified list. The default pulls two.
+         * @return the number of operands this operator pops from the node stack, two by default.
+         */
+        public int getOperandCount() {
+            return 2;
+        }
+
+
+        /**
+         * Lets the node pop its own branch nodes off the front of the specified list. The default pulls two.
          *
          * @param values The list from which to pop the values
          */
@@ -295,7 +359,8 @@ public class ExpressionParseTree {
             left = values.remove(0);
         }
     }
-    private final class NotNode extends OppNode {
+
+    private static final class NotNode extends OppNode {
         @Override
         public boolean evaluate() {
             return !left.evaluate();
@@ -305,6 +370,12 @@ public class ExpressionParseTree {
         @Override
         public int getPrecedence() {
             return PRECEDENCE_NOT;
+        }
+
+
+        @Override
+        public int getOperandCount() {
+            return 1;
         }
 
 
@@ -322,18 +393,20 @@ public class ExpressionParseTree {
             return left + " NOT";
         }
     }
-    private final class AndNode extends OppNode {
+
+    private static final class AndNode extends OppNode {
         @Override
         public boolean evaluate() {
-            if (!left.evaluate()) // Short circuit
+            if (!left.evaluate()) {
                 return false;
+            }
             return right.evaluate();
         }
 
 
         @Override
         public int getPrecedence() {
-            return PRECEDENCE_LOGICAL;
+            return PRECEDENCE_AND;
         }
 
 
@@ -342,18 +415,20 @@ public class ExpressionParseTree {
             return left + " " + right + " AND";
         }
     }
-    private final class OrNode extends OppNode {
+
+    private static final class OrNode extends OppNode {
         @Override
         public boolean evaluate() {
-            if (left.evaluate()) // Short circuit
+            if (left.evaluate()) {
                 return true;
+            }
             return right.evaluate();
         }
 
 
         @Override
         public int getPrecedence() {
-            return PRECEDENCE_LOGICAL;
+            return PRECEDENCE_OR;
         }
 
 
@@ -362,14 +437,14 @@ public class ExpressionParseTree {
             return left + " " + right + " OR";
         }
     }
+
     private abstract class CompareNode extends OppNode {
         protected int compareBranches() {
-            String val1 = ((StringNode)left).getValue();
-            String val2 = ((StringNode)right).getValue();
+            String val1 = ((StringNode) left).getValue();
+            String val2 = ((StringNode) right).getValue();
 
             int val2Len = val2.length();
-            if (val2Len > 1 && val2.charAt(0) == '/' &&
-                    val2.charAt(val2Len - 1) == '/') {
+            if (val2Len > 1 && val2.charAt(0) == '/' && val2.charAt(val2Len - 1) == '/') {
                 // Treat as a regular expression
                 String expr = val2.substring(1, val2Len - 1);
                 ssiMediator.clearMatchGroups();
@@ -386,12 +461,14 @@ public class ExpressionParseTree {
                     }
                 } catch (PatternSyntaxException pse) {
                     ssiMediator.log(sm.getString("expressionParseTree.invalidExpression", expr), pse);
-                    return 0;
+                    // Return non-zero (no match) instead of 0 (match)
+                    return -1;
                 }
             }
             return val1.compareTo(val2);
         }
     }
+
     private final class EqualNode extends CompareNode {
         @Override
         public boolean evaluate() {
@@ -410,6 +487,7 @@ public class ExpressionParseTree {
             return left + " " + right + " EQ";
         }
     }
+
     private final class GreaterThanNode extends CompareNode {
         @Override
         public boolean evaluate() {
@@ -428,6 +506,7 @@ public class ExpressionParseTree {
             return left + " " + right + " GT";
         }
     }
+
     private final class LessThanNode extends CompareNode {
         @Override
         public boolean evaluate() {

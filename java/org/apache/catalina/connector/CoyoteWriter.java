@@ -21,8 +21,6 @@ import java.io.PrintWriter;
 
 /**
  * Coyote implementation of the servlet writer.
- *
- * @author Remy Maucherat
  */
 public class CoyoteWriter extends PrintWriter {
 
@@ -35,13 +33,25 @@ public class CoyoteWriter extends PrintWriter {
     // ----------------------------------------------------- Instance Variables
 
 
+    /**
+     * The underlying output buffer.
+     */
     protected OutputBuffer ob;
+
+    /**
+     * Flag indicating whether an error has occurred.
+     */
     protected boolean error = false;
 
 
     // ----------------------------------------------------------- Constructors
 
 
+    /**
+     * Construct a new CoyoteWriter.
+     *
+     * @param ob The underlying output buffer
+     */
     public CoyoteWriter(OutputBuffer ob) {
         super(ob);
         this.ob = ob;
@@ -55,8 +65,7 @@ public class CoyoteWriter extends PrintWriter {
      * Prevent cloning the facade.
      */
     @Override
-    protected Object clone()
-        throws CloneNotSupportedException {
+    protected Object clone() throws CloneNotSupportedException {
         throw new CloneNotSupportedException();
     }
 
@@ -92,8 +101,8 @@ public class CoyoteWriter extends PrintWriter {
 
         try {
             ob.flush();
-        } catch (IOException e) {
-            error = true;
+        } catch (IOException ioe) {
+            setErrorException(ioe);
         }
 
     }
@@ -106,10 +115,9 @@ public class CoyoteWriter extends PrintWriter {
         // so the stream can be reused. We close ob.
         try {
             ob.close();
-        } catch (IOException ex ) {
-            // Ignore
+        } catch (IOException ioe) {
+            setErrorException(ioe);
         }
-        error = false;
 
     }
 
@@ -130,15 +138,15 @@ public class CoyoteWriter extends PrintWriter {
 
         try {
             ob.write(c);
-        } catch (IOException e) {
-            error = true;
+        } catch (IOException ioe) {
+            setErrorException(ioe);
         }
 
     }
 
 
     @Override
-    public void write(char buf[], int off, int len) {
+    public void write(char[] buf, int off, int len) {
 
         if (error) {
             return;
@@ -146,15 +154,15 @@ public class CoyoteWriter extends PrintWriter {
 
         try {
             ob.write(buf, off, len);
-        } catch (IOException e) {
-            error = true;
+        } catch (IOException ioe) {
+            setErrorException(ioe);
         }
 
     }
 
 
     @Override
-    public void write(char buf[]) {
+    public void write(char[] buf) {
         write(buf, 0, buf.length);
     }
 
@@ -168,8 +176,8 @@ public class CoyoteWriter extends PrintWriter {
 
         try {
             ob.write(s, off, len);
-        } catch (IOException e) {
-            error = true;
+        } catch (IOException ioe) {
+            setErrorException(ioe);
         }
 
     }
@@ -225,7 +233,7 @@ public class CoyoteWriter extends PrintWriter {
 
 
     @Override
-    public void print(char s[]) {
+    public void print(char[] s) {
         write(s);
     }
 
@@ -294,7 +302,7 @@ public class CoyoteWriter extends PrintWriter {
 
 
     @Override
-    public void println(char c[]) {
+    public void println(char[] c) {
         print(c);
         println();
     }
@@ -314,4 +322,8 @@ public class CoyoteWriter extends PrintWriter {
     }
 
 
+    private void setErrorException(Exception e) {
+        error = true;
+        ob.setErrorException(e);
+    }
 }

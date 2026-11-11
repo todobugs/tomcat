@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.catalina.storeconfig;
 
 import java.io.PrintWriter;
@@ -27,40 +26,46 @@ import org.apache.catalina.LifecycleListener;
 import org.apache.catalina.Realm;
 import org.apache.catalina.Valve;
 import org.apache.catalina.core.StandardHost;
-import org.apache.catalina.ha.ClusterValve;
 
 /**
  * Store server.xml Element Host
  */
 public class StandardHostSF extends StoreFactoryBase {
 
+    private static final Class<?> clusterValveClass;
+    static {
+        Class<?> clazz = null;
+        try {
+            clazz = Class.forName("org.apache.catalina.ha.ClusterValve");
+        } catch (ClassNotFoundException e) {
+            // Expected when clustering JARs are not present
+        }
+        clusterValveClass = clazz;
+    }
+
     /**
-     * Store the specified Host properties and children
-     * (Listener,Alias,Realm,Valve,Cluster, Context)
-     *
-     * @param aWriter
-     *            PrintWriter to which we are storing
-     * @param indent
-     *            Number of spaces to indent this element
-     * @param aHost
-     *            Host whose properties are being stored
-     *
-     * @exception Exception
-     *                if an exception occurs while storing
+     * Constructs a new StandardHostSF instance for storing Host elements in server.xml.
+     */
+    public StandardHostSF() {
+    }
+
+    /**
+     * Store the specified Host properties and children (Listener,Alias,Realm,Valve,Cluster, Context)
+     * <p>
+     * {@inheritDoc}
      */
     @Override
-    public void storeChildren(PrintWriter aWriter, int indent, Object aHost,
-            StoreDescription parentDesc) throws Exception {
+    public void storeChildren(PrintWriter aWriter, int indent, Object aHost, StoreDescription parentDesc)
+            throws Exception {
         if (aHost instanceof StandardHost) {
             StandardHost host = (StandardHost) aHost;
             // Store nested <Listener> elements
-            LifecycleListener listeners[] = host.findLifecycleListeners();
+            LifecycleListener[] listeners = host.findLifecycleListeners();
             storeElementArray(aWriter, indent, listeners);
 
             // Store nested <Alias> elements
-            String aliases[] = host.findAliases();
-            getStoreAppender().printTagArray(aWriter, "Alias", indent + 2,
-                    aliases);
+            String[] aliases = host.findAliases();
+            getStoreAppender().printTagArray(aWriter, "Alias", indent + 2, aliases);
 
             // Store nested <Realm> element
             Realm realm = host.getRealm();
@@ -75,12 +80,13 @@ public class StandardHostSF extends StoreFactoryBase {
             }
 
             // Store nested <Valve> elements
-            Valve valves[] = host.getPipeline().getValves();
-            if(valves != null && valves.length > 0 ) {
-                List<Valve> hostValves = new ArrayList<>() ;
-                for(int i = 0 ; i < valves.length ; i++ ) {
-                    if(!( valves[i] instanceof ClusterValve))
-                        hostValves.add(valves[i]);
+            Valve[] valves = host.getPipeline().getValves();
+            if (valves != null && valves.length > 0) {
+                List<Valve> hostValves = new ArrayList<>();
+                for (Valve valve : valves) {
+                    if (clusterValveClass == null || !clusterValveClass.isInstance(valve)) {
+                        hostValves.add(valve);
+                    }
                 }
                 storeElementArray(aWriter, indent, hostValves.toArray());
             }
@@ -98,7 +104,7 @@ public class StandardHostSF extends StoreFactoryBase {
             }
 
             // store all <Context> elements
-            Container children[] = host.findChildren();
+            Container[] children = host.findChildren();
             storeElementArray(aWriter, indent, children);
         }
     }

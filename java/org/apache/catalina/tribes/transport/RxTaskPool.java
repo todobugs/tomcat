@@ -14,25 +14,21 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.catalina.tribes.transport;
-import java.util.Iterator;
-import java.util.LinkedList;
+
+import java.util.ArrayList;
 import java.util.List;
 
 /**
- * A very simple thread pool class.  The pool size is set at
- * construction time and remains fixed.  Threads are cycled
- * through a FIFO idle queue.
- * @version 1.0
+ * A very simple thread pool class. Threads are cycled through a FIFO idle queue.
  */
 public class RxTaskPool {
 
-    final List<AbstractRxTask> idle = new LinkedList<>();
-    final List<AbstractRxTask> used = new LinkedList<>();
+    final List<AbstractRxTask> idle = new ArrayList<>();
+    final List<AbstractRxTask> used = new ArrayList<>();
 
     final Object mutex = new Object();
-    boolean running = true;
+    volatile boolean running = true;
 
     private int maxTasks;
     private int minTasks;
@@ -40,113 +36,166 @@ public class RxTaskPool {
     private final TaskCreator creator;
 
 
-    public RxTaskPool (int maxTasks, int minTasks, TaskCreator creator) throws Exception {
-        // fill up the pool with worker threads
+    /**
+     * Create a new fixed-size receive task pool.
+     *
+     * @param maxTasks maximum number of tasks in the pool
+     * @param minTasks minimum number of tasks in the pool
+     * @param creator  factory for creating new receive tasks
+     *
+     * @throws Exception if initialization fails
+     */
+    public RxTaskPool(int maxTasks, int minTasks, TaskCreator creator) throws Exception {
         this.maxTasks = maxTasks;
         this.minTasks = minTasks;
         this.creator = creator;
     }
 
+    /**
+     * Configure a receive task by associating it with this pool.
+     *
+     * @param task the task to configure
+     */
     protected void configureTask(AbstractRxTask task) {
         synchronized (task) {
             task.setTaskPool(this);
-//            task.setName(task.getClass().getName() + "[" + inc() + "]");
-//            task.setDaemon(true);
-//            task.setPriority(Thread.MAX_PRIORITY);
-//            task.start();
         }
     }
 
     /**
-     * Find an idle worker thread, if any.  Could return null.
-     * @return a worker
+     * Find an idle worker thread, creating a new one if needed. Blocks until a worker is available.
+     *
+     * @return a worker, or null if the pool has been stopped or the calling thread was interrupted
      */
-    public AbstractRxTask getRxTask()
-    {
+    public AbstractRxTask getRxTask() {
         AbstractRxTask worker = null;
         synchronized (mutex) {
-            while ( worker == null && running ) {
-                if (idle.size() > 0) {
+            while (worker == null && running) {
+                if (!idle.isEmpty()) {
                     try {
                         worker = idle.remove(0);
-                    } catch (java.util.NoSuchElementException x) {
-                        //this means that there are no available workers
-                        worker = null;
+                    } catch (java.util.NoSuchElementException ignore) {
+                        // Should never happen as access to idle is always synchronized on mutex
                     }
-                } else if ( used.size() < this.maxTasks && creator != null) {
+                } else if (used.size() < this.maxTasks && creator != null) {
                     worker = creator.createRxTask();
                     configureTask(worker);
                 } else {
                     try {
                         mutex.wait();
-                    } catch (java.lang.InterruptedException x) {
+                    } catch (InterruptedException x) {
+                        // Restore the interrupt status and stop waiting rather than spin on a wait that would throw
+                        // again immediately
                         Thread.currentThread().interrupt();
+                        return null;
                     }
                 }
-            }//while
-            if ( worker != null ) used.add(worker);
+            }
+            if (worker != null) {
+                used.add(worker);
+            }
         }
         return worker;
     }
 
-    public int available() {
-        return idle.size();
-    }
-
     /**
-     * Called by the worker thread to return itself to the
-     * idle pool.
-     * @param worker The worker
+     * Return the number of idle tasks currently available in the pool.
+     *
+     * @return count of idle tasks
      */
-    public void returnWorker (AbstractRxTask worker) {
-        if ( running ) {
-            synchronized (mutex) {
-                used.remove(worker);
-                //if ( idle.size() < minThreads && !idle.contains(worker)) idle.add(worker);
-                if ( idle.size() < maxTasks && !idle.contains(worker)) idle.add(worker); //let max be the upper limit
-                else {
-                    worker.close();
-                }
-                mutex.notifyAll();
-            }
-        } else {
-            worker.close();
+    public int available() {
+        synchronized (mutex) {
+            return idle.size();
         }
     }
 
+    /**
+     * Called by the worker thread to return itself to the idle pool.
+     *
+     * @param worker The worker
+     */
+    public void returnWorker(AbstractRxTask worker) {
+        synchronized (mutex) {
+            used.remove(worker);
+            if (running && idle.size() < maxTasks && !idle.contains(worker)) {
+                idle.add(worker); // let max be the upper limit
+            } else {
+                worker.close();
+            }
+            mutex.notifyAll();
+        }
+    }
+
+    /**
+     * Return the maximum number of tasks allowed in the pool.
+     *
+     * @return maximum task count
+     */
     public int getMaxThreads() {
         return maxTasks;
     }
 
+    /**
+     * Return the minimum number of tasks maintained in the pool.
+     *
+     * @return minimum task count
+     */
     public int getMinThreads() {
         return minTasks;
     }
 
+    /**
+     * Stop the pool, closing all idle tasks and preventing new tasks from being acquired.
+     */
     public void stop() {
-        running = false;
         synchronized (mutex) {
-            Iterator<AbstractRxTask> i = idle.iterator();
-            while ( i.hasNext() ) {
-                AbstractRxTask worker = i.next();
-                returnWorker(worker);
-                i.remove();
+            running = false;
+            for (AbstractRxTask worker : idle) {
+                worker.close();
             }
+            idle.clear();
+            // Wake up any thread parked in getRxTask() so that it sees that
+            // running is false and returns rather than waiting forever
+            mutex.notifyAll();
         }
     }
 
+    /**
+     * Set the maximum number of tasks allowed in the pool.
+     *
+     * @param maxThreads maximum task count
+     */
     public void setMaxTasks(int maxThreads) {
         this.maxTasks = maxThreads;
     }
 
+    /**
+     * Set the minimum number of tasks maintained in the pool.
+     *
+     * @param minThreads minimum task count
+     */
     public void setMinTasks(int minThreads) {
         this.minTasks = minThreads;
     }
 
+    /**
+     * Return the task creator factory used by this pool.
+     *
+     * @return the task creator
+     */
     public TaskCreator getTaskCreator() {
         return this.creator;
     }
 
-    public static interface TaskCreator  {
-        public AbstractRxTask createRxTask();
+    /**
+     * Factory interface for creating receive tasks.
+     */
+    public interface TaskCreator {
+        /**
+         * Creates a new receive task.
+         *
+         * @return a new receive task instance
+         */
+        AbstractRxTask createRxTask();
     }
 }

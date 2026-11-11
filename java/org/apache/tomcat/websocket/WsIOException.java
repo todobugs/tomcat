@@ -21,20 +21,28 @@ import java.io.IOException;
 import javax.websocket.CloseReason;
 
 /**
- * Allows the WebSocket implementation to throw an {@link IOException} that
- * includes a {@link CloseReason} specific to the error that can be passed back
- * to the client.
+ * Allows the WebSocket implementation to throw an {@link IOException} that includes a {@link CloseReason} specific to
+ * the error that can be passed back to the client.
  */
 public class WsIOException extends IOException {
 
     private static final long serialVersionUID = 1L;
 
+    /** The WebSocket close reason. */
     private final CloseReason closeReason;
 
+    /**
+     * Creates a WebSocket I/O exception with the given close reason.
+     * @param closeReason the WebSocket close reason
+     */
     public WsIOException(CloseReason closeReason) {
         this.closeReason = closeReason;
     }
 
+    /**
+     * Returns the WebSocket close reason for this exception.
+     * @return the close reason
+     */
     public CloseReason getCloseReason() {
         return closeReason;
     }

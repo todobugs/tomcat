@@ -16,15 +16,15 @@
  */
 package org.apache.coyote.http2;
 
+import java.net.SocketException;
+import java.net.SocketTimeoutException;
+
 import org.junit.Assert;
 import org.junit.Test;
 
 /**
- * Unit tests for Section 6.5 of
- * <a href="https://tools.ietf.org/html/rfc7540">RFC 7540</a>.
- * <br>
- * The order of tests in this class is aligned with the order of the
- * requirements in the RFC.
+ * Unit tests for Section 6.5 of <a href="https://tools.ietf.org/html/rfc7540">RFC 7540</a>. <br>
+ * The order of tests in this class is aligned with the order of the requirements in the RFC.
  */
 public class TestHttp2Section_6_5 extends Http2TestBase {
 
@@ -34,9 +34,53 @@ public class TestHttp2Section_6_5 extends Http2TestBase {
         // HTTP2 upgrade
         http2Connect();
 
-        sendSettings(0, true, new SettingValue(1,1));
+        sendSettings(0, true, new SettingValue(1, 1));
 
         handleGoAwayResponse(1, Http2Error.FRAME_SIZE_ERROR);
+    }
+
+
+    @Test
+    public void testSettingsFrameEmptyAckFlood() throws Exception {
+        // HTTP2 upgrade
+        http2Connect();
+
+        sendSimpleGetRequest(3);
+        readSimpleGetResponse();
+        output.clearTrace();
+
+        /*
+         * Unsolicited, empty SETTINGS ACK frames. The server may close the connection before all of the frames (or the
+         * following GET request) have been written so a write failure is not an error. The GOAWAY check below is what
+         * determines the test result.
+         */
+        try {
+            for (int i = 0; i < 100; i++) {
+                sendSettings(0, true);
+            }
+
+            sendSimpleGetRequest(5);
+        } catch (SocketException se) {
+            // Expected if the server closed the connection early
+        }
+
+        /*
+         * Expect the server to close the connection with ENHANCE_YOUR_CALM. The response to the second GET request may
+         * or may not be written first so read frames until the GOAWAY arrives.
+         */
+        s.setSoTimeout(5000);
+        String expected = "0-Goaway-[";
+        try {
+            while (!output.getTrace().contains(expected)) {
+                parser.readFrame();
+            }
+        } catch (SocketTimeoutException ste) {
+            Assert.fail("No GOAWAY received after 100 empty SETTINGS ACK frames. Frames seen: [" + output.getTrace() +
+                    "]");
+        }
+
+        String trace = output.getTrace();
+        Assert.assertTrue(trace, trace.contains("]-[" + Http2Error.ENHANCE_YOUR_CALM.getCode() + "]-["));
     }
 
 
@@ -46,7 +90,7 @@ public class TestHttp2Section_6_5 extends Http2TestBase {
         http2Connect();
 
         sendPriority(3, 0, 15);
-        sendSettings(3, true, new SettingValue(1,1));
+        sendSettings(3, true, new SettingValue(1, 1));
 
         handleGoAwayResponse(1);
     }
@@ -81,7 +125,7 @@ public class TestHttp2Section_6_5 extends Http2TestBase {
         // HTTP2 upgrade
         http2Connect();
 
-        sendSettings(0, false, new SettingValue(0x2,0x2));
+        sendSettings(0, false, new SettingValue(0x2, 0x2));
 
         handleGoAwayResponse(1);
     }
@@ -92,7 +136,7 @@ public class TestHttp2Section_6_5 extends Http2TestBase {
         // HTTP2 upgrade
         http2Connect();
 
-        sendSettings(0, false, new SettingValue(0x4,1 << 31));
+        sendSettings(0, false, new SettingValue(0x4, 1 << 31));
 
         handleGoAwayResponse(1, Http2Error.FLOW_CONTROL_ERROR);
     }
@@ -103,7 +147,7 @@ public class TestHttp2Section_6_5 extends Http2TestBase {
         // HTTP2 upgrade
         http2Connect();
 
-        sendSettings(0, false, new SettingValue(0x5,1 << 31));
+        sendSettings(0, false, new SettingValue(0x5, 1 << 31));
 
         handleGoAwayResponse(1);
     }
@@ -114,14 +158,42 @@ public class TestHttp2Section_6_5 extends Http2TestBase {
         // HTTP2 upgrade
         http2Connect();
 
-        sendSettings(0, false, new SettingValue(0xFF,0xFF));
+        sendSettings(0, false, new SettingValue(0xFF, 0xFF));
 
         // Ack
-        parser.readFrame(true);
+        parser.readFrame();
 
-        Assert.assertTrue(output.getTrace(), output.getTrace().startsWith(
-                "0-Settings-Ack"));
+        Assert.assertTrue(output.getTrace(), output.getTrace().startsWith("0-Settings-Ack"));
     }
 
     // delayed ACKs. Requires an API (TBD) for applications to send settings.
+
+
+    @Test
+    public void testSettingsLargeHeaderTableSize() throws Exception {
+        // RFC 9113, section 6.5.2: SETTINGS_HEADER_TABLE_SIZE has no protocol-defined upper
+        // bound. The encoder selects any size equal to or less than the advertised value.
+        // A value above the implementation limit must be accepted, not rejected.
+        http2Connect();
+
+        sendSettings(0, false, new SettingValue(0x1, 65537));
+
+        parser.readFrame();
+
+        Assert.assertTrue(output.getTrace(), output.getTrace().startsWith("0-Settings-Ack"));
+    }
+
+
+    @Test
+    public void testSettingsMaxUnsignedHeaderTableSize() throws Exception {
+        // RFC 9113, section 6.5.2: any value up to 2^32-1 is valid for
+        // SETTINGS_HEADER_TABLE_SIZE. The maximum unsigned 32-bit value must be accepted.
+        http2Connect();
+
+        sendSettings(0, false, new SettingValue(0x1, 0xFFFFFFFFL));
+
+        parser.readFrame();
+
+        Assert.assertTrue(output.getTrace(), output.getTrace().startsWith("0-Settings-Ack"));
+    }
 }

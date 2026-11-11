@@ -18,37 +18,93 @@ package org.apache.catalina.tribes.group.interceptors;
 
 import java.util.concurrent.atomic.AtomicLong;
 
+/**
+ * MBean interface for managing the ThroughputInterceptor.
+ */
 public interface ThroughputInterceptorMBean {
 
-    public int getOptionFlag();
+    /**
+     * Returns the option flag used to determine if this interceptor should process a message.
+     * @return the option flag
+     */
+    int getOptionFlag();
 
-    // Attributes
-    public int getInterval();
+    /**
+     * Returns the reporting interval in milliseconds.
+     * @return the interval
+     */
+    int getInterval();
 
-    public void setInterval(int interval);
+    /**
+     * Sets the reporting interval in milliseconds.
+     * @param interval the interval
+     */
+    void setInterval(int interval);
 
-    // stats
-    public double getLastCnt();
+    /**
+     * Returns the last message count.
+     * @return the last count
+     */
+    double getLastCnt();
 
-    public double getMbAppTx();
+    /**
+     * Returns the cumulative amount of data transmitted at the application layer, in MB.
+     * @return the amount in MB
+     */
+    double getMbAppTx();
 
-    public double getMbRx();
+    /**
+     * Returns the cumulative amount of data received, in MB.
+     * @return the amount in MB
+     */
+    double getMbRx();
 
-    public double getMbTx();
+    /**
+     * Returns the cumulative amount of data transmitted, in MB.
+     * @return the amount in MB
+     */
+    double getMbTx();
 
-    public AtomicLong getMsgRxCnt();
+    /**
+     * Returns the received message count.
+     * @return the count
+     */
+    AtomicLong getMsgRxCnt();
 
-    public AtomicLong getMsgTxCnt();
+    /**
+     * Returns the transmitted message count.
+     * @return the count
+     */
+    AtomicLong getMsgTxCnt();
 
-    public AtomicLong getMsgTxErr();
+    /**
+     * Returns the transmit error count.
+     * @return the count
+     */
+    AtomicLong getMsgTxErr();
 
-    public long getRxStart();
+    /**
+     * Returns the receive start timestamp.
+     * @return the timestamp
+     */
+    long getRxStart();
 
-    public double getTimeTx();
+    /**
+     * Returns the accumulated total transmit time in seconds.
+     * @return the time in seconds
+     */
+    double getTimeTx();
 
-    public long getTxStart();
+    /**
+     * Returns the transmit start timestamp.
+     * @return the timestamp
+     */
+    long getTxStart();
 
-    // Operations
-    public void report(double timeTx);
+    /**
+     * Reports throughput statistics.
+     * @param timeTx the transmit time
+     */
+    void report(double timeTx);
 
 }

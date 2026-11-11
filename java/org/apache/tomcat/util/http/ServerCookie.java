@@ -22,27 +22,31 @@ import org.apache.tomcat.util.buf.MessageBytes;
 
 
 /**
- *  Server-side cookie representation.
- *  Allows recycling and uses MessageBytes as low-level
- *  representation ( and thus the byte -&gt; char conversion can be delayed
- *  until we know the charset ).
- *
- *  Tomcat.core uses this recyclable object to represent cookies,
- *  and the facade will convert it to the external representation.
+ * Server-side cookie representation. Allows recycling and uses MessageBytes as low-level representation ( and thus the
+ * byte -&gt; char conversion can be delayed until we know the charset ).
+ * <p>
+ * Tomcat.core uses this recyclable object to represent cookies, and the facade will convert it to the external
+ * representation.
  */
 public class ServerCookie implements Serializable {
 
     private static final long serialVersionUID = 1L;
 
     // Version 0 (Netscape) attributes
-    private final MessageBytes name=MessageBytes.newInstance();
-    private final MessageBytes value=MessageBytes.newInstance();
+    /**
+     * The cookie name.
+     */
+    private final MessageBytes name = MessageBytes.newInstance();
+    /**
+     * The cookie value.
+     */
+    private final MessageBytes value = MessageBytes.newInstance();
     // Expires - Not stored explicitly. Generated from Max-Age (see V1)
-    private final MessageBytes path=MessageBytes.newInstance();
-    private final MessageBytes domain=MessageBytes.newInstance();
+    private final MessageBytes path = MessageBytes.newInstance();
+    private final MessageBytes domain = MessageBytes.newInstance();
 
     // Version 1 (RFC2109) attributes
-    private final MessageBytes comment=MessageBytes.newInstance();
+    private final MessageBytes comment = MessageBytes.newInstance();
     private int version = 0;
 
     // Note: Servlet Spec =< 3.0 only refers to Netscape and RFC2109, not RFC2965
@@ -52,17 +56,23 @@ public class ServerCookie implements Serializable {
     // Discard - implied by maxAge <0
     // Port
 
+    /**
+     * Creates a new empty ServerCookie instance.
+     */
     public ServerCookie() {
         // NOOP
     }
 
+    /**
+     * Resets this cookie's name and value so it can be reused.
+     */
     public void recycle() {
         name.recycle();
         value.recycle();
         comment.recycle();
         path.recycle();
         domain.recycle();
-        version=0;
+        version = 0;
     }
 
     public MessageBytes getComment() {
@@ -77,10 +87,20 @@ public class ServerCookie implements Serializable {
         return path;
     }
 
+    /**
+     * Returns the name of this cookie as a {@link MessageBytes} object.
+     *
+     * @return the cookie name
+     */
     public MessageBytes getName() {
         return name;
     }
 
+    /**
+     * Returns the value of this cookie as a {@link MessageBytes} object.
+     *
+     * @return the cookie value
+     */
     public MessageBytes getValue() {
         return value;
     }
@@ -98,8 +118,7 @@ public class ServerCookie implements Serializable {
 
     @Override
     public String toString() {
-        return "Cookie " + getName() + "=" + getValue() + " ; "
-            + getVersion() + " " + getPath() + " " + getDomain();
+        return "Cookie " + getName() + "=" + getValue() + " ; " + getVersion() + " " + getPath() + " " + getDomain();
     }
 }
 

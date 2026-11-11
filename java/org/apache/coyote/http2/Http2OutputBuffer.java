@@ -24,6 +24,10 @@ import org.apache.coyote.http11.HttpOutputBuffer;
 import org.apache.coyote.http11.OutputFilter;
 import org.apache.coyote.http2.Stream.StreamOutputBuffer;
 
+/**
+ * HTTP/2 output buffer that wraps a chain of {@link OutputFilter} instances and delegates to a
+ * {@link StreamOutputBuffer}.
+ */
 public class Http2OutputBuffer implements HttpOutputBuffer {
 
     private final Response coyoteResponse;
@@ -31,13 +35,11 @@ public class Http2OutputBuffer implements HttpOutputBuffer {
 
 
     /**
-     * Add a filter at the start of the existing processing chain. Subsequent
-     * calls to the {@link HttpOutputBuffer} methods of this object will be
-     * passed to the filter. If appropriate, the filter will then call the same
-     * method on the next HttpOutputBuffer in the chain until the call reaches
-     * the StreamOutputBuffer.
+     * Add a filter at the start of the existing processing chain. Subsequent calls to the {@link HttpOutputBuffer}
+     * methods of this object will be passed to the filter. If appropriate, the filter will then call the same method on
+     * the next HttpOutputBuffer in the chain until the call reaches the StreamOutputBuffer.
      *
-     * @param filter    The filter to add to the start of the processing chain
+     * @param filter The filter to add to the start of the processing chain
      */
     public void addFilter(OutputFilter filter) {
         filter.setBuffer(next);
@@ -45,6 +47,12 @@ public class Http2OutputBuffer implements HttpOutputBuffer {
     }
 
 
+    /**
+     * Creates the output buffer.
+     *
+     * @param coyoteResponse       The Coyote response
+     * @param streamOutputBuffer   The underlying stream output buffer
+     */
     public Http2OutputBuffer(Response coyoteResponse, StreamOutputBuffer streamOutputBuffer) {
         this.coyoteResponse = coyoteResponse;
         this.next = streamOutputBuffer;
@@ -54,7 +62,7 @@ public class Http2OutputBuffer implements HttpOutputBuffer {
     @Override
     public int doWrite(ByteBuffer chunk) throws IOException {
         if (!coyoteResponse.isCommitted()) {
-            coyoteResponse.sendHeaders();
+            coyoteResponse.commit();
         }
         return next.doWrite(chunk);
     }

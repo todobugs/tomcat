@@ -25,17 +25,21 @@ import java.nio.charset.StandardCharsets;
 import javax.websocket.CloseReason.CloseCode;
 
 /**
- * A client for testing Websocket behavior that differs from standard client
- * behavior.
+ * A client for testing Websocket behavior that differs from standard client behavior.
  */
 public class TesterWsClient {
 
-    private static final byte[] maskingKey = new byte[] { 0x12, 0x34, 0x56,
-            0x78 };
+    private static final byte[] maskingKey = new byte[] { 0x12, 0x34, 0x56, 0x78 };
+    private static final String DEFAULT_KEY_HEADER_VALUE = "OEvAoAKn5jsuqv2/YJ1Wfg==";
 
     private final Socket socket;
+    private final String keyHeaderValue;
 
     public TesterWsClient(String host, int port) throws Exception {
+        this(host, port, DEFAULT_KEY_HEADER_VALUE);
+    }
+
+    public TesterWsClient(String host, int port, String keyHeaderValue) throws Exception {
         this.socket = new Socket(host, port);
         // Set read timeout in case of failure so test doesn't hang
         socket.setSoTimeout(2000);
@@ -43,6 +47,7 @@ public class TesterWsClient {
         // TODO: Hoping this causes writes to wait for a TCP ACK for TCP RST
         // test cases but I'm not sure?
         socket.setTcpNoDelay(true);
+        this.keyHeaderValue = keyHeaderValue;
     }
 
     public void httpUpgrade(String path) throws IOException {
@@ -67,19 +72,20 @@ public class TesterWsClient {
         write(createFrame(true, 8, codeBytes));
     }
 
-    private void readUpgradeResponse() throws IOException {
-        BufferedReader in = new BufferedReader(new InputStreamReader(
-                socket.getInputStream()));
+    public int readUpgradeResponse() throws IOException {
+        BufferedReader in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
         String line = in.readLine();
+        // line expected to be "HTTP/1.1 nnn "
+        int result = Integer.parseInt(line.substring(9, 12));
         while (line != null && !line.isEmpty()) {
             line = in.readLine();
         }
+        return result;
     }
 
     public void closeSocket() throws IOException {
-        // Enable SO_LINGER to ensure close() only returns when TCP closing
-        // handshake completes
-        socket.setSoLinger(true, 65535);
+        // Enable SO_LINGER to ensure close() only returns when TCP closing handshake completes (1 hour)
+        socket.setSoLinger(true, 3600);
         socket.close();
     }
 
@@ -92,17 +98,19 @@ public class TesterWsClient {
         socket.close();
     }
 
-    private void write(byte[] bytes) throws IOException {
+    public int read(byte[] bytes) throws IOException {
+        return socket.getInputStream().read(bytes);
+    }
+
+    public void write(byte[] bytes) throws IOException {
         socket.getOutputStream().write(bytes);
         socket.getOutputStream().flush();
     }
 
-    private static String createUpgradeRequest(String path) {
-        String[] upgradeRequestLines = { "GET " + path + " HTTP/1.1",
-                "Connection: Upgrade", "Host: localhost:8080",
-                "Origin: localhost:8080",
-                "Sec-WebSocket-Key: OEvAoAKn5jsuqv2/YJ1Wfg==",
-                "Sec-WebSocket-Version: 13", "Upgrade: websocket" };
+    public String createUpgradeRequest(String path) {
+        String[] upgradeRequestLines = { "GET " + path + " HTTP/1.1", "Connection: Upgrade", "Host: localhost:8080",
+                "Origin: localhost:8080", "Sec-WebSocket-Key: " + keyHeaderValue, "Sec-WebSocket-Version: 13",
+                "Upgrade: websocket" };
         StringBuffer sb = new StringBuffer();
         for (String line : upgradeRequestLines) {
             sb.append(line);

@@ -16,31 +16,82 @@
  */
 package org.apache.catalina.tribes.group.interceptors;
 
+/**
+ * MBean interface for MessageDispatchInterceptor.
+ */
 public interface MessageDispatchInterceptorMBean {
 
-    public int getOptionFlag();
+    /**
+     * Get the option flag.
+     * @return the option flag
+     */
+    int getOptionFlag();
 
-    public boolean isAlwaysSend();
+    /**
+     * Check if always send is enabled.
+     * @return whether always send is enabled
+     */
+    boolean isAlwaysSend();
 
-    public void setAlwaysSend(boolean alwaysSend);
+    /**
+     * Set always send.
+     * @param alwaysSend whether to always send
+     */
+    void setAlwaysSend(boolean alwaysSend);
 
-    public long getMaxQueueSize();
+    /**
+     * Get the maximum queue size.
+     * @return the maximum queue size
+     */
+    long getMaxQueueSize();
 
-    public long getCurrentSize();
+    /**
+     * Get the current queue size.
+     * @return the current queue size
+     */
+    long getCurrentSize();
 
-    public long getKeepAliveTime();
+    /**
+     * Get the keep alive time.
+     * @return the keep alive time
+     */
+    long getKeepAliveTime();
 
-    public int getMaxSpareThreads();
+    /**
+     * Get the maximum spare threads.
+     * @return the maximum spare threads
+     */
+    int getMaxSpareThreads();
 
-    public int getMaxThreads();
+    /**
+     * Get the maximum threads.
+     * @return the maximum threads
+     */
+    int getMaxThreads();
 
     // pool stats
-    public int getPoolSize();
+    /**
+     * Get the pool size.
+     * @return the pool size
+     */
+    int getPoolSize();
 
-    public int getActiveCount();
+    /**
+     * Get the active count.
+     * @return the active count
+     */
+    int getActiveCount();
 
-    public long getTaskCount();
+    /**
+     * Get the task count.
+     * @return the task count
+     */
+    long getTaskCount();
 
-    public long getCompletedTaskCount();
+    /**
+     * Get the completed task count.
+     * @return the completed task count
+     */
+    long getCompletedTaskCount();
 
 }

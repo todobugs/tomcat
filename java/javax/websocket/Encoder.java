@@ -23,9 +23,17 @@ import java.nio.ByteBuffer;
 
 public interface Encoder {
 
-    abstract void init(EndpointConfig endpointConfig);
+    /**
+     * Initialise the encoder.
+     *
+     * @param endpointConfig The end-point configuration
+     */
+    void init(EndpointConfig endpointConfig);
 
-    abstract void destroy();
+    /**
+     * Destroy the decoder.
+     */
+    void destroy();
 
     interface Text<T> extends Encoder {
 
@@ -34,8 +42,7 @@ public interface Encoder {
 
     interface TextStream<T> extends Encoder {
 
-        void encode(T object, Writer writer)
-                throws EncodeException, IOException;
+        void encode(T object, Writer writer) throws EncodeException, IOException;
     }
 
     interface Binary<T> extends Encoder {
@@ -45,7 +52,6 @@ public interface Encoder {
 
     interface BinaryStream<T> extends Encoder {
 
-        void encode(T object, OutputStream os)
-                throws EncodeException, IOException;
+        void encode(T object, OutputStream os) throws EncodeException, IOException;
     }
 }

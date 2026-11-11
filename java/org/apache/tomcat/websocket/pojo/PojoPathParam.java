@@ -22,12 +22,10 @@ import org.apache.tomcat.util.res.StringManager;
 import org.apache.tomcat.websocket.Util;
 
 /**
- * Stores the parameter type and name for a parameter that needs to be passed to
- * an onXxx method of {@link javax.websocket.Endpoint}. The name is only present
- * for parameters annotated with
- * {@link javax.websocket.server.PathParam}. For the
- * {@link javax.websocket.Session} and {@link java.lang.Throwable} parameters,
- * {@link #getName()} will always return <code>null</code>.
+ * Stores the parameter type and name for a parameter that needs to be passed to an onXxx method of
+ * {@link javax.websocket.Endpoint}. The name is only present for parameters annotated with
+ * {@link javax.websocket.server.PathParam}; for all other parameters, {@link #getName()} will always return
+ * <code>null</code>.
  */
 public class PojoPathParam {
 
@@ -37,7 +35,15 @@ public class PojoPathParam {
     private final String name;
 
 
-    public PojoPathParam(Class<?> type, String name)  throws DeploymentException {
+    /**
+     * Create a path parameter.
+     *
+     * @param type Parameter type
+     * @param name Parameter name (may be {@code null} for non-{@code @PathParam} parameters)
+     *
+     * @throws DeploymentException If the type is not valid for a {@code @PathParam} parameter
+     */
+    public PojoPathParam(Class<?> type, String name) throws DeploymentException {
         if (name != null) {
             // Annotated as @PathParam so validate type
             validateType(type);
@@ -47,11 +53,21 @@ public class PojoPathParam {
     }
 
 
+    /**
+     * Return the type of the parameter.
+     *
+     * @return Parameter type
+     */
     public Class<?> getType() {
         return type;
     }
 
 
+    /**
+     * Return the name of the parameter.
+     *
+     * @return Parameter name or {@code null} for non-{@code @PathParam} parameters
+     */
     public String getName() {
         return name;
     }

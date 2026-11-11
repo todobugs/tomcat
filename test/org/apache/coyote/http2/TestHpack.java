@@ -16,6 +16,7 @@
  */
 package org.apache.coyote.http2;
 
+import java.lang.reflect.Field;
 import java.nio.ByteBuffer;
 
 import org.junit.Assert;
@@ -32,11 +33,26 @@ public class TestHpack {
         headers.setValue(":status").setString("200");
         headers.setValue("header2").setString("value2");
         ByteBuffer output = ByteBuffer.allocate(512);
-        HpackEncoder encoder = new HpackEncoder();
+        HpackEncoder encoder = new HpackEncoder(new HpackEncoder.HpackHeaderFunction() {
+
+            @Override
+            public boolean shouldUseIndexing(String header, String value) {
+                return true;
+            }
+
+            @Override
+            public boolean shouldUseHuffman(String header, String value) {
+                return true;
+            }
+
+            @Override
+            public boolean shouldUseHuffman(String header) {
+                return true;
+            }
+        });
         encoder.encode(headers, output);
         output.flip();
-        // Size is supposed to be 33 without huffman, or 27 with it
-        // TODO: use the HpackHeaderFunction to enable huffman predictably
+        // Size is 27 with Huffman encoding
         Assert.assertEquals(27, output.remaining());
         output.clear();
         encoder.encode(headers, output);
@@ -70,19 +86,65 @@ public class TestHpack {
         Assert.assertEquals("value2", headers2.getHeader("header2"));
     }
 
+
+    @Test
+    public void testEncodeAfterEntryPositionCounterRollover() throws Exception {
+        // Test for correct index computation for dynamic table entries after
+        // the position counter roll-over prevention logic is triggered. The
+        // roll-over requires ~2^31 insertions to trigger organically so
+        // reflection is used to move the counter close to the roll-over point.
+        MimeHeaders headers = new MimeHeaders();
+        headers.setValue("header1").setString("value1");
+        headers.setValue("header2").setString("value2");
+        ByteBuffer output = ByteBuffer.allocate(512);
+        HpackEncoder encoder = new HpackEncoder();
+
+        Field field = HpackEncoder.class.getDeclaredField("entryPositionCounter");
+        field.setAccessible(true);
+        // The insertion of header2 below pushes the counter to
+        // Integer.MAX_VALUE which triggers the roll-over prevention logic
+        field.setInt(encoder, Integer.MAX_VALUE - 2);
+
+        HpackDecoder decoder = new HpackDecoder();
+        MimeHeaders headers2 = new MimeHeaders();
+        decoder.setHeaderEmitter(new HeadersListener(headers2));
+
+        // Encode and decode. Both dynamic tables now contain the two entries
+        // with header2 at index 62 and header1 at index 63
+        encoder.encode(headers, output);
+        output.flip();
+        decoder.decode(output);
+        output.clear();
+
+        // Re-send the headers. The encoder should reference the dynamic table
+        // entries using the same indexes the decoder has for them
+        encoder.encode(headers, output);
+        output.flip();
+        headers2.recycle();
+        decoder.decode(output);
+        output.clear();
+
+        Assert.assertEquals("value1", headers2.getHeader("header1"));
+        Assert.assertEquals("value2", headers2.getHeader("header2"));
+    }
+
     private static class HeadersListener implements HpackDecoder.HeaderEmitter {
         private final MimeHeaders headers;
-        public HeadersListener(MimeHeaders headers) {
+
+        HeadersListener(MimeHeaders headers) {
             this.headers = headers;
         }
+
         @Override
         public void emitHeader(String name, String value) {
             headers.setValue(name).setString(value);
         }
+
         @Override
         public void setHeaderException(StreamException streamException) {
             // NO-OP
         }
+
         @Override
         public void validateHeaders() throws StreamException {
             // NO-OP
@@ -100,7 +162,7 @@ public class TestHpack {
             // Skip the control characters except VTAB
             if (i == 9 || i > 31 && i < 127 || i > 127) {
                 try {
-                    doTestHeaderValueBug60451("foo" + Character.toString((char) i)  + "bar");
+                    doTestHeaderValueBug60451("foo" + Character.toString((char) i) + "bar");
                 } catch (Exception e) {
                     e.printStackTrace();
                     Assert.fail(e.getMessage() + "[" + i + "]");
@@ -109,7 +171,7 @@ public class TestHpack {
         }
     }
 
-    @Test(expected=HpackException.class)
+    @Test(expected = HpackException.class)
     public void testExcessiveStringLiteralPadding() throws Exception {
         MimeHeaders headers = new MimeHeaders();
         headers.setValue("X-test").setString("foobar");
@@ -142,5 +204,69 @@ public class TestHpack {
         decoder.setHeaderEmitter(new HeadersListener(headers2));
         decoder.decode(output);
         Assert.assertEquals(headerValue, headers2.getHeader(headerName));
+    }
+
+
+    @Test
+    public void testDecodeIntegerMaxValue() throws HpackException {
+        ByteBuffer bb = ByteBuffer.allocate(9);
+        bb.put((byte) 255);
+        bb.put((byte) 254);
+        bb.put((byte) 255);
+        bb.put((byte) 255);
+        bb.put((byte) 255);
+        bb.put((byte) 7);
+        bb.position(0);
+
+        Assert.assertEquals(Integer.MAX_VALUE,Hpack.decodeInteger(bb, 1));
+    }
+
+
+    @Test(expected = HpackException.class)
+    public void testDecodeIntegerMaxValuePlus1() throws HpackException {
+        ByteBuffer bb = ByteBuffer.allocate(9);
+        bb.put((byte) 255);
+        bb.put((byte) 255);
+        bb.put((byte) 255);
+        bb.put((byte) 255);
+        bb.put((byte) 255);
+        bb.put((byte) 7);
+        bb.position(0);
+
+        Hpack.decodeInteger(bb, 1);
+    }
+
+    @Test(expected = HpackException.class)
+    public void testDecodeIntegerOverflow() throws HpackException {
+        ByteBuffer bb = ByteBuffer.allocate(9);
+        bb.put((byte) 255);
+        bb.put((byte) 254);
+        bb.put((byte) 255);
+        bb.put((byte) 255);
+        bb.put((byte) 255);
+        bb.put((byte) 15);
+        bb.position(0);
+
+        Hpack.decodeInteger(bb, 1);
+    }
+
+    @Test(expected = HpackException.class)
+    public void testDecodeIntegerZeroValues() throws HpackException {
+        ByteBuffer bb = ByteBuffer.allocate(12);
+        bb.put((byte) 255);
+        bb.put((byte) 128);
+        bb.put((byte) 128);
+        bb.put((byte) 128);
+        bb.put((byte) 128);
+        bb.put((byte) 128);
+        bb.put((byte) 128);
+        bb.put((byte) 128);
+        bb.put((byte) 128);
+        bb.put((byte) 128);
+        bb.put((byte) 128);
+        bb.put((byte) 128);
+        bb.position(0);
+
+        Hpack.decodeInteger(bb, 1);
     }
 }

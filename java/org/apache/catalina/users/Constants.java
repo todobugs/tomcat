@@ -14,20 +14,25 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
-
 package org.apache.catalina.users;
 
 
 /**
  * Manifest constants for this Java package.
  *
- *
- * @author Craig R. McClanahan
  * @since 4.1
  */
 public final class Constants {
 
+    /**
+     * Prevents instantiation.
+     */
+    private Constants() {
+    }
+
+    /**
+     * The fully qualified name of this package.
+     */
     public static final String Package = "org.apache.catalina.users";
 
 }

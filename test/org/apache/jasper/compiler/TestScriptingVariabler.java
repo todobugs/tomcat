@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.jasper.compiler;
 
 import java.io.IOException;
@@ -60,10 +59,7 @@ public class TestScriptingVariabler extends TomcatBaseTest {
          */
         @Override
         public VariableInfo[] getVariableInfo(TagData data) {
-            return new VariableInfo[] {
-                new VariableInfo("Test", "java.lang.String", true,
-                    VariableInfo.AT_END)
-            };
+            return new VariableInfo[] { new VariableInfo("Test", "java.lang.String", true, VariableInfo.AT_END) };
         }
     }
 

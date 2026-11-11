@@ -16,6 +16,7 @@
 package org.apache.catalina.valves;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 
 import javax.servlet.ServletContext;
@@ -23,6 +24,10 @@ import javax.servlet.SessionCookieConfig;
 import javax.servlet.http.Cookie;
 
 import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.junit.runners.Parameterized;
+import org.junit.runners.Parameterized.Parameter;
+import org.junit.runners.Parameterized.Parameters;
 
 import org.apache.catalina.Context;
 import org.apache.catalina.Valve;
@@ -32,157 +37,80 @@ import org.apache.catalina.core.StandardPipeline;
 import org.easymock.EasyMock;
 import org.easymock.IMocksControl;
 
+@RunWith(Parameterized.class)
 public class TestLoadBalancerDrainingValve {
 
-    static class MockResponse extends Response {
-        private List<Cookie> cookies;
-        @Override
-        public boolean isCommitted() {
-            return false;
-        }
-        @Override
-        public void addCookie(Cookie cookie)
-        {
-            if(null == cookies)
-                cookies = new ArrayList<>(1);
-            cookies.add(cookie);
-        }
-        @Override
-        public List<Cookie> getCookies() {
-            return cookies;
-        }
-    }
+    @Parameters(name = "{index}: activation[{0}], validSessionID[{1}], expectInvokeNext[{2}], enableIgnore[{3}], " +
+            "leadingSlashes[{4}], queryString[{5}], sessionState[{8}]]")
+    public static Collection<Object[]> parameters() {
 
-    static class CookieConfig implements SessionCookieConfig {
+        String[] jkActivations = new String[] { "ACT", "DIS" };
+        Boolean[] booleans = new Boolean[] { Boolean.TRUE, Boolean.FALSE };
+        Integer[] integers = new Integer[] { Integer.valueOf(0), Integer.valueOf(1), Integer.valueOf(2) };
+        String[] queryStrings = new String[] { null, "foo=bar" };
+        // The states with a missing requested session id or a missing context
+        // are only meaningful for the draining of a request with an invalid
+        // session
+        String[] sessionStates = new String[] { "idPresent", "idAbsent", "contextAbsent" };
 
-        private String name;
-        private String domain;
-        private String path;
-        private String comment;
-        private boolean httpOnly;
-        private boolean secure;
-        private int maxAge;
-
-        @Override
-        public String getName() {
-            return name;
-        }
-        @Override
-        public void setName(String name) {
-            this.name = name;
-        }
-        @Override
-        public String getDomain() {
-            return domain;
-        }
-        @Override
-        public void setDomain(String domain) {
-            this.domain = domain;
-        }
-        @Override
-        public String getPath() {
-            return path;
-        }
-        @Override
-        public void setPath(String path) {
-            this.path = path;
-        }
-        @Override
-        public String getComment() {
-            return comment;
-        }
-        @Override
-        public void setComment(String comment) {
-            this.comment = comment;
-        }
-        @Override
-        public boolean isHttpOnly() {
-            return httpOnly;
-        }
-        @Override
-        public void setHttpOnly(boolean httpOnly) {
-            this.httpOnly = httpOnly;
-        }
-        @Override
-        public boolean isSecure() {
-            return secure;
-        }
-        @Override
-        public void setSecure(boolean secure) {
-            this.secure = secure;
-        }
-        @Override
-        public int getMaxAge() {
-            return maxAge;
-        }
-        @Override
-        public void setMaxAge(int maxAge) {
-            this.maxAge = maxAge;
-        }
-    }
-
-    // A Cookie subclass that knows how to compare itself to other Cookie objects
-    static class MyCookie extends Cookie {
-        private static final long serialVersionUID = 1L;
-
-        public MyCookie(String name, String value) { super(name, value); }
-
-        @Override
-        public boolean equals(Object o) {
-            if(!(o instanceof MyCookie)) {
-                return false;
+        List<Object[]> parameterSets = new ArrayList<>();
+        for (String jkActivation : jkActivations) {
+            for (Boolean validSessionId : booleans) {
+                for (Boolean enableIgnore : booleans) {
+                    Boolean expectInvokeNext = Boolean.valueOf(
+                            "ACT".equals(jkActivation) || enableIgnore.booleanValue() || validSessionId.booleanValue());
+                    for (Integer leadingSlashes : integers) {
+                        for (String queryString : queryStrings) {
+                            for (Boolean secureRequest : booleans) {
+                                for (Boolean secureSessionConfig : booleans) {
+                                    for (String sessionState : "DIS".equals(jkActivation) &&
+                                            !validSessionId.booleanValue() ? sessionStates : new String[] {
+                                                    "idPresent" }) {
+                                        parameterSets.add(new Object[] { jkActivation, validSessionId,
+                                                expectInvokeNext, enableIgnore, leadingSlashes, queryString,
+                                                secureRequest, secureSessionConfig, sessionState });
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
             }
-
-            MyCookie mc = (MyCookie)o;
-            return mc.getName().equals(this.getName())
-                && mc.getPath().equals(this.getPath())
-                && mc.getValue().equals(this.getValue())
-                && mc.getMaxAge() == this.getMaxAge();
         }
-
-        @Override
-        public int hashCode() {
-            final int prime = 31;
-            int result = 1;
-            result = prime * result + getMaxAge();
-            result = prime * result + ((getName() == null) ? 0 : getName().hashCode());
-            result = prime * result + ((getPath() == null) ? 0 : getPath().hashCode());
-            result = prime * result + ((getValue() == null) ? 0 : getValue().hashCode());
-            return result;
-        }
-
-
-        @Override
-        public String toString() {
-            return "Cookie { name=" + getName() + ", value=" + getValue() + ", path=" + getPath() + ", maxAge=" + getMaxAge() + " }";
-        }
+        return parameterSets;
     }
+
+
+    @Parameter(0)
+    public String jkActivation;
+
+    @Parameter(1)
+    public boolean validSessionId;
+
+    @Parameter(2)
+    public boolean expectInvokeNext;
+
+    @Parameter(3)
+    public boolean enableIgnore;
+
+    @Parameter(4)
+    public Integer leadingSlashes;
+
+    @Parameter(5)
+    public String queryString;
+
+    @Parameter(6)
+    public Boolean secureRequest;
+
+    @Parameter(7)
+    public boolean secureSessionConfig;
+
+    @Parameter(8)
+    public String sessionState;
+
 
     @Test
-    public void testNormalRequest() throws Exception {
-        runValve("ACT", true, true, false, null);
-    }
-
-    @Test
-    public void testDisabledValidSession() throws Exception {
-        runValve("DIS", true, true, false, null);
-    }
-
-    @Test
-    public void testDisabledInvalidSession() throws Exception {
-        runValve("DIS", false, false, false, "foo=bar");
-    }
-
-    @Test
-    public void testDisabledInvalidSessionWithIgnore() throws Exception {
-        runValve("DIS", false, true, true, "foo=bar");
-    }
-
-    private void runValve(String jkActivation,
-                          boolean validSessionId,
-                          boolean expectInvokeNext,
-                          boolean enableIgnore,
-                          String queryString) throws Exception {
+    public void runValve() throws Exception {
         IMocksControl control = EasyMock.createControl();
         ServletContext servletContext = control.createMock(ServletContext.class);
         Context ctx = control.createMock(Context.class);
@@ -196,62 +124,76 @@ public class TestLoadBalancerDrainingValve {
         cookieConfig.setDomain("example.com");
         cookieConfig.setName(sessionCookieName);
         cookieConfig.setPath("/");
+        cookieConfig.setSecure(secureSessionConfig);
 
         // Valve.init requires all of this stuff
         EasyMock.expect(ctx.getMBeanKeyProperties()).andStubReturn("");
         EasyMock.expect(ctx.getName()).andStubReturn("");
         EasyMock.expect(ctx.getPipeline()).andStubReturn(new StandardPipeline());
         EasyMock.expect(ctx.getDomain()).andStubReturn("foo");
-        EasyMock.expect(ctx.getLogger()).andStubReturn(org.apache.juli.logging.LogFactory.getLog(LoadBalancerDrainingValve.class));
+        EasyMock.expect(ctx.getLogger())
+                .andStubReturn(org.apache.juli.logging.LogFactory.getLog(LoadBalancerDrainingValve.class));
         EasyMock.expect(ctx.getServletContext()).andStubReturn(servletContext);
 
         // Set up the actual test
-        EasyMock.expect(request.getAttribute(LoadBalancerDrainingValve.ATTRIBUTE_KEY_JK_LB_ACTIVATION)).andStubReturn(jkActivation);
-        EasyMock.expect(Boolean.valueOf(request.isRequestedSessionIdValid())).andStubReturn(Boolean.valueOf(validSessionId));
+        EasyMock.expect(request.getAttribute(LoadBalancerDrainingValve.ATTRIBUTE_KEY_JK_LB_ACTIVATION))
+                .andStubReturn(jkActivation);
+        EasyMock.expect(Boolean.valueOf(request.isRequestedSessionIdValid()))
+                .andStubReturn(Boolean.valueOf(validSessionId));
 
         ArrayList<Cookie> cookies = new ArrayList<>();
-        if(enableIgnore) {
+        if (enableIgnore) {
             cookies.add(new Cookie("ignore", "true"));
         }
 
-        if(!validSessionId) {
+        if (!validSessionId && jkActivation.equals("DIS")) {
             MyCookie cookie = new MyCookie(cookieConfig.getName(), sessionId);
             cookie.setPath(cookieConfig.getPath());
             cookie.setValue(sessionId);
 
             cookies.add(cookie);
 
-            EasyMock.expect(request.getRequestedSessionId()).andStubReturn(sessionId);
-            EasyMock.expect(request.getRequestURI()).andStubReturn(requestURI);
-            EasyMock.expect(request.getCookies()).andStubReturn(cookies.toArray(new Cookie[cookies.size()]));
-            EasyMock.expect(request.getContext()).andStubReturn(ctx);
+            EasyMock.expect(request.getRequestedSessionId())
+                    .andStubReturn("idPresent".equals(sessionState) ? sessionId : null);
+            EasyMock.expect(request.getRequestURI()).andStubReturn(
+                    (new String(new char[leadingSlashes.intValue()])).replace("\0" ,  "/") + requestURI);
+            EasyMock.expect(request.getCookies()).andStubReturn(cookies.toArray(new Cookie[0]));
+            EasyMock.expect(request.getContext())
+                    .andStubReturn("contextAbsent".equals(sessionState) ? null : ctx);
             EasyMock.expect(ctx.getSessionCookieName()).andStubReturn(sessionCookieName);
             EasyMock.expect(servletContext.getSessionCookieConfig()).andStubReturn(cookieConfig);
             EasyMock.expect(request.getQueryString()).andStubReturn(queryString);
             EasyMock.expect(ctx.getSessionCookiePath()).andStubReturn("/");
 
             if (!enableIgnore) {
-                EasyMock.expect(Boolean.valueOf(ctx.getSessionCookiePathUsesTrailingSlash())).andStubReturn(Boolean.TRUE);
-                EasyMock.expect(request.getQueryString()).andStubReturn(queryString);
-                // Response will have cookie deleted
-                MyCookie expectedCookie = new MyCookie(cookieConfig.getName(), "");
-                expectedCookie.setPath(cookieConfig.getPath());
-                expectedCookie.setMaxAge(0);
-
-                // These two lines just mean EasyMock.expect(response.addCookie) but for a void method
-                response.addCookie(expectedCookie);
-                EasyMock.expect(ctx.getSessionCookieName()).andReturn(sessionCookieName); // Indirect call
                 String expectedRequestURI = requestURI;
-                if(null != queryString)
+                if (null != queryString) {
                     expectedRequestURI = expectedRequestURI + '?' + queryString;
-                response.setHeader("Location", expectedRequestURI);
-                response.setStatus(307);
+                }
+                if ("idPresent".equals(sessionState)) {
+                    EasyMock.expect(Boolean.valueOf(ctx.getSessionCookiePathUsesTrailingSlash()))
+                            .andStubReturn(Boolean.TRUE);
+                    EasyMock.expect(request.getQueryString()).andStubReturn(queryString);
+                    // Response will have cookie deleted
+                    MyCookie expectedCookie = new MyCookie(cookieConfig.getName(), "");
+                    expectedCookie.setPath(cookieConfig.getPath());
+                    expectedCookie.setMaxAge(0);
+
+                    EasyMock.expect(Boolean.valueOf(request.isSecure())).andReturn(secureRequest);
+
+                    // These two lines just mean EasyMock.expect(response.addCookie) but for a void method
+                    response.addCookie(expectedCookie);
+                    EasyMock.expect(ctx.getSessionCookieName()).andReturn(sessionCookieName); // Indirect call
+                }
+                // Without a requested session id the cookie cannot match, so it
+                // is not deleted, but the redirect is still expected
+                response.sendRedirect(expectedRequestURI, 307);
             }
         }
 
         Valve next = control.createMock(Valve.class);
 
-        if(expectInvokeNext) {
+        if (expectInvokeNext) {
             // Expect the "next" Valve to fire
             // Next 2 lines are basically EasyMock.expect(next.invoke(req,res)) but for a void method
             next.invoke(request, response);
@@ -271,5 +213,126 @@ public class TestLoadBalancerDrainingValve {
         valve.invoke(request, response);
 
         control.verify();
+    }
+
+
+    private static class CookieConfig implements SessionCookieConfig {
+
+        private String name;
+        private String domain;
+        private String path;
+        private String comment;
+        private boolean httpOnly;
+        private boolean secure;
+        private int maxAge;
+
+        @Override
+        public String getName() {
+            return name;
+        }
+
+        @Override
+        public void setName(String name) {
+            this.name = name;
+        }
+
+        @Override
+        public String getDomain() {
+            return domain;
+        }
+
+        @Override
+        public void setDomain(String domain) {
+            this.domain = domain;
+        }
+
+        @Override
+        public String getPath() {
+            return path;
+        }
+
+        @Override
+        public void setPath(String path) {
+            this.path = path;
+        }
+
+        @Override
+        public String getComment() {
+            return comment;
+        }
+
+        @Override
+        public void setComment(String comment) {
+            this.comment = comment;
+        }
+
+        @Override
+        public boolean isHttpOnly() {
+            return httpOnly;
+        }
+
+        @Override
+        public void setHttpOnly(boolean httpOnly) {
+            this.httpOnly = httpOnly;
+        }
+
+        @Override
+        public boolean isSecure() {
+            return secure;
+        }
+
+        @Override
+        public void setSecure(boolean secure) {
+            this.secure = secure;
+        }
+
+        @Override
+        public int getMaxAge() {
+            return maxAge;
+        }
+
+        @Override
+        public void setMaxAge(int maxAge) {
+            this.maxAge = maxAge;
+        }
+    }
+
+
+    // A Cookie subclass that knows how to compare itself to other Cookie objects
+    private static class MyCookie extends Cookie {
+        private static final long serialVersionUID = 1L;
+
+        MyCookie(String name, String value) {
+            super(name, value);
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (!(o instanceof MyCookie)) {
+                return false;
+            }
+
+            MyCookie mc = (MyCookie) o;
+            return mc.getName().equals(this.getName()) && mc.getPath().equals(this.getPath()) &&
+                    mc.getValue().equals(this.getValue()) && mc.getMaxAge() == this.getMaxAge();
+        }
+
+        @Override
+        public int hashCode() {
+            final int prime = 31;
+            int result = 1;
+            result = prime * result + getMaxAge();
+            result = prime * result + ((getName() == null) ? 0 : getName().hashCode());
+            result = prime * result + ((getPath() == null) ? 0 : getPath().hashCode());
+            result = prime * result + ((getValue() == null) ? 0 : getValue().hashCode());
+            return result;
+        }
+
+
+        @Override
+        public String toString() {
+            return "Cookie { name=" + getName() + ", value=" + getValue() + ", path=" + getPath() + ", maxAge=" +
+                    getMaxAge() + " }";
+        }
     }
 }

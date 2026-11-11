@@ -16,53 +16,144 @@
  */
 package org.apache.catalina.tribes.transport.nio;
 
+/**
+ * MBean interface for monitoring a PooledParallelSender.
+ */
 public interface PooledParallelSenderMBean {
 
     // Transport Attributes
-    public int getRxBufSize();
+    /**
+     * Returns the receive buffer size.
+     * @return the receive buffer size
+     */
+    int getRxBufSize();
 
-    public int getTxBufSize();
+    /**
+     * Returns the transmit buffer size.
+     * @return the transmit buffer size
+     */
+    int getTxBufSize();
 
-    public int getUdpRxBufSize();
+    /**
+     * Returns the UDP receive buffer size.
+     * @return the UDP receive buffer size
+     */
+    int getUdpRxBufSize();
 
-    public int getUdpTxBufSize();
+    /**
+     * Returns the UDP transmit buffer size.
+     * @return the UDP transmit buffer size
+     */
+    int getUdpTxBufSize();
 
-    public boolean getDirectBuffer();
+    /**
+     * Returns whether direct buffers are used.
+     * @return true if direct buffers are used
+     */
+    boolean getDirectBuffer();
 
-    public int getKeepAliveCount();
+    /**
+     * Returns the number of keep-alive messages before a connection check.
+     * @return the keep-alive count
+     */
+    int getKeepAliveCount();
 
-    public long getKeepAliveTime();
+    /**
+     * Returns the keep-alive interval in milliseconds.
+     * @return the keep-alive time
+     */
+    long getKeepAliveTime();
 
-    public long getTimeout();
+    /**
+     * Returns the socket timeout in milliseconds.
+     * @return the timeout
+     */
+    long getTimeout();
 
-    public int getMaxRetryAttempts();
+    /**
+     * Returns the maximum number of retry attempts.
+     * @return the maximum retry attempts
+     */
+    int getMaxRetryAttempts();
 
-    public boolean getOoBInline();
+    /**
+     * Returns whether out-of-band data is processed inline.
+     * @return true if OOB data is processed inline
+     */
+    boolean getOoBInline();
 
-    public boolean getSoKeepAlive();
+    /**
+     * Returns whether SO_KEEPALIVE is enabled.
+     * @return true if SO_KEEPALIVE is enabled
+     */
+    boolean getSoKeepAlive();
 
-    public boolean getSoLingerOn();
+    /**
+     * Returns whether SO_LINGER is enabled.
+     * @return true if SO_LINGER is enabled
+     */
+    boolean getSoLingerOn();
 
-    public int getSoLingerTime();
+    /**
+     * Returns the SO_LINGER timeout value.
+     * @return the SO_LINGER time
+     */
+    int getSoLingerTime();
 
-    public boolean getSoReuseAddress();
+    /**
+     * Returns whether SO_REUSEADDR is enabled.
+     * @return true if SO_REUSEADDR is enabled
+     */
+    boolean getSoReuseAddress();
 
-    public int getSoTrafficClass();
+    /**
+     * Returns the IP traffic class value.
+     * @return the traffic class
+     */
+    int getSoTrafficClass();
 
-    public boolean getTcpNoDelay();
+    /**
+     * Returns whether TCP_NODELAY is enabled.
+     * @return true if TCP_NODELAY is enabled
+     */
+    boolean getTcpNoDelay();
 
-    public boolean getThrowOnFailedAck();
+    /**
+     * Returns whether an exception is thrown on failed acknowledgement.
+     * @return true if exceptions are thrown on failed ack
+     */
+    boolean getThrowOnFailedAck();
 
     // PooledSender Attributes
-    public int getPoolSize();
+    /**
+     * Returns the size of the sender pool.
+     * @return the pool size
+     */
+    int getPoolSize();
 
-    public long getMaxWait();
+    /**
+     * Returns the maximum wait time in milliseconds for a sender from the pool.
+     * @return the maximum wait time
+     */
+    long getMaxWait();
 
     // Operation
-    public boolean isConnected();
+    /**
+     * Returns whether the sender is currently connected.
+     * @return true if connected
+     */
+    boolean isConnected();
 
-    public int getInPoolSize();
+    /**
+     * Returns the number of senders currently available in the pool.
+     * @return the number of senders in the pool
+     */
+    int getInPoolSize();
 
-    public int getInUsePoolSize();
+    /**
+     * Returns the number of senders currently in use.
+     * @return the number of senders in use
+     */
+    int getInUsePoolSize();
 
 }

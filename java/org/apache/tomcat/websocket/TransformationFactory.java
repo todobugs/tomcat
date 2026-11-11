@@ -17,35 +17,76 @@
 package org.apache.tomcat.websocket;
 
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 import javax.websocket.Extension;
 
 import org.apache.tomcat.util.res.StringManager;
 
+/**
+ * Factory for managing WebSocket transformation builders.
+ */
 public class TransformationFactory {
 
     private static final StringManager sm = StringManager.getManager(TransformationFactory.class);
 
     private static final TransformationFactory factory = new TransformationFactory();
 
+    /*
+     * Concurrent map since registerExtension() may be called at any time by an application while create() and the
+     * getInstalled*() methods are invoked concurrently by threads processing handshakes or by client applications.
+     */
+    private final Map<String,TransformationBuilder> builders = new ConcurrentHashMap<>();
+
+
     private TransformationFactory() {
         // Hide default constructor
+
+        // Configure the built-in transformations
+        builders.put(PerMessageDeflate.NAME, PerMessageDeflate.BUILDER);
     }
 
+
+    /**
+     * Returns the singleton TransformationFactory instance.
+     *
+     * @return the factory instance
+     */
     public static TransformationFactory getInstance() {
         return factory;
     }
 
-    public Transformation create(String name, List<List<Extension.Parameter>> preferences,
-            boolean isServer) {
-        if (PerMessageDeflate.NAME.equals(name)) {
-            return PerMessageDeflate.negotiate(preferences, isServer);
+
+    /**
+     * Creates a transformation for the given extension.
+     *
+     * @param name the extension name
+     * @param preferences the negotiated parameters
+     * @param isServer true if creating for the server side
+     * @return the transformation, or null if not found
+     */
+    public Transformation create(String name, List<List<Extension.Parameter>> preferences, boolean isServer) {
+        TransformationBuilder builder = builders.get(name);
+        if (builder != null) {
+            return builder.build(preferences, isServer);
         }
         if (Constants.ALLOW_UNSUPPORTED_EXTENSIONS) {
             return null;
         } else {
-            throw new IllegalArgumentException(
-                    sm.getString("transformerFactory.unsupportedExtension", name));
+            throw new IllegalArgumentException(sm.getString("transformerFactory.unsupportedExtension", name));
         }
+    }
+
+
+    /**
+     * Registers a transformation builder for the given extension name. This method is thread-safe and may be called
+     * at any time, including while handshakes are in progress.
+     *
+     * @param name the extension name
+     * @param builder the transformation builder
+     */
+    public void registerExtension(String name, TransformationBuilder builder) {
+        builders.put(name, builder);
     }
 }

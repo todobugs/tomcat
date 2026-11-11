@@ -20,6 +20,7 @@ import java.util.ArrayList;
 
 import org.junit.After;
 import org.junit.Assert;
+import org.junit.Assume;
 import org.junit.Before;
 import org.junit.Test;
 
@@ -27,7 +28,9 @@ import org.apache.catalina.tribes.Channel;
 import org.apache.catalina.tribes.ManagedChannel;
 import org.apache.catalina.tribes.Member;
 import org.apache.catalina.tribes.MembershipListener;
+import org.apache.catalina.tribes.TesterUtil;
 import org.apache.catalina.tribes.group.GroupChannel;
+import org.apache.catalina.tribes.transport.ReceiverBase;
 import org.apache.catalina.tribes.util.UUIDGenerator;
 
 public class TestDomainFilterInterceptor {
@@ -37,8 +40,11 @@ public class TestDomainFilterInterceptor {
 
     @Before
     public void setUp() throws Exception {
+        Assume.assumeTrue("Skipping test - IP multicast is not available in this environment",
+                TesterUtil.isMulticastAvailable());
         for (int i = 0; i < channels.length; i++) {
             channels[i] = new GroupChannel();
+            ((ReceiverBase) channels[i].getChannelReceiver()).setPort(0);
             channels[i].getMembershipService().setPayload( ("Channel-" + (i + 1)).getBytes("ASCII"));
             listeners[i] = new TestMbrListener( ("Listener-" + (i + 1)));
             channels[i].addMembershipListener(listeners[i]);
@@ -73,8 +79,12 @@ public class TestDomainFilterInterceptor {
             };
             threads[i] = t;
         }
-        for (int i=0; i<threads.length; i++ ) threads[i].start();
-        for (int i=0; i<threads.length; i++ ) threads[i].join();
+        for (Thread thread : threads) {
+          thread.start();
+        }
+        for (Thread thread : threads) {
+          thread.join();
+        }
         System.out.println("All channels started.");
         for (int i=listeners.length-1; i>=0; i-- ) {
             Assert.assertEquals("Checking member arrival length",0,listeners[i].members.size());
@@ -84,9 +94,9 @@ public class TestDomainFilterInterceptor {
     @After
     public void tearDown() throws Exception {
 
-        for (int i = 0; i < channels.length; i++) {
+        for (ManagedChannel channel : channels) {
             try {
-                channels[i].stop(Channel.DEFAULT);
+                channel.stop(Channel.DEFAULT);
             } catch (Exception ignore) {
                 // Ignore
             }

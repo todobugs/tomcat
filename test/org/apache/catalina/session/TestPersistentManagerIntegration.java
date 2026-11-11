@@ -98,11 +98,11 @@ public class TestPersistentManagerIntegration extends TomcatBaseTest {
         Tomcat tomcat = getTomcatInstance();
 
         // No file system docBase required
-        StandardContext ctx = (StandardContext) tomcat.addContext("", null);
+        StandardContext ctx = (StandardContext) getProgrammaticRootContext();
         ctx.setDistributable(true);
 
         Tomcat.addServlet(ctx, "DummyServlet", new DummyServlet());
-        ctx.addServletMappingDecoded("/dummy", "DummyServlet");
+        ctx.addServletMapping("/dummy", "DummyServlet");
 
         PersistentManager manager = new PersistentManager();
         TesterStore store = new TesterStore();
@@ -130,11 +130,11 @@ public class TestPersistentManagerIntegration extends TomcatBaseTest {
         Tomcat tomcat = getTomcatInstance();
 
         // No file system docBase required
-        StandardContext ctx = (StandardContext) tomcat.addContext("", null);
+        StandardContext ctx = (StandardContext) getProgrammaticRootContext();
         ctx.setDistributable(true);
 
         Tomcat.addServlet(ctx, "DummyServlet", new DummyServlet());
-        ctx.addServletMappingDecoded("/dummy", "DummyServlet");
+        ctx.addServletMapping("/dummy", "DummyServlet");
 
         PersistentManager manager = new PersistentManager();
         TesterStore store = new TesterStore();
@@ -162,11 +162,11 @@ public class TestPersistentManagerIntegration extends TomcatBaseTest {
         Tomcat tomcat = getTomcatInstance();
 
         // No file system docBase required
-        Context ctx = tomcat.addContext("", null);
+        Context ctx = getProgrammaticRootContext();
         ctx.setDistributable(true);
 
         Tomcat.addServlet(ctx, "DummyServlet", new DummyServlet());
-        ctx.addServletMappingDecoded("/dummy", "DummyServlet");
+        ctx.addServletMapping("/dummy", "DummyServlet");
 
         PersistentManager manager = new PersistentManager();
         TesterStore store = new TesterStore();

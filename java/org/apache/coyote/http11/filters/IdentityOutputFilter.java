@@ -25,10 +25,14 @@ import org.apache.coyote.http11.OutputFilter;
 
 /**
  * Identity output filter.
- *
- * @author Remy Maucherat
  */
 public class IdentityOutputFilter implements OutputFilter {
+
+    /**
+     * Creates a new instance of the identity output filter.
+     */
+    public IdentityOutputFilter() {
+    }
 
     // ----------------------------------------------------- Instance Variables
 
@@ -55,7 +59,7 @@ public class IdentityOutputFilter implements OutputFilter {
     @Override
     public int doWrite(ByteBuffer chunk) throws IOException {
 
-        int result = -1;
+        int result;
 
         if (contentLength >= 0) {
             if (remaining > 0) {

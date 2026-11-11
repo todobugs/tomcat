@@ -20,8 +20,6 @@ import javax.naming.StringRefAddr;
 
 /**
  * Represents a reference handler for a web service.
- *
- * @author Fabien Carrion
  */
 public class HandlerRef extends AbstractRef {
 
@@ -31,67 +29,79 @@ public class HandlerRef extends AbstractRef {
     /**
      * Default factory for this reference.
      */
-    public static final String DEFAULT_FACTORY =
-            org.apache.naming.factory.Constants.DEFAULT_HANDLER_FACTORY;
+    public static final String DEFAULT_FACTORY = org.apache.naming.factory.Constants.DEFAULT_HANDLER_FACTORY;
 
 
     /**
      * HandlerName address type.
      */
-    public static final String HANDLER_NAME  = "handlername";
+    public static final String HANDLER_NAME = "handlername";
 
 
     /**
      * Handler Classname address type.
      */
-    public static final String HANDLER_CLASS  = "handlerclass";
+    public static final String HANDLER_CLASS = "handlerclass";
 
 
     /**
-     * Handler Classname address type.
+     * Handler Classname local part address type.
      */
-    public static final String HANDLER_LOCALPART  = "handlerlocalpart";
+    public static final String HANDLER_LOCALPART = "handlerlocalpart";
 
 
     /**
-     * Handler Classname address type.
+     * Handler Classname namespace address type.
      */
-    public static final String HANDLER_NAMESPACE  = "handlernamespace";
+    public static final String HANDLER_NAMESPACE = "handlernamespace";
 
 
     /**
-     * Handler Classname address type.
+     * Handler param name address type.
      */
-    public static final String HANDLER_PARAMNAME  = "handlerparamname";
+    public static final String HANDLER_PARAMNAME = "handlerparamname";
 
 
     /**
-     * Handler Classname address type.
+     * Handler param value address type.
      */
-    public static final String HANDLER_PARAMVALUE  = "handlerparamvalue";
+    public static final String HANDLER_PARAMVALUE = "handlerparamvalue";
 
 
     /**
      * Handler SoapRole address type.
      */
-    public static final String HANDLER_SOAPROLE  = "handlersoaprole";
+    public static final String HANDLER_SOAPROLE = "handlersoaprole";
 
 
     /**
      * Handler PortName address type.
      */
-    public static final String HANDLER_PORTNAME  = "handlerportname";
+    public static final String HANDLER_PORTNAME = "handlerportname";
 
 
+    /**
+     * Create a new HandlerRef with the specified reference name and handler class.
+     *
+     * @param refname      The reference name
+     * @param handlerClass The handler class name
+     */
     public HandlerRef(String refname, String handlerClass) {
         this(refname, handlerClass, null, null);
     }
 
 
-    public HandlerRef(String refname, String handlerClass,
-                    String factory, String factoryLocation) {
+    /**
+     * Create a new HandlerRef with the specified parameters.
+     *
+     * @param refname           The reference name
+     * @param handlerClass      The handler class name
+     * @param factory           The factory class name
+     * @param factoryLocation   The factory location
+     */
+    public HandlerRef(String refname, String handlerClass, String factory, String factoryLocation) {
         super(refname, factory, factoryLocation);
-        StringRefAddr refAddr = null;
+        StringRefAddr refAddr;
         if (refname != null) {
             refAddr = new StringRefAddr(HANDLER_NAME, refname);
             add(refAddr);

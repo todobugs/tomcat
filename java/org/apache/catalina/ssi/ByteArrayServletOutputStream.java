@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.catalina.ssi;
 
 import java.io.ByteArrayOutputStream;
@@ -24,10 +23,9 @@ import javax.servlet.WriteListener;
 
 
 /**
- * Class that extends ServletOuputStream, used as a wrapper from within
- * <code>SsiInclude</code>
+ * Class that extends ServletOutputStream to capture output into an in-memory byte array. Used by
+ * <code>SSIFilter</code> and <code>SSIServletExternalResolver</code>.
  *
- * @author Bip Thelin
  * @see ServletOutputStream and ByteArrayOutputStream
  */
 public class ByteArrayServletOutputStream extends ServletOutputStream {
@@ -46,7 +44,9 @@ public class ByteArrayServletOutputStream extends ServletOutputStream {
 
 
     /**
-     * @return the byte array.
+     * Returns the underlying byte array.
+     *
+     * @return the byte array
      */
     public byte[] toByteArray() {
         return buf.toByteArray();
@@ -63,23 +63,14 @@ public class ByteArrayServletOutputStream extends ServletOutputStream {
         buf.write(b);
     }
 
-    /**
-     * TODO SERVLET 3.1
-     */
     @Override
     public boolean isReady() {
-        // TODO Auto-generated method stub
-        return false;
+        return true;
     }
 
 
-    /**
-     * TODO SERVLET 3.1
-     */
     @Override
     public void setWriteListener(WriteListener listener) {
-        // TODO Auto-generated method stub
-
     }
 
 

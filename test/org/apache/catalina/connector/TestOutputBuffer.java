@@ -34,11 +34,11 @@ import org.apache.catalina.startup.Tomcat;
 import org.apache.catalina.startup.TomcatBaseTest;
 import org.apache.tomcat.util.buf.ByteChunk;
 
-public class TestOutputBuffer extends TomcatBaseTest{
+public class TestOutputBuffer extends TomcatBaseTest {
 
     /*
-     * Expect that the buffered results are slightly slower since Tomcat now has
-     * an internal buffer so an extra one just adds overhead.
+     * Expect that the buffered results are slightly slower since Tomcat now has an internal buffer so an extra one just
+     * adds overhead.
      *
      * @see "https://bz.apache.org/bugzilla/show_bug.cgi?id=52328"
      */
@@ -48,30 +48,26 @@ public class TestOutputBuffer extends TomcatBaseTest{
 
         Context root = tomcat.addContext("", TEMP_DIR);
 
-        for (int i = 1; i <= WritingServlet.EXPECTED_CONTENT_LENGTH; i*=10) {
+        for (int i = 1; i <= WritingServlet.EXPECTED_CONTENT_LENGTH; i *= 10) {
             WritingServlet servlet = new WritingServlet(i);
             Tomcat.addServlet(root, "servlet" + i, servlet);
-            root.addServletMappingDecoded("/servlet" + i, "servlet" + i);
+            root.addServletMapping("/servlet" + i, "servlet" + i);
         }
 
         tomcat.start();
 
         ByteChunk bc = new ByteChunk();
 
-        for (int i = 1; i <= WritingServlet.EXPECTED_CONTENT_LENGTH; i*=10) {
-            int rc = getUrl("http://localhost:" + getPort() +
-                    "/servlet" + i, bc, null, null);
+        for (int i = 1; i <= WritingServlet.EXPECTED_CONTENT_LENGTH; i *= 10) {
+            int rc = getUrl("http://localhost:" + getPort() + "/servlet" + i, bc, null, null);
             Assert.assertEquals(HttpServletResponse.SC_OK, rc);
-            Assert.assertEquals(
-                    WritingServlet.EXPECTED_CONTENT_LENGTH, bc.getLength());
+            Assert.assertEquals(WritingServlet.EXPECTED_CONTENT_LENGTH, bc.getLength());
 
             bc.recycle();
 
-            rc = getUrl("http://localhost:" + getPort() +
-                    "/servlet" + i + "?useBuffer=y", bc, null, null);
+            rc = getUrl("http://localhost:" + getPort() + "/servlet" + i + "?useBuffer=y", bc, null, null);
             Assert.assertEquals(HttpServletResponse.SC_OK, rc);
-            Assert.assertEquals(
-                    WritingServlet.EXPECTED_CONTENT_LENGTH, bc.getLength());
+            Assert.assertEquals(WritingServlet.EXPECTED_CONTENT_LENGTH, bc.getLength());
 
             bc.recycle();
         }
@@ -85,7 +81,7 @@ public class TestOutputBuffer extends TomcatBaseTest{
 
         Bug52577Servlet bug52577 = new Bug52577Servlet();
         Tomcat.addServlet(root, "bug52577", bug52577);
-        root.addServletMappingDecoded("/", "bug52577");
+        root.addServletMapping("/", "bug52577");
 
         tomcat.start();
 
@@ -105,7 +101,7 @@ public class TestOutputBuffer extends TomcatBaseTest{
         private final String writeString;
         private final int writeCount;
 
-        public WritingServlet(int writeLength) {
+        WritingServlet(int writeLength) {
             StringBuilder sb = new StringBuilder();
             for (int i = 0; i < writeLength; i++) {
                 sb.append('x');
@@ -115,8 +111,7 @@ public class TestOutputBuffer extends TomcatBaseTest{
         }
 
         @Override
-        protected void doGet(HttpServletRequest req, HttpServletResponse resp)
-                throws ServletException, IOException {
+        protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
 
             resp.setContentType("text/plain");
             resp.setCharacterEncoding("ISO-8859-1");
@@ -138,9 +133,8 @@ public class TestOutputBuffer extends TomcatBaseTest{
             }
             long lastRunNano = System.nanoTime() - start;
 
-            System.out.println("Write length: " + writeString.length() +
-                    ", Buffered: " + (useBufferStr == null ? "n" : "y") +
-                    ", Time: " + lastRunNano + "ns");
+            System.out.println("Write length: " + writeString.length() + ", Buffered: " +
+                    (useBufferStr == null ? "n" : "y") + ", Time: " + lastRunNano + "ns");
         }
     }
 
@@ -149,8 +143,7 @@ public class TestOutputBuffer extends TomcatBaseTest{
         private static final long serialVersionUID = 1L;
 
         @Override
-        protected void doGet(HttpServletRequest req, HttpServletResponse resp)
-                throws ServletException, IOException {
+        protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
             Writer w = resp.getWriter();
             w.write("OK");
             resp.resetBuffer();
@@ -164,7 +157,7 @@ public class TestOutputBuffer extends TomcatBaseTest{
         // Create test data. This is carefully constructed to trigger the edge
         // case. Small variations may cause the test to miss the edge case.
         StringBuffer sb = new StringBuffer();
-        sb.append("a");
+        sb.append('a');
 
         for (int i = 0x10000; i < 0x11000; i++) {
             char[] chars = Character.toChars(i);
@@ -175,7 +168,7 @@ public class TestOutputBuffer extends TomcatBaseTest{
         Tomcat tomcat = getTomcatInstance();
         Context root = tomcat.addContext("", TEMP_DIR);
         Tomcat.addServlet(root, "Test", new Utf8WriteChars(data));
-        root.addServletMappingDecoded("/test", "Test");
+        root.addServletMapping("/test", "Test");
 
         tomcat.start();
 
@@ -193,20 +186,19 @@ public class TestOutputBuffer extends TomcatBaseTest{
 
         private final char[] chars;
 
-        public Utf8WriteChars(String data) {
+        Utf8WriteChars(String data) {
             chars = data.toCharArray();
         }
 
         @Override
-        protected void doGet(HttpServletRequest req, HttpServletResponse resp)
-                throws ServletException, IOException {
+        protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
 
             resp.setCharacterEncoding("UTF-8");
             resp.setContentType("text/plain");
             Writer w = resp.getWriter();
 
-            for (int i = 0; i < chars.length; i++) {
-                w.write(chars[i]);
+            for (char aChar : chars) {
+                w.write(aChar);
             }
         }
     }

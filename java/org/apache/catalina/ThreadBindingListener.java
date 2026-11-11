@@ -18,12 +18,21 @@ package org.apache.catalina;
 
 
 /**
- * Callback for establishing naming association when entering the application
- * scope. This corresponds to setting the context classloader.
+ * Callback for establishing naming association when entering the application scope. This corresponds to setting the
+ * context classloader.
  */
 public interface ThreadBindingListener {
 
-    public void bind();
-    public void unbind();
+    /**
+     * Binds the current thread to the application context by setting
+     * up the naming context and context class loader.
+     */
+    void bind();
+
+    /**
+     * Unbinds the current thread from the application context by clearing
+     * the naming context and context class loader.
+     */
+    void unbind();
 
 }

@@ -23,20 +23,20 @@ import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 import javax.naming.NamingException;
 
 import org.apache.catalina.Container;
 import org.apache.catalina.Context;
-import org.apache.catalina.Engine;
 import org.apache.catalina.JmxEnabled;
 import org.apache.catalina.LifecycleException;
 import org.apache.catalina.LifecycleState;
 import org.apache.catalina.Server;
+import org.apache.catalina.Service;
 import org.apache.catalina.mbeans.MBeanUtils;
 import org.apache.catalina.util.Introspection;
 import org.apache.catalina.util.LifecycleMBeanBase;
@@ -60,13 +60,10 @@ import org.apache.tomcat.util.res.StringManager;
 
 
 /**
- * Holds and manages the naming resources defined in the J2EE Enterprise
- * Naming Context and their associated JNDI context.
- *
- * @author Remy Maucherat
+ * Holds and manages the naming resource descriptors. The associated JNDI context is created and maintained by
+ * NamingContextListener.
  */
-public class NamingResourcesImpl extends LifecycleMBeanBase
-        implements Serializable, NamingResources {
+public class NamingResourcesImpl extends LifecycleMBeanBase implements Serializable, NamingResources {
 
     private static final long serialVersionUID = 1L;
 
@@ -74,6 +71,9 @@ public class NamingResourcesImpl extends LifecycleMBeanBase
 
     private static final StringManager sm = StringManager.getManager(NamingResourcesImpl.class);
 
+    /**
+     * Flag that controls whether resources require explicit JMX registration.
+     */
     private volatile boolean resourceRequireExplicitRegistration = false;
 
     // ----------------------------------------------------------- Constructors
@@ -97,64 +97,57 @@ public class NamingResourcesImpl extends LifecycleMBeanBase
 
 
     /**
-     * Set of naming entries, keyed by name.
+     * Set of naming entry names.
      */
-    private final Set<String> entries = new HashSet<>();
+    private final Set<String> entries = ConcurrentHashMap.newKeySet();
 
 
     /**
      * The EJB resource references for this web application, keyed by name.
      */
-    private final Map<String, ContextEjb> ejbs = new HashMap<>();
+    private final Map<String,ContextEjb> ejbs = new HashMap<>();
 
 
     /**
      * The environment entries for this web application, keyed by name.
      */
-    private final Map<String, ContextEnvironment> envs = new HashMap<>();
+    private final Map<String,ContextEnvironment> envs = new HashMap<>();
 
 
     /**
-     * The local  EJB resource references for this web application, keyed by
-     * name.
+     * The local EJB resource references for this web application, keyed by name.
      */
-    private final Map<String, ContextLocalEjb> localEjbs = new HashMap<>();
+    private final Map<String,ContextLocalEjb> localEjbs = new HashMap<>();
 
 
     /**
-     * The message destination references for this web application,
-     * keyed by name.
+     * The message destination references for this web application, keyed by name.
      */
-    private final Map<String, MessageDestinationRef> mdrs = new HashMap<>();
+    private final Map<String,MessageDestinationRef> mdrs = new HashMap<>();
 
 
     /**
-     * The resource environment references for this web application,
-     * keyed by name.
+     * The resource environment references for this web application, keyed by name.
      */
-    private final HashMap<String, ContextResourceEnvRef> resourceEnvRefs =
-        new HashMap<>();
+    private final HashMap<String,ContextResourceEnvRef> resourceEnvRefs = new HashMap<>();
 
 
     /**
      * The resource references for this web application, keyed by name.
      */
-    private final HashMap<String, ContextResource> resources =
-        new HashMap<>();
+    private final HashMap<String,ContextResource> resources = new HashMap<>();
 
 
     /**
      * The resource links for this web application, keyed by name.
      */
-    private final HashMap<String, ContextResourceLink> resourceLinks =
-        new HashMap<>();
+    private final HashMap<String,ContextResourceLink> resourceLinks = new HashMap<>();
 
 
     /**
      * The web service references for this web application, keyed by name.
      */
-    private final HashMap<String, ContextService> services =
-        new HashMap<>();
+    private final HashMap<String,ContextService> services = new HashMap<>();
 
 
     /**
@@ -166,16 +159,12 @@ public class NamingResourcesImpl extends LifecycleMBeanBase
     /**
      * The property change support for this component.
      */
-    protected final PropertyChangeSupport support =
-            new PropertyChangeSupport(this);
+    protected final PropertyChangeSupport support = new PropertyChangeSupport(this);
 
 
     // ------------------------------------------------------------- Properties
 
 
-    /**
-     * @return the container with which the naming resources are associated.
-     */
     @Override
     public Object getContainer() {
         return container;
@@ -184,7 +173,8 @@ public class NamingResourcesImpl extends LifecycleMBeanBase
 
     /**
      * Set the container with which the naming resources are associated.
-     * @param container the associated with the resources
+     *
+     * @param container the container associated with the resources
      */
     public void setContainer(Object container) {
         this.container = container;
@@ -193,6 +183,7 @@ public class NamingResourcesImpl extends LifecycleMBeanBase
 
     /**
      * Set the transaction object.
+     *
      * @param transaction the transaction descriptor
      */
     public void setTransaction(ContextTransaction transaction) {
@@ -201,7 +192,9 @@ public class NamingResourcesImpl extends LifecycleMBeanBase
 
 
     /**
-     * @return the transaction object.
+     * Return the transaction object.
+     *
+     * @return the transaction object
      */
     public ContextTransaction getTransaction() {
         return transaction;
@@ -219,15 +212,13 @@ public class NamingResourcesImpl extends LifecycleMBeanBase
         String ejbLink = ejb.getLink();
         String lookupName = ejb.getLookupName();
 
-        if (ejbLink != null && ejbLink.length() > 0 && lookupName != null && lookupName.length() > 0) {
-            throw new IllegalArgumentException(
-                    sm.getString("namingResources.ejbLookupLink", ejb.getName()));
+        if (ejbLink != null && !ejbLink.isEmpty() && lookupName != null && !lookupName.isEmpty()) {
+            throw new IllegalArgumentException(sm.getString("namingResources.ejbLookupLink", ejb.getName()));
         }
 
-        if (entries.contains(ejb.getName())) {
+        if (!entries.add(ejb.getName())) {
+            // The name is already claimed, possibly by a concurrent add
             return;
-        } else {
-            entries.add(ejb.getName());
         }
 
         synchronized (ejbs) {
@@ -239,13 +230,32 @@ public class NamingResourcesImpl extends LifecycleMBeanBase
     }
 
 
-    /**
-     * Add an environment entry for this web application.
-     *
-     * @param environment New environment entry
-     */
     @Override
     public void addEnvironment(ContextEnvironment environment) {
+
+        List<InjectionTarget> injectionTargets = environment.getInjectionTargets();
+        String value = environment.getValue();
+        String lookupName = environment.getLookupName();
+
+        // Validate the new entry before any existing entry is removed below.
+        // Otherwise, an invalid new entry would silently destroy a valid
+        // existing one.
+
+        // Entries with injection targets but no value are effectively ignored
+        if (injectionTargets != null && !injectionTargets.isEmpty() && (value == null || value.isEmpty())) {
+            return;
+        }
+
+        // Entries with lookup-name and value are an error (EE.5.4.1.3)
+        if (value != null && !value.isEmpty() && lookupName != null && !lookupName.isEmpty()) {
+            throw new IllegalArgumentException(
+                    sm.getString("namingResources.envEntryLookupValue", environment.getName()));
+        }
+
+        if (!checkResourceType(environment)) {
+            throw new IllegalArgumentException(
+                    sm.getString("namingResources.resourceTypeFail", environment.getName(), environment.getType()));
+        }
 
         if (entries.contains(environment.getName())) {
             ContextEnvironment ce = findEnvironment(environment.getName());
@@ -258,13 +268,22 @@ public class NamingResourcesImpl extends LifecycleMBeanBase
                 }
             } else if (rl != null) {
                 // Link. Need to look at the global resources
-                NamingResourcesImpl global = getServer().getGlobalNamingResources();
-                if (global.findEnvironment(rl.getGlobal()) != null) {
-                    if (global.findEnvironment(rl.getGlobal()).getOverride()) {
-                        removeResourceLink(environment.getName());
-                    } else {
-                        return;
-                    }
+                Server server = getServer();
+                if (server == null) {
+                    return;
+                }
+                NamingResourcesImpl global = server.getGlobalNamingResources();
+                ContextEnvironment globalEnv = global.findEnvironment(rl.getGlobal());
+                if (globalEnv != null && globalEnv.getOverride()) {
+                    removeResourceLink(environment.getName());
+                } else {
+                    // The link targets a global entry that may not be
+                    // overridden, or something that is not a global
+                    // environment at all (or is missing). In those cases the
+                    // existing link is retained. Adding the environment entry
+                    // as well would result in two entries sharing one JNDI
+                    // name.
+                    return;
                 }
             } else {
                 // It exists but it isn't an env or a res link...
@@ -272,29 +291,10 @@ public class NamingResourcesImpl extends LifecycleMBeanBase
             }
         }
 
-        List<InjectionTarget> injectionTargets = environment.getInjectionTargets();
-        String value = environment.getValue();
-        String lookupName = environment.getLookupName();
-
-        // Entries with injection targets but no value are effectively ignored
-        if (injectionTargets != null && injectionTargets.size() > 0 &&
-                (value == null || value.length() == 0)) {
+        if (!entries.add(environment.getName())) {
+            // The name is already claimed, possibly by a concurrent add
             return;
         }
-
-        // Entries with lookup-name and value are an error (EE.5.4.1.3)
-        if (value != null && value.length() > 0 && lookupName != null && lookupName.length() > 0) {
-            throw new IllegalArgumentException(
-                    sm.getString("namingResources.envEntryLookupValue", environment.getName()));
-        }
-
-        if (!checkResourceType(environment)) {
-            throw new IllegalArgumentException(sm.getString(
-                    "namingResources.resourceTypeFail", environment.getName(),
-                    environment.getType()));
-        }
-
-        entries.add(environment.getName());
 
         synchronized (envs) {
             environment.setNamingResources(this);
@@ -307,23 +307,22 @@ public class NamingResourcesImpl extends LifecycleMBeanBase
             try {
                 MBeanUtils.createMBean(environment);
             } catch (Exception e) {
-                log.warn(sm.getString("namingResources.mbeanCreateFail",
-                        environment.getName()), e);
+                log.warn(sm.getString("namingResources.mbeanCreateFail", environment.getName()), e);
             }
         }
     }
 
     // Container should be an instance of Server or Context. If it is anything
-    // else, return null which will trigger a NPE.
+    // else, return null.
     private Server getServer() {
         if (container instanceof Server) {
             return (Server) container;
         }
         if (container instanceof Context) {
-            // Could do this in one go. Lots of casts so split out for clarity
-            Engine engine =
-                (Engine) ((Context) container).getParent().getParent();
-            return engine.getService().getServer();
+            Service service = Container.getService((Context) container);
+            if (service != null) {
+                return service.getServer();
+            }
         }
         return null;
     }
@@ -335,10 +334,9 @@ public class NamingResourcesImpl extends LifecycleMBeanBase
      */
     public void addLocalEjb(ContextLocalEjb ejb) {
 
-        if (entries.contains(ejb.getName())) {
+        if (!entries.add(ejb.getName())) {
+            // The name is already claimed, possibly by a concurrent add
             return;
-        } else {
-            entries.add(ejb.getName());
         }
 
         synchronized (localEjbs) {
@@ -359,13 +357,16 @@ public class NamingResourcesImpl extends LifecycleMBeanBase
 
         if (entries.contains(mdr.getName())) {
             return;
-        } else {
-            if (!checkResourceType(mdr)) {
-                throw new IllegalArgumentException(sm.getString(
-                        "namingResources.resourceTypeFail", mdr.getName(),
-                        mdr.getType()));
-            }
-            entries.add(mdr.getName());
+        }
+
+        if (!checkResourceType(mdr)) {
+            throw new IllegalArgumentException(
+                    sm.getString("namingResources.resourceTypeFail", mdr.getName(), mdr.getType()));
+        }
+
+        if (!entries.add(mdr.getName())) {
+            // The name is already claimed, possibly by a concurrent add
+            return;
         }
 
         synchronized (mdrs) {
@@ -389,23 +390,21 @@ public class NamingResourcesImpl extends LifecycleMBeanBase
     }
 
 
-    /**
-     * Add a resource reference for this web application.
-     *
-     * @param resource New resource reference
-     */
     @Override
     public void addResource(ContextResource resource) {
 
         if (entries.contains(resource.getName())) {
             return;
-        } else {
-            if (!checkResourceType(resource)) {
-                throw new IllegalArgumentException(sm.getString(
-                        "namingResources.resourceTypeFail", resource.getName(),
-                        resource.getType()));
-            }
-            entries.add(resource.getName());
+        }
+
+        if (!checkResourceType(resource)) {
+            throw new IllegalArgumentException(
+                    sm.getString("namingResources.resourceTypeFail", resource.getName(), resource.getType()));
+        }
+
+        if (!entries.add(resource.getName())) {
+            // The name is already claimed, possibly by a concurrent add
+            return;
         }
 
         synchronized (resources) {
@@ -419,8 +418,7 @@ public class NamingResourcesImpl extends LifecycleMBeanBase
             try {
                 MBeanUtils.createMBean(resource);
             } catch (Exception e) {
-                log.warn(sm.getString("namingResources.mbeanCreateFail",
-                        resource.getName()), e);
+                log.warn(sm.getString("namingResources.mbeanCreateFail", resource.getName()), e);
             }
         }
     }
@@ -435,13 +433,16 @@ public class NamingResourcesImpl extends LifecycleMBeanBase
 
         if (entries.contains(resource.getName())) {
             return;
-        } else {
-            if (!checkResourceType(resource)) {
-                throw new IllegalArgumentException(sm.getString(
-                        "namingResources.resourceTypeFail", resource.getName(),
-                        resource.getType()));
-            }
-            entries.add(resource.getName());
+        }
+
+        if (!checkResourceType(resource)) {
+            throw new IllegalArgumentException(
+                    sm.getString("namingResources.resourceTypeFail", resource.getName(), resource.getType()));
+        }
+
+        if (!entries.add(resource.getName())) {
+            // The name is already claimed, possibly by a concurrent add
+            return;
         }
 
         synchronized (resourceEnvRefs) {
@@ -453,18 +454,12 @@ public class NamingResourcesImpl extends LifecycleMBeanBase
     }
 
 
-    /**
-     * Add a resource link for this web application.
-     *
-     * @param resourceLink New resource link
-     */
     @Override
     public void addResourceLink(ContextResourceLink resourceLink) {
 
-        if (entries.contains(resourceLink.getName())) {
+        if (!entries.add(resourceLink.getName())) {
+            // The name is already claimed, possibly by a concurrent add
             return;
-        } else {
-            entries.add(resourceLink.getName());
         }
 
         synchronized (resourceLinks) {
@@ -478,8 +473,7 @@ public class NamingResourcesImpl extends LifecycleMBeanBase
             try {
                 MBeanUtils.createMBean(resourceLink);
             } catch (Exception e) {
-                log.warn(sm.getString("namingResources.mbeanCreateFail",
-                        resourceLink.getName()), e);
+                log.warn(sm.getString("namingResources.mbeanCreateFail", resourceLink.getName()), e);
             }
         }
     }
@@ -492,10 +486,9 @@ public class NamingResourcesImpl extends LifecycleMBeanBase
      */
     public void addService(ContextService service) {
 
-        if (entries.contains(service.getName())) {
+        if (!entries.add(service.getName())) {
+            // The name is already claimed, possibly by a concurrent add
             return;
-        } else {
-            entries.add(service.getName());
         }
 
         synchronized (services) {
@@ -508,9 +501,9 @@ public class NamingResourcesImpl extends LifecycleMBeanBase
 
 
     /**
-     * @return the EJB resource reference with the specified name, if any;
-     * otherwise, return <code>null</code>.
+     * Return the EJB resource reference with the specified name.
      *
+     * @return the EJB resource reference, or <code>null</code> if not found
      * @param name Name of the desired EJB resource reference
      */
     public ContextEjb findEjb(String name) {
@@ -523,23 +516,23 @@ public class NamingResourcesImpl extends LifecycleMBeanBase
 
 
     /**
-     * @return the defined EJB resource references for this application.
-     * If there are none, a zero-length array is returned.
+     * Return the defined EJB resource references for this application.
+     *
+     * @return the EJB resource references, or a zero-length array if none
      */
     public ContextEjb[] findEjbs() {
 
         synchronized (ejbs) {
-            ContextEjb results[] = new ContextEjb[ejbs.size()];
-            return ejbs.values().toArray(results);
+            return ejbs.values().toArray(new ContextEjb[0]);
         }
 
     }
 
 
     /**
-     * @return the environment entry with the specified name, if any;
-     * otherwise, return <code>null</code>.
+     * Return the environment entry with the specified name.
      *
+     * @return the environment entry, or <code>null</code> if not found
      * @param name Name of the desired environment entry
      */
     public ContextEnvironment findEnvironment(String name) {
@@ -552,24 +545,23 @@ public class NamingResourcesImpl extends LifecycleMBeanBase
 
 
     /**
-     * @return the set of defined environment entries for this web
-     * application.  If none have been defined, a zero-length array
-     * is returned.
+     * Return the array of defined environment entries for this web application.
+     *
+     * @return the environment entries, or a zero-length array if none
      */
     public ContextEnvironment[] findEnvironments() {
 
         synchronized (envs) {
-            ContextEnvironment results[] = new ContextEnvironment[envs.size()];
-            return envs.values().toArray(results);
+            return envs.values().toArray(new ContextEnvironment[0]);
         }
 
     }
 
 
     /**
-     * @return the local EJB resource reference with the specified name, if any;
-     * otherwise, return <code>null</code>.
+     * Return the local EJB resource reference with the specified name.
      *
+     * @return the local EJB resource reference, or <code>null</code> if not found
      * @param name Name of the desired EJB resource reference
      */
     public ContextLocalEjb findLocalEjb(String name) {
@@ -582,23 +574,23 @@ public class NamingResourcesImpl extends LifecycleMBeanBase
 
 
     /**
-     * @return the defined local EJB resource references for this application.
-     * If there are none, a zero-length array is returned.
+     * Return the defined local EJB resource references for this application.
+     *
+     * @return the local EJB resource references, or a zero-length array if none
      */
     public ContextLocalEjb[] findLocalEjbs() {
 
         synchronized (localEjbs) {
-            ContextLocalEjb results[] = new ContextLocalEjb[localEjbs.size()];
-            return localEjbs.values().toArray(results);
+            return localEjbs.values().toArray(new ContextLocalEjb[0]);
         }
 
     }
 
 
     /**
-     * @return the message destination reference with the specified name,
-     * if any; otherwise, return <code>null</code>.
+     * Return the message destination reference with the specified name.
      *
+     * @return the message destination reference, or <code>null</code> if not found
      * @param name Name of the desired message destination reference
      */
     public MessageDestinationRef findMessageDestinationRef(String name) {
@@ -611,24 +603,23 @@ public class NamingResourcesImpl extends LifecycleMBeanBase
 
 
     /**
-     * @return the defined message destination references for this application.
-     * If there are none, a zero-length array is returned.
+     * Return the defined message destination references for this application.
+     *
+     * @return the message destination references, or a zero-length array if none
      */
     public MessageDestinationRef[] findMessageDestinationRefs() {
 
         synchronized (mdrs) {
-            MessageDestinationRef results[] =
-                new MessageDestinationRef[mdrs.size()];
-            return mdrs.values().toArray(results);
+            return mdrs.values().toArray(new MessageDestinationRef[0]);
         }
 
     }
 
 
     /**
-     * @return the resource reference with the specified name, if any;
-     * otherwise return <code>null</code>.
+     * Return the resource reference with the specified name.
      *
+     * @return the resource reference, or <code>null</code> if not found
      * @param name Name of the desired resource reference
      */
     public ContextResource findResource(String name) {
@@ -641,9 +632,9 @@ public class NamingResourcesImpl extends LifecycleMBeanBase
 
 
     /**
-     * @return the resource link with the specified name, if any;
-     * otherwise return <code>null</code>.
+     * Return the resource link with the specified name.
      *
+     * @return the resource link, or <code>null</code> if not found
      * @param name Name of the desired resource link
      */
     public ContextResourceLink findResourceLink(String name) {
@@ -656,38 +647,37 @@ public class NamingResourcesImpl extends LifecycleMBeanBase
 
 
     /**
-     * @return the defined resource links for this application.  If
-     * none have been defined, a zero-length array is returned.
+     * Return the defined resource links for this application.
+     *
+     * @return the resource links, or a zero-length array if none
      */
     public ContextResourceLink[] findResourceLinks() {
 
         synchronized (resourceLinks) {
-            ContextResourceLink results[] =
-                new ContextResourceLink[resourceLinks.size()];
-            return resourceLinks.values().toArray(results);
+            return resourceLinks.values().toArray(new ContextResourceLink[0]);
         }
 
     }
 
 
     /**
-     * @return the defined resource references for this application.  If
-     * none have been defined, a zero-length array is returned.
+     * Return the defined resource references for this application.
+     *
+     * @return the resource references, or a zero-length array if none
      */
     public ContextResource[] findResources() {
 
         synchronized (resources) {
-            ContextResource results[] = new ContextResource[resources.size()];
-            return resources.values().toArray(results);
+            return resources.values().toArray(new ContextResource[0]);
         }
 
     }
 
 
     /**
-     * @return the resource environment reference type for the specified
-     * name, if any; otherwise return <code>null</code>.
+     * Return the resource environment reference type for the specified name.
      *
+     * @return the resource environment reference, or <code>null</code> if not found
      * @param name Name of the desired resource environment reference
      */
     public ContextResourceEnvRef findResourceEnvRef(String name) {
@@ -700,24 +690,23 @@ public class NamingResourcesImpl extends LifecycleMBeanBase
 
 
     /**
-     * @return the set of resource environment reference names for this
-     * web application.  If none have been specified, a zero-length
-     * array is returned.
+     * Return the array of resource environment references for this web application.
+     *
+     * @return the resource environment references, or a zero-length array if none
      */
     public ContextResourceEnvRef[] findResourceEnvRefs() {
 
         synchronized (resourceEnvRefs) {
-            ContextResourceEnvRef results[] = new ContextResourceEnvRef[resourceEnvRefs.size()];
-            return resourceEnvRefs.values().toArray(results);
+            return resourceEnvRefs.values().toArray(new ContextResourceEnvRef[0]);
         }
 
     }
 
 
     /**
-     * @return the web service reference for the specified
-     * name, if any; otherwise return <code>null</code>.
+     * Return the web service reference for the specified name.
      *
+     * @return the web service reference, or <code>null</code> if not found
      * @param name Name of the desired web service
      */
     public ContextService findService(String name) {
@@ -730,14 +719,14 @@ public class NamingResourcesImpl extends LifecycleMBeanBase
 
 
     /**
-     * @return the defined web service references for this application.  If
-     * none have been defined, a zero-length array is returned.
+     * Return the defined web service references for this application.
+     *
+     * @return the web service references, or a zero-length array if none
      */
     public ContextService[] findServices() {
 
         synchronized (services) {
-            ContextService results[] = new ContextService[services.size()];
-            return services.values().toArray(results);
+            return services.values().toArray(new ContextService[0]);
         }
 
     }
@@ -750,11 +739,12 @@ public class NamingResourcesImpl extends LifecycleMBeanBase
      */
     public void removeEjb(String name) {
 
-        entries.remove(name);
-
-        ContextEjb ejb = null;
+        ContextEjb ejb;
         synchronized (ejbs) {
             ejb = ejbs.remove(name);
+            if (ejb != null) {
+                entries.remove(name);
+            }
         }
         if (ejb != null) {
             support.firePropertyChange("ejb", ejb, null);
@@ -764,19 +754,15 @@ public class NamingResourcesImpl extends LifecycleMBeanBase
     }
 
 
-    /**
-     * Remove any environment entry with the specified name.
-     *
-     * @param name Name of the environment entry to remove
-     */
     @Override
     public void removeEnvironment(String name) {
 
-        entries.remove(name);
-
-        ContextEnvironment environment = null;
+        ContextEnvironment environment;
         synchronized (envs) {
             environment = envs.remove(name);
+            if (environment != null) {
+                entries.remove(name);
+            }
         }
         if (environment != null) {
             support.firePropertyChange("environment", environment, null);
@@ -785,8 +771,7 @@ public class NamingResourcesImpl extends LifecycleMBeanBase
                 try {
                     MBeanUtils.destroyMBean(environment);
                 } catch (Exception e) {
-                    log.warn(sm.getString("namingResources.mbeanDestroyFail",
-                            environment.getName()), e);
+                    log.warn(sm.getString("namingResources.mbeanDestroyFail", environment.getName()), e);
                 }
             }
             environment.setNamingResources(null);
@@ -801,11 +786,12 @@ public class NamingResourcesImpl extends LifecycleMBeanBase
      */
     public void removeLocalEjb(String name) {
 
-        entries.remove(name);
-
-        ContextLocalEjb localEjb = null;
+        ContextLocalEjb localEjb;
         synchronized (localEjbs) {
             localEjb = localEjbs.remove(name);
+            if (localEjb != null) {
+                entries.remove(name);
+            }
         }
         if (localEjb != null) {
             support.firePropertyChange("localEjb", localEjb, null);
@@ -822,15 +808,15 @@ public class NamingResourcesImpl extends LifecycleMBeanBase
      */
     public void removeMessageDestinationRef(String name) {
 
-        entries.remove(name);
-
-        MessageDestinationRef mdr = null;
+        MessageDestinationRef mdr;
         synchronized (mdrs) {
             mdr = mdrs.remove(name);
+            if (mdr != null) {
+                entries.remove(name);
+            }
         }
         if (mdr != null) {
-            support.firePropertyChange("messageDestinationRef",
-                                       mdr, null);
+            support.firePropertyChange("messageDestinationRef", mdr, null);
             mdr.setNamingResources(null);
         }
 
@@ -849,19 +835,15 @@ public class NamingResourcesImpl extends LifecycleMBeanBase
     }
 
 
-    /**
-     * Remove any resource reference with the specified name.
-     *
-     * @param name Name of the resource reference to remove
-     */
     @Override
     public void removeResource(String name) {
 
-        entries.remove(name);
-
-        ContextResource resource = null;
+        ContextResource resource;
         synchronized (resources) {
             resource = resources.remove(name);
+            if (resource != null) {
+                entries.remove(name);
+            }
         }
         if (resource != null) {
             support.firePropertyChange("resource", resource, null);
@@ -870,8 +852,7 @@ public class NamingResourcesImpl extends LifecycleMBeanBase
                 try {
                     MBeanUtils.destroyMBean(resource);
                 } catch (Exception e) {
-                    log.warn(sm.getString("namingResources.mbeanDestroyFail",
-                            resource.getName()), e);
+                    log.warn(sm.getString("namingResources.mbeanDestroyFail", resource.getName()), e);
                 }
             }
             resource.setNamingResources(null);
@@ -886,12 +867,12 @@ public class NamingResourcesImpl extends LifecycleMBeanBase
      */
     public void removeResourceEnvRef(String name) {
 
-        entries.remove(name);
-
-        ContextResourceEnvRef resourceEnvRef = null;
+        ContextResourceEnvRef resourceEnvRef;
         synchronized (resourceEnvRefs) {
-            resourceEnvRef =
-                resourceEnvRefs.remove(name);
+            resourceEnvRef = resourceEnvRefs.remove(name);
+            if (resourceEnvRef != null) {
+                entries.remove(name);
+            }
         }
         if (resourceEnvRef != null) {
             support.firePropertyChange("resourceEnvRef", resourceEnvRef, null);
@@ -901,19 +882,15 @@ public class NamingResourcesImpl extends LifecycleMBeanBase
     }
 
 
-    /**
-     * Remove any resource link with the specified name.
-     *
-     * @param name Name of the resource link to remove
-     */
     @Override
     public void removeResourceLink(String name) {
 
-        entries.remove(name);
-
-        ContextResourceLink resourceLink = null;
+        ContextResourceLink resourceLink;
         synchronized (resourceLinks) {
             resourceLink = resourceLinks.remove(name);
+            if (resourceLink != null) {
+                entries.remove(name);
+            }
         }
         if (resourceLink != null) {
             support.firePropertyChange("resourceLink", resourceLink, null);
@@ -922,8 +899,7 @@ public class NamingResourcesImpl extends LifecycleMBeanBase
                 try {
                     MBeanUtils.destroyMBean(resourceLink);
                 } catch (Exception e) {
-                    log.warn(sm.getString("namingResources.mbeanDestroyFail",
-                            resourceLink.getName()), e);
+                    log.warn(sm.getString("namingResources.mbeanDestroyFail", resourceLink.getName()), e);
                 }
             }
             resourceLink.setNamingResources(null);
@@ -938,11 +914,12 @@ public class NamingResourcesImpl extends LifecycleMBeanBase
      */
     public void removeService(String name) {
 
-        entries.remove(name);
-
-        ContextService service = null;
+        ContextService service;
         synchronized (services) {
             service = services.remove(name);
+            if (service != null) {
+                entries.remove(name);
+            }
         }
         if (service != null) {
             support.firePropertyChange("service", service, null);
@@ -962,30 +939,27 @@ public class NamingResourcesImpl extends LifecycleMBeanBase
         // timing issues. Duplication registration is not an issue.
         resourceRequireExplicitRegistration = true;
 
-        for (ContextResource cr : resources.values()) {
+        for (ContextResource cr : findResources()) {
             try {
                 MBeanUtils.createMBean(cr);
             } catch (Exception e) {
-                log.warn(sm.getString(
-                        "namingResources.mbeanCreateFail", cr.getName()), e);
+                log.warn(sm.getString("namingResources.mbeanCreateFail", cr.getName()), e);
             }
         }
 
-        for (ContextEnvironment ce : envs.values()) {
+        for (ContextEnvironment ce : findEnvironments()) {
             try {
                 MBeanUtils.createMBean(ce);
             } catch (Exception e) {
-                log.warn(sm.getString(
-                        "namingResources.mbeanCreateFail", ce.getName()), e);
+                log.warn(sm.getString("namingResources.mbeanCreateFail", ce.getName()), e);
             }
         }
 
-        for (ContextResourceLink crl : resourceLinks.values()) {
+        for (ContextResourceLink crl : findResourceLinks()) {
             try {
                 MBeanUtils.createMBean(crl);
             } catch (Exception e) {
-                log.warn(sm.getString(
-                        "namingResources.mbeanCreateFail", crl.getName()), e);
+                log.warn(sm.getString("namingResources.mbeanCreateFail", crl.getName()), e);
             }
         }
     }
@@ -1009,7 +983,7 @@ public class NamingResourcesImpl extends LifecycleMBeanBase
      * Close those resources that an explicit close may help clean-up faster.
      */
     private void cleanUp() {
-        if (resources.size() == 0) {
+        if (resources.isEmpty()) {
             return;
         }
         javax.naming.Context ctxt;
@@ -1021,22 +995,19 @@ public class NamingResourcesImpl extends LifecycleMBeanBase
                 ctxt = (javax.naming.Context) ctxt.lookup("comp/env");
             }
         } catch (NamingException e) {
-            log.warn(sm.getString("namingResources.cleanupNoContext",
-                    container), e);
+            log.warn(sm.getString("namingResources.cleanupNoContext", container), e);
             return;
         }
-        for (ContextResource cr: resources.values()) {
+        for (ContextResource cr : findResources()) {
             if (cr.getSingleton()) {
                 String closeMethod = cr.getCloseMethod();
-                if (closeMethod != null && closeMethod.length() > 0) {
+                if (closeMethod != null && !closeMethod.isEmpty()) {
                     String name = cr.getName();
                     Object resource;
                     try {
-                         resource = ctxt.lookup(name);
+                        resource = ctxt.lookup(name);
                     } catch (NamingException e) {
-                        log.warn(sm.getString(
-                                "namingResources.cleanupNoResource",
-                                cr.getName(), container), e);
+                        log.warn(sm.getString("namingResources.cleanupNoResource", cr.getName(), container), e);
                         continue;
                     }
                     cleanUp(resource, name, closeMethod);
@@ -1047,37 +1018,31 @@ public class NamingResourcesImpl extends LifecycleMBeanBase
 
 
     /**
-     * Clean up a resource by calling the defined close method. For example,
-     * closing a database connection pool will close it's open connections. This
-     * will happen on GC but that leaves db connections open that may cause
-     * issues.
+     * Clean up a resource by calling the defined close method. For example, closing a database connection pool will
+     * close its open connections. This will happen on GC but that leaves db connections open that may cause issues.
      *
-     * @param resource  The resource to close.
+     * @param resource The resource to close.
      */
     private void cleanUp(Object resource, String name, String closeMethod) {
         // Look for a zero-arg close() method
-        Method m = null;
+        Method m;
         try {
             m = resource.getClass().getMethod(closeMethod, (Class<?>[]) null);
         } catch (SecurityException e) {
-            log.debug(sm.getString("namingResources.cleanupCloseSecurity",
-                    closeMethod, name, container));
+            log.debug(sm.getString("namingResources.cleanupCloseSecurity", closeMethod, name, container), e);
             return;
         } catch (NoSuchMethodException e) {
-            log.debug(sm.getString("namingResources.cleanupNoClose",
-                    name, container, closeMethod));
+            log.debug(sm.getString("namingResources.cleanupNoClose", name, container, closeMethod), e);
             return;
         }
         try {
             m.invoke(resource, (Object[]) null);
         } catch (IllegalArgumentException | IllegalAccessException e) {
-            log.warn(sm.getString("namingResources.cleanupCloseFailed",
-                    closeMethod, name, container), e);
+            log.warn(sm.getString("namingResources.cleanupCloseFailed", closeMethod, name, container), e);
         } catch (InvocationTargetException e) {
             Throwable t = ExceptionUtils.unwrapInvocationTargetException(e);
             ExceptionUtils.handleThrowable(t);
-            log.warn(sm.getString("namingResources.cleanupCloseFailed",
-                    closeMethod, name, container), t);
+            log.warn(sm.getString("namingResources.cleanupCloseFailed", closeMethod, name, container), t);
         }
     }
 
@@ -1089,30 +1054,27 @@ public class NamingResourcesImpl extends LifecycleMBeanBase
         resourceRequireExplicitRegistration = false;
 
         // Destroy in reverse order to create, although it should not matter
-        for (ContextResourceLink crl : resourceLinks.values()) {
+        for (ContextResourceLink crl : findResourceLinks()) {
             try {
                 MBeanUtils.destroyMBean(crl);
             } catch (Exception e) {
-                log.warn(sm.getString(
-                        "namingResources.mbeanDestroyFail", crl.getName()), e);
+                log.warn(sm.getString("namingResources.mbeanDestroyFail", crl.getName()), e);
             }
         }
 
-        for (ContextEnvironment ce : envs.values()) {
+        for (ContextEnvironment ce : findEnvironments()) {
             try {
                 MBeanUtils.destroyMBean(ce);
             } catch (Exception e) {
-                log.warn(sm.getString(
-                        "namingResources.mbeanDestroyFail", ce.getName()), e);
+                log.warn(sm.getString("namingResources.mbeanDestroyFail", ce.getName()), e);
             }
         }
 
-        for (ContextResource cr : resources.values()) {
+        for (ContextResource cr : findResources()) {
             try {
                 MBeanUtils.destroyMBean(cr);
             } catch (Exception e) {
-                log.warn(sm.getString(
-                        "namingResources.mbeanDestroyFail", cr.getName()), e);
+                log.warn(sm.getString("namingResources.mbeanDestroyFail", cr.getName()), e);
             }
         }
 
@@ -1137,24 +1099,21 @@ public class NamingResourcesImpl extends LifecycleMBeanBase
     protected String getObjectNameKeyProperties() {
         Object c = getContainer();
         if (c instanceof Container) {
-            return "type=NamingResources" +
-                    ((Container) c).getMBeanKeyProperties();
+            return "type=NamingResources" + ((Container) c).getMBeanKeyProperties();
         }
         // Server or just unknown
         return "type=NamingResources";
     }
 
     /**
-     * Checks that the configuration of the type for the specified resource is
-     * consistent with any injection targets and if the type is not specified,
-     * tries to configure the type based on the injection targets
+     * Checks that the configuration of the type for the specified resource is consistent with any injection targets and
+     * if the type is not specified, tries to configure the type based on the injection targets
      *
-     * @param resource  The resource to check
+     * @param resource The resource to check
      *
-     * @return  <code>true</code> if the type for the resource is now valid (if
-     *          previously <code>null</code> this means it is now set) or
-     *          <code>false</code> if the current resource type is inconsistent
-     *          with the injection targets and/or cannot be determined
+     * @return <code>true</code> if the type for the resource is now valid (if previously <code>null</code> this means
+     *             it is now set) or <code>false</code> if the current resource type is inconsistent with the injection
+     *             targets and/or cannot be determined
      */
     private boolean checkResourceType(ResourceBase resource) {
         if (!(container instanceof Context)) {
@@ -1162,8 +1121,7 @@ public class NamingResourcesImpl extends LifecycleMBeanBase
             return true;
         }
 
-        if (resource.getInjectionTargets() == null ||
-                resource.getInjectionTargets().size() == 0) {
+        if (resource.getInjectionTargets() == null || resource.getInjectionTargets().isEmpty()) {
             // No injection targets so use the defined type for the resource
             return true;
         }
@@ -1181,8 +1139,7 @@ public class NamingResourcesImpl extends LifecycleMBeanBase
             }
         }
 
-        Class<?> compatibleClass =
-                getCompatibleType(context, resource, typeClass);
+        Class<?> compatibleClass = getCompatibleType(context, resource, typeClass);
         if (compatibleClass == null) {
             // Indicates that a compatible type could not be identified that
             // worked for all injection targets
@@ -1193,14 +1150,12 @@ public class NamingResourcesImpl extends LifecycleMBeanBase
         return true;
     }
 
-    private Class<?> getCompatibleType(Context context,
-            ResourceBase resource, Class<?> typeClass) {
+    private Class<?> getCompatibleType(Context context, ResourceBase resource, Class<?> typeClass) {
 
         Class<?> result = null;
 
         for (InjectionTarget injectionTarget : resource.getInjectionTargets()) {
-            Class<?> clazz = Introspection.loadClass(
-                    context, injectionTarget.getTargetClass());
+            Class<?> clazz = Introspection.loadClass(context, injectionTarget.getTargetClass());
             if (clazz == null) {
                 // Can't load class - therefore ignore this target
                 continue;
@@ -1212,7 +1167,7 @@ public class NamingResourcesImpl extends LifecycleMBeanBase
             Class<?> targetType = getSetterType(clazz, targetName);
             if (targetType == null) {
                 // Try a field match if no setter match
-                targetType = getFieldType(clazz,targetName);
+                targetType = getFieldType(clazz, targetName);
             }
             if (targetType == null) {
                 // No match - ignore this injection target
@@ -1248,12 +1203,16 @@ public class NamingResourcesImpl extends LifecycleMBeanBase
     }
 
     private Class<?> getSetterType(Class<?> clazz, String name) {
-        Method[] methods = Introspection.getDeclaredMethods(clazz);
-        if (methods != null && methods.length > 0) {
-            for (Method method : methods) {
-                if (Introspection.isValidSetter(method) &&
-                        Introspection.getPropertyName(method).equals(name)) {
-                    return method.getParameterTypes()[0];
+        // The runtime injection engine (DefaultInstanceManager) matches
+        // injection targets across the whole class hierarchy, so the checks
+        // here must do the same
+        for (Class<?> c = clazz; c != null; c = c.getSuperclass()) {
+            Method[] methods = Introspection.getDeclaredMethods(c);
+            if (methods != null && methods.length > 0) {
+                for (Method method : methods) {
+                    if (Introspection.isValidSetter(method) && Introspection.getPropertyName(method).equals(name)) {
+                        return method.getParameterTypes()[0];
+                    }
                 }
             }
         }
@@ -1261,11 +1220,13 @@ public class NamingResourcesImpl extends LifecycleMBeanBase
     }
 
     private Class<?> getFieldType(Class<?> clazz, String name) {
-        Field[] fields = Introspection.getDeclaredFields(clazz);
-        if (fields != null && fields.length > 0) {
-            for (Field field : fields) {
-                if (field.getName().equals(name)) {
-                    return field.getType();
+        for (Class<?> c = clazz; c != null; c = c.getSuperclass()) {
+            Field[] fields = Introspection.getDeclaredFields(c);
+            if (fields != null && fields.length > 0) {
+                for (Field field : fields) {
+                    if (field.getName().equals(name)) {
+                        return field.getType();
+                    }
                 }
             }
         }

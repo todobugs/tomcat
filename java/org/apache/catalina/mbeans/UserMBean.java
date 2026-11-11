@@ -32,12 +32,17 @@ import org.apache.tomcat.util.modeler.Registry;
 import org.apache.tomcat.util.res.StringManager;
 
 /**
- * <p>A <strong>ModelMBean</strong> implementation for the
- * <code>org.apache.catalina.User</code> component.</p>
- *
- * @author Craig R. McClanahan
+ * <p>
+ * A <strong>ModelMBean</strong> implementation for the <code>org.apache.catalina.User</code> component.
+ * </p>
  */
 public class UserMBean extends BaseModelMBean {
+
+    /**
+     * Constructs a new UserMBean.
+     */
+    public UserMBean() {
+    }
 
     private static final StringManager sm = StringManager.getManager(UserMBean.class);
 
@@ -59,7 +64,9 @@ public class UserMBean extends BaseModelMBean {
 
 
     /**
-     * @return the MBean Names of all groups this user is a member of.
+     * Returns the MBean Names of all groups this user is a member of.
+     *
+     * @return the MBean Names of all groups this user is a member of
      */
     public String[] getGroups() {
 
@@ -70,21 +77,20 @@ public class UserMBean extends BaseModelMBean {
             Group group = null;
             try {
                 group = groups.next();
-                ObjectName oname =
-                    MBeanUtils.createObjectName(managed.getDomain(), group);
+                ObjectName oname = MBeanUtils.createObjectName(managed.getDomain(), group);
                 results.add(oname.toString());
             } catch (MalformedObjectNameException e) {
-                IllegalArgumentException iae = new IllegalArgumentException(sm.getString("userMBean.createError.group", group));
-                iae.initCause(e);
-                throw iae;
+                throw new IllegalArgumentException(sm.getString("userMBean.createError.group", group), e);
             }
         }
-        return results.toArray(new String[results.size()]);
+        return results.toArray(new String[0]);
     }
 
 
     /**
-     * @return the MBean Names of all roles assigned to this user.
+     * Returns the MBean Names of all roles assigned to this user.
+     *
+     * @return the MBean Names of all roles assigned to this user
      */
     public String[] getRoles() {
 
@@ -95,16 +101,13 @@ public class UserMBean extends BaseModelMBean {
             Role role = null;
             try {
                 role = roles.next();
-                ObjectName oname =
-                    MBeanUtils.createObjectName(managed.getDomain(), role);
+                ObjectName oname = MBeanUtils.createObjectName(managed.getDomain(), role);
                 results.add(oname.toString());
             } catch (MalformedObjectNameException e) {
-                IllegalArgumentException iae = new IllegalArgumentException(sm.getString("userMBean.createError.role", role));
-                iae.initCause(e);
-                throw iae;
+                throw new IllegalArgumentException(sm.getString("userMBean.createError.role", role), e);
             }
         }
-        return results.toArray(new String[results.size()]);
+        return results.toArray(new String[0]);
     }
 
 

@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.catalina.tribes.membership;
 
 import java.util.Properties;
@@ -26,26 +25,35 @@ import org.apache.catalina.tribes.Member;
 import org.apache.catalina.tribes.MembershipListener;
 import org.apache.catalina.tribes.MembershipService;
 
+/**
+ * Base implementation for membership services.
+ */
 public abstract class MembershipServiceBase implements MembershipService, MembershipListener {
+
+    /**
+     * Default constructor.
+     */
+    public MembershipServiceBase() {
+    }
 
     /**
      * The implementation specific properties
      */
     protected Properties properties = new Properties();
+    /**
+     * The membership listener.
+     */
     protected volatile MembershipListener listener;
+    /**
+     * The channel.
+     */
     protected Channel channel;
 
-    /**
-     * {@inheritDoc}
-     */
     @Override
     public void setProperties(Properties properties) {
         this.properties = properties;
     }
 
-    /**
-     * {@inheritDoc}
-     */
     @Override
     public Properties getProperties() {
         return properties;
@@ -53,42 +61,50 @@ public abstract class MembershipServiceBase implements MembershipService, Member
 
     @Override
     public boolean hasMembers() {
-        if (getMembershipProvider() == null ) return false;
+        if (getMembershipProvider() == null) {
+            return false;
+        }
         return getMembershipProvider().hasMembers();
     }
 
     @Override
     public Member getMember(Member mbr) {
-        if (getMembershipProvider() == null) return null;
+        if (getMembershipProvider() == null) {
+            return null;
+        }
         return getMembershipProvider().getMember(mbr);
     }
 
     @Override
     public Member[] getMembers() {
-        if (getMembershipProvider() == null) return Membership.EMPTY_MEMBERS;
+        if (getMembershipProvider() == null) {
+            return Membership.EMPTY_MEMBERS;
+        }
         return getMembershipProvider().getMembers();
     }
 
     @Override
     public String[] getMembersByName() {
         Member[] currentMembers = getMembers();
-        String [] membernames ;
-        if(currentMembers != null) {
+        String[] membernames;
+        if (currentMembers != null) {
             membernames = new String[currentMembers.length];
             for (int i = 0; i < currentMembers.length; i++) {
-                membernames[i] = currentMembers[i].toString() ;
+                membernames[i] = currentMembers[i].toString();
             }
-        } else
-            membernames = new String[0] ;
-        return membernames ;
+        } else {
+            membernames = new String[0];
+        }
+        return membernames;
     }
 
     @Override
     public Member findMemberByName(String name) {
         Member[] currentMembers = getMembers();
-        for (int i = 0; i < currentMembers.length; i++) {
-            if (name.equals(currentMembers[i].toString()))
-                return currentMembers[i];
+        for (Member currentMember : currentMembers) {
+            if (name.equals(currentMember.toString())) {
+                return currentMember;
+            }
         }
         return null;
     }
@@ -99,20 +115,24 @@ public abstract class MembershipServiceBase implements MembershipService, Member
     }
 
     @Override
-    public void removeMembershipListener(){
+    public void removeMembershipListener() {
         listener = null;
     }
 
     @Override
     public void memberAdded(Member member) {
         MembershipListener listener = this.listener;
-        if (listener != null) listener.memberAdded(member);
+        if (listener != null) {
+            listener.memberAdded(member);
+        }
     }
 
     @Override
     public void memberDisappeared(Member member) {
         MembershipListener listener = this.listener;
-        if (listener != null) listener.memberDisappeared(member);
+        if (listener != null) {
+            listener.memberDisappeared(member);
+        }
     }
 
     @Override
@@ -132,7 +152,7 @@ public abstract class MembershipServiceBase implements MembershipService, Member
 
     @Override
     public void start() throws Exception {
-        start(MembershipService.MBR_RX);
-        start(MembershipService.MBR_TX);
+        start(MBR_RX);
+        start(MBR_TX);
     }
 }

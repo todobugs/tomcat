@@ -28,12 +28,12 @@ import org.apache.juli.logging.LogFactory;
 
 
 /**
- * Concrete implementation of <code>RequestFilterValve</code> that filters
- * based on the string representation of the remote client's IP address
- * optionally combined with the server connector port number.
+ * Concrete implementation of <code>RequestFilterValve</code> that filters based on the string representation of the
+ * remote client's IP address optionally combined with the server connector port number.
  *
- * @author Craig R. McClanahan
+ * @deprecated This Valve will be removed in Tomcat 12 onwards. Use {@link RemoteCIDRValve} instead.
  */
+@Deprecated
 public final class RemoteAddrValve extends RequestFilterValve {
 
     private static final Log log = LogFactory.getLog(RemoteAddrValve.class);
@@ -44,15 +44,16 @@ public final class RemoteAddrValve extends RequestFilterValve {
     @Override
     public void invoke(Request request, Response response) throws IOException, ServletException {
         String property;
-        if (getAddConnectorPort()) {
-            property = request.getRequest().getRemoteAddr() + ";" +
-                    request.getConnector().getPortWithOffset();
+        if (getUsePeerAddress()) {
+            property = request.getPeerAddr();
         } else {
             property = request.getRequest().getRemoteAddr();
         }
+        if (getAddConnectorPort()) {
+            property = property + ";" + request.getConnector().getPortWithOffset();
+        }
         process(property, request, response);
     }
-
 
 
     @Override

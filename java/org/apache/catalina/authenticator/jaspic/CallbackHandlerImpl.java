@@ -18,9 +18,11 @@ package org.apache.catalina.authenticator.jaspic;
 
 import java.io.IOException;
 import java.security.Principal;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
+import java.util.Set;
 
 import javax.security.auth.Subject;
 import javax.security.auth.callback.Callback;
@@ -28,35 +30,30 @@ import javax.security.auth.callback.CallbackHandler;
 import javax.security.auth.callback.UnsupportedCallbackException;
 import javax.security.auth.message.callback.CallerPrincipalCallback;
 import javax.security.auth.message.callback.GroupPrincipalCallback;
+import javax.security.auth.message.callback.PasswordValidationCallback;
 
+import org.apache.catalina.Contained;
+import org.apache.catalina.Container;
 import org.apache.catalina.realm.GenericPrincipal;
 import org.apache.juli.logging.Log;
 import org.apache.juli.logging.LogFactory;
 import org.apache.tomcat.util.res.StringManager;
 
 /**
- * Implemented as a singleton since the class is stateless.
+ * Default implementation of a JASPIC CallbackHandler.
  */
-public class CallbackHandlerImpl implements CallbackHandler {
+public class CallbackHandlerImpl implements CallbackHandler, Contained {
+
+    /**
+     * Default constructor.
+     */
+    public CallbackHandlerImpl() {
+    }
 
     private static final StringManager sm = StringManager.getManager(CallbackHandlerImpl.class);
+    private final Log log = LogFactory.getLog(CallbackHandlerImpl.class); // must not be static
 
-    private static CallbackHandler instance;
-
-
-    static {
-        instance = new CallbackHandlerImpl();
-    }
-
-
-    public static CallbackHandler getInstance() {
-        return instance;
-    }
-
-
-    private  CallbackHandlerImpl() {
-        // Hide default constructor
-    }
+    private Container container;
 
 
     @Override
@@ -66,56 +63,106 @@ public class CallbackHandlerImpl implements CallbackHandler {
         Principal principal = null;
         Subject subject = null;
         String[] groups = null;
+        boolean passwordValidationFailed = false;
 
         if (callbacks != null) {
-            // Need to combine data from multiple callbacks so use this to hold
-            // the data
-            // Process the callbacks
+            /*
+             * There may be multiple callbacks passed to this method and/or multiple calls to this method. The Jakarta
+             * Authentication specification recommends that this class does not maintain state for individual requests
+             * and that the Subject is used to maintain state.
+             */
             for (Callback callback : callbacks) {
                 if (callback instanceof CallerPrincipalCallback) {
                     CallerPrincipalCallback cpc = (CallerPrincipalCallback) callback;
                     name = cpc.getName();
-                    principal = cpc.getPrincipal();
+                    if (cpc.getPrincipal() != null) {
+                        principal = cpc.getPrincipal();
+                    }
                     subject = cpc.getSubject();
                 } else if (callback instanceof GroupPrincipalCallback) {
                     GroupPrincipalCallback gpc = (GroupPrincipalCallback) callback;
                     groups = gpc.getGroups();
+                } else if (callback instanceof PasswordValidationCallback) {
+                    PasswordValidationCallback pvc = (PasswordValidationCallback) callback;
+                    if (container == null) {
+                        log.warn(sm.getString("callbackHandlerImpl.containerMissing", callback.getClass().getName()));
+                        passwordValidationFailed = true;
+                    } else if (container.getRealm() == null) {
+                        log.warn(sm.getString("callbackHandlerImpl.realmMissing", callback.getClass().getName(),
+                                container.getName()));
+                        passwordValidationFailed = true;
+                    } else {
+                        principal =
+                                container.getRealm().authenticate(pvc.getUsername(), String.valueOf(pvc.getPassword()));
+                        if (principal == null) {
+                            passwordValidationFailed = true;
+                        }
+                        subject = pvc.getSubject();
+                    }
+                    pvc.setResult(!passwordValidationFailed);
                 } else {
-                    // This is a singleton so need to get correct Logger for
-                    // current TCCL
-                    Log log = LogFactory.getLog(CallbackHandlerImpl.class);
-                    log.error(sm.getString("callbackHandlerImpl.jaspicCallbackMissing",
-                            callback.getClass().getName()));
+                    log.error(sm.getString("callbackHandlerImpl.jaspicCallbackMissing", callback.getClass().getName()));
                 }
             }
 
-            // Create the GenericPrincipal
-            Principal gp = getPrincipal(principal, name, groups);
-            if (subject != null && gp != null) {
-                subject.getPrivateCredentials().add(gp);
+            /*
+             * If subject is null, there is nothing to do. If password validation was requested and failed, do not
+             * update the subject. The Jakarta Authentication specification requires the runtime to update the subject
+             * only if authentication succeeds and, for security, the handler must fail closed.
+             */
+            if (subject != null && !passwordValidationFailed) {
+
+                // Need a name to create a Principal
+                if (name == null && principal != null) {
+                    name = principal.getName();
+                }
+
+                if (name != null) {
+                    // If the Principal has been cached in the session, just return it.
+                    if (principal instanceof GenericPrincipal) {
+                        // Duplicates are unlikely and are not merged; if present, AuthenticatorBase.getPrincipal()
+                        // returns an arbitrary element of the set of credentials
+                        subject.getPrivateCredentials().add(principal);
+                    } else {
+                        /*
+                         * There should only be a single GenericPrincipal in the private credentials for the Subject. If
+                         * one is already present, merge the groups to create a new GenericPrincipal. The code assumes
+                         * that the name and principal (if any) will be the same.
+                         */
+                        List<String> mergedRoles = new ArrayList<>();
+
+                        Set<GenericPrincipal> gps = subject.getPrivateCredentials(GenericPrincipal.class);
+                        if (!gps.isEmpty()) {
+                            GenericPrincipal gp = gps.iterator().next();
+                            mergedRoles.addAll(Arrays.asList(gp.getRoles()));
+                            // Remove the existing GenericPrincipal
+                            subject.getPrivateCredentials().remove(gp);
+                        }
+                        if (groups != null) {
+                            mergedRoles.addAll(Arrays.asList(groups));
+                        }
+
+                        if (mergedRoles.isEmpty()) {
+                            mergedRoles = Collections.emptyList();
+                        }
+
+                        subject.getPrivateCredentials().add(new GenericPrincipal(name, null, mergedRoles, principal));
+                    }
+                }
             }
         }
     }
 
 
-    private Principal getPrincipal(Principal principal, String name, String[] groups) {
-        // If the Principal is cached in the session JASPIC may simply return it
-        if (principal instanceof GenericPrincipal) {
-            return principal;
-        }
-        if (name == null && principal != null) {
-            name = principal.getName();
-        }
-        if (name == null) {
-            return null;
-        }
-        List<String> roles;
-        if (groups == null || groups.length == 0) {
-            roles = Collections.emptyList();
-        } else {
-            roles = Arrays.asList(groups);
-        }
+    // Contained interface methods
+    @Override
+    public Container getContainer() {
+        return this.container;
+    }
 
-        return new GenericPrincipal(name, null, roles, principal);
+
+    @Override
+    public void setContainer(Container container) {
+        this.container = container;
     }
 }

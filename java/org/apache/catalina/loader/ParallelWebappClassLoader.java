@@ -21,43 +21,40 @@ import org.apache.juli.logging.Log;
 import org.apache.juli.logging.LogFactory;
 import org.apache.tomcat.util.compat.JreCompat;
 
+/**
+ * A class loader that is parallel capable. Parallel capable class loaders
+ * can load classes concurrently from multiple threads.
+ */
 public class ParallelWebappClassLoader extends WebappClassLoaderBase {
 
     private static final Log log = LogFactory.getLog(ParallelWebappClassLoader.class);
 
     static {
         if (!JreCompat.isGraalAvailable()) {
-            if (!ClassLoader.registerAsParallelCapable()) {
+            if (!registerAsParallelCapable()) {
                 log.warn(sm.getString("webappClassLoaderParallel.registrationFailed"));
             }
         }
     }
 
+    /**
+     * Construct a new {@code ParallelWebappClassLoader} with no parent class loader.
+     */
     public ParallelWebappClassLoader() {
         super();
     }
 
 
+    /**
+     * Construct a new {@code ParallelWebappClassLoader} with the specified parent class loader.
+     *
+     * @param parent The parent class loader
+     */
     public ParallelWebappClassLoader(ClassLoader parent) {
         super(parent);
     }
 
 
-    /**
-     * Returns a copy of this class loader without any class file
-     * transformers. This is a tool often used by Java Persistence API
-     * providers to inspect entity classes in the absence of any
-     * instrumentation, something that can't be guaranteed within the
-     * context of a {@link java.lang.instrument.ClassFileTransformer}'s
-     * {@link java.lang.instrument.ClassFileTransformer#transform(ClassLoader,
-     * String, Class, java.security.ProtectionDomain, byte[]) transform} method.
-     * <p>
-     * The returned class loader's resource cache will have been cleared
-     * so that classes already instrumented will not be retained or
-     * returned.
-     *
-     * @return the transformer-free copy of this class loader.
-     */
     @Override
     public ParallelWebappClassLoader copyWithoutTransformers() {
 

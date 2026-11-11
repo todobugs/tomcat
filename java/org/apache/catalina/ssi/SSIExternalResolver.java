@@ -20,57 +20,86 @@ package org.apache.catalina.ssi;
 import java.io.IOException;
 import java.util.Collection;
 import java.util.Date;
+
 /**
- * Interface used by SSIMediator to talk to the 'outside world' ( usually a
- * servlet )
- *
- * @author Dan Sandberg
+ * Interface used by SSIMediator to talk to the 'outside world' ( usually a servlet ).
  */
 public interface SSIExternalResolver {
     /**
      * Adds any external variables to the variableNames collection.
      *
-     * @param variableNames
-     *            the collection to add to
+     * @param variableNames the collection to add to
      */
-    public void addVariableNames(Collection<String> variableNames);
-
-
-    public String getVariableValue(String name);
+    void addVariableNames(Collection<String> variableNames);
 
 
     /**
-     * Set the named variable to the specified value. If value is null, then
-     * the variable will be removed ( ie. a call to getVariableValue will
-     * return null )
+     * Returns the value of the named variable, or null if not found.
      *
-     * @param name
-     *            of the variable
-     * @param value
-     *            of the variable
+     * @param name of the variable
+     * @return the variable value
      */
-    public void setVariableValue(String name, String value);
+    String getVariableValue(String name);
 
 
     /**
-     * Returns the current date. This is useful for putting the SSI stuff in a
-     * regression test. Since you can make the current date a constant, it
-     * makes testing easier since the output won't change.
+     * Set the named variable to the specified value. If value is null, then the variable will be removed ( ie. a call
+     * to getVariableValue will return null )
      *
-     * @return the data
+     * @param name  of the variable
+     * @param value of the variable
      */
-    public Date getCurrentDate();
+    void setVariableValue(String name, String value);
 
 
-    public long getFileSize(String path, boolean virtual) throws IOException;
+    /**
+     * Returns the current date. This is a hook that implementations may use to return a fixed date, e.g. to make SSI
+     * output deterministic for regression testing. Note that the built-in SSI date variables are not set from this
+     * method.
+     *
+     * @return the date
+     */
+    Date getCurrentDate();
 
 
-    public long getFileLastModified(String path, boolean virtual)
-            throws IOException;
+    /**
+     * Returns the size of the specified file in bytes.
+     *
+     * @param path    the file path
+     * @param virtual true for virtual (webapp-relative) path, false for physical path
+     * @return the file size in bytes
+     * @throws IOException if the file cannot be accessed
+     */
+    long getFileSize(String path, boolean virtual) throws IOException;
 
 
-    public String getFileText(String path, boolean virtual) throws IOException;
+    /**
+     * Returns the last modified timestamp of the specified file.
+     *
+     * @param path    the file path
+     * @param virtual true for virtual (webapp-relative) path, false for physical path
+     * @return the last modified time in milliseconds
+     * @throws IOException if the file cannot be accessed
+     */
+    long getFileLastModified(String path, boolean virtual) throws IOException;
 
 
-    public void log(String message, Throwable throwable);
+    /**
+     * Returns the text content of the specified file.
+     *
+     * @param path    the file path
+     * @param virtual true for virtual (webapp-relative) path, false for physical path
+     * @return the file content as a string
+     * @throws IOException if the file cannot be read
+     */
+    String getFileText(String path, boolean virtual) throws IOException;
+
+
+    /**
+     * Logs a message, optionally with an associated throwable.
+     *
+     * @param message     the log message
+     * @param throwable   the associated throwable, or null
+     */
+    void log(String message, Throwable throwable);
 }

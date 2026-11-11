@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.catalina.tribes.io;
 
 import java.io.IOException;
@@ -22,38 +21,48 @@ import java.io.OutputStream;
 
 /**
  * Byte array output stream that exposes the byte array directly
- *
- * @version 1.0
  */
 public class DirectByteArrayOutputStream extends OutputStream {
 
     private final XByteBuffer buffer;
 
+    /**
+     * Construct a new DirectByteArrayOutputStream with the given initial size.
+     *
+     * @param size Initial size of the internal buffer
+     */
     public DirectByteArrayOutputStream(int size) {
-        buffer = new XByteBuffer(size,false);
+        buffer = new XByteBuffer(size, false);
+    }
+
+    @Override
+    public void write(int b) throws IOException {
+        buffer.append((byte) b);
     }
 
     /**
-     * Writes the specified byte to this output stream.
+     * Get the current number of bytes written to this stream.
      *
-     * @param b the <code>byte</code>.
-     * @throws IOException if an I/O error occurs. In particular, an
-     *   <code>IOException</code> may be thrown if the output stream has
-     *   been closed.
+     * @return Number of bytes written
      */
-    @Override
-    public void write(int b) throws IOException {
-        buffer.append((byte)b);
-    }
-
     public int size() {
         return buffer.getLength();
     }
 
+    /**
+     * Get the underlying byte array directly without copying.
+     *
+     * @return Direct byte array reference
+     */
     public byte[] getArrayDirect() {
         return buffer.getBytesDirect();
     }
 
+    /**
+     * Get a copy of the bytes written to this stream.
+     *
+     * @return Copy of the byte array
+     */
     public byte[] getArray() {
         return buffer.getBytes();
     }

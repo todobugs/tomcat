@@ -17,6 +17,13 @@
 package org.apache.catalina.valves;
 
 import java.io.IOException;
+import java.lang.reflect.Field;
+import java.nio.charset.StandardCharsets;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.ResourceBundle;
 
 import javax.servlet.AsyncContext;
 import javax.servlet.RequestDispatcher;
@@ -36,25 +43,29 @@ import org.apache.catalina.startup.Tomcat;
 import org.apache.catalina.startup.TomcatBaseTest;
 import org.apache.tomcat.util.buf.ByteChunk;
 import org.apache.tomcat.util.descriptor.web.ErrorPage;
+import org.apache.tomcat.util.res.StringManager;
 
 public class TestErrorReportValve extends TomcatBaseTest {
+
+    private static final StringManager sm = StringManager.getManager(TestErrorReportValve.class);
 
     @Test
     public void testBug53071() throws Exception {
         Tomcat tomcat = getTomcatInstance();
 
         // No file system docBase required
-        Context ctx = tomcat.addContext("", null);
+        Context ctx = getProgrammaticRootContext();
 
         Tomcat.addServlet(ctx, "errorServlet", new ErrorServlet());
-        ctx.addServletMappingDecoded("/", "errorServlet");
+        ctx.addServletMapping("/", "errorServlet");
 
         tomcat.start();
 
-        ByteChunk res = getUrl("http://localhost:" + getPort());
-
-        Assert.assertTrue(res.toString().contains("<p><b>Message</b> " +
-                ErrorServlet.ERROR_TEXT + "</p>"));
+        ByteChunk res = new ByteChunk();
+        res.setCharset(StandardCharsets.UTF_8);
+        getUrl("http://localhost:" + getPort(), res, null);
+        Assert.assertTrue(res.toString().contains(
+                "<p><b>" + sm.getString("errorReportValve.message") + "</b> " + ErrorServlet.ERROR_TEXT + "</p>"));
     }
 
 
@@ -62,11 +73,10 @@ public class TestErrorReportValve extends TomcatBaseTest {
 
         private static final long serialVersionUID = 1L;
         private static final String ERROR_TEXT = "The wheels fell off.";
+
         @Override
-        protected void doGet(HttpServletRequest req, HttpServletResponse resp)
-                throws ServletException, IOException {
-            req.setAttribute(RequestDispatcher.ERROR_EXCEPTION,
-                    new Throwable(ERROR_TEXT));
+        protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
+            req.setAttribute(RequestDispatcher.ERROR_EXCEPTION, new Throwable(ERROR_TEXT));
             resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
         }
     }
@@ -77,10 +87,10 @@ public class TestErrorReportValve extends TomcatBaseTest {
         Tomcat tomcat = getTomcatInstance();
 
         // No file system docBase required
-        Context ctx = tomcat.addContext("", null);
+        Context ctx = getProgrammaticRootContext();
 
         Tomcat.addServlet(ctx, "bug54220", new Bug54220Servlet(false));
-        ctx.addServletMappingDecoded("/", "bug54220");
+        ctx.addServletMapping("/", "bug54220");
 
         tomcat.start();
 
@@ -97,10 +107,10 @@ public class TestErrorReportValve extends TomcatBaseTest {
         Tomcat tomcat = getTomcatInstance();
 
         // No file system docBase required
-        Context ctx = tomcat.addContext("", null);
+        Context ctx = getProgrammaticRootContext();
 
         Tomcat.addServlet(ctx, "bug54220", new Bug54220Servlet(true));
-        ctx.addServletMappingDecoded("/", "bug54220");
+        ctx.addServletMapping("/", "bug54220");
 
         tomcat.start();
 
@@ -123,8 +133,7 @@ public class TestErrorReportValve extends TomcatBaseTest {
         }
 
         @Override
-        protected void doGet(HttpServletRequest req, HttpServletResponse resp)
-                throws ServletException, IOException {
+        protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
 
             if (setNotFound) {
                 resp.setStatus(HttpServletResponse.SC_NOT_FOUND);
@@ -141,10 +150,10 @@ public class TestErrorReportValve extends TomcatBaseTest {
         Tomcat tomcat = getTomcatInstance();
 
         // No file system docBase required
-        Context ctx = tomcat.addContext("", null);
+        Context ctx = getProgrammaticRootContext();
 
         Tomcat.addServlet(ctx, "bug54536", new Bug54536Servlet());
-        ctx.addServletMappingDecoded("/", "bug54536");
+        ctx.addServletMapping("/", "bug54536");
 
         tomcat.start();
 
@@ -165,8 +174,7 @@ public class TestErrorReportValve extends TomcatBaseTest {
         private static final String ERROR_MESSAGE = "The sky is falling";
 
         @Override
-        protected void doGet(HttpServletRequest req, HttpServletResponse resp)
-                throws ServletException, IOException {
+        protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
             resp.sendError(ERROR_STATUS, ERROR_MESSAGE);
         }
     }
@@ -177,13 +185,12 @@ public class TestErrorReportValve extends TomcatBaseTest {
         Tomcat tomcat = getTomcatInstance();
 
         // No file system docBase required
-        Context ctx = tomcat.addContext("", null);
+        Context ctx = getProgrammaticRootContext();
 
         Bug56042Servlet bug56042Servlet = new Bug56042Servlet();
-        Wrapper wrapper =
-            Tomcat.addServlet(ctx, "bug56042Servlet", bug56042Servlet);
+        Wrapper wrapper = Tomcat.addServlet(ctx, "bug56042Servlet", bug56042Servlet);
         wrapper.setAsyncSupported(true);
-        ctx.addServletMappingDecoded("/bug56042Servlet", "bug56042Servlet");
+        ctx.addServletMapping("/bug56042Servlet", "bug56042Servlet");
 
         tomcat.start();
 
@@ -203,8 +210,7 @@ public class TestErrorReportValve extends TomcatBaseTest {
         private static final long serialVersionUID = 1L;
 
         @Override
-        protected void doGet(HttpServletRequest req, HttpServletResponse resp)
-                throws ServletException, IOException {
+        protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
             // Only set the status on the first call (the dispatch will trigger
             // another call to this Servlet)
             if (resp.getStatus() != HttpServletResponse.SC_BAD_REQUEST) {
@@ -218,9 +224,9 @@ public class TestErrorReportValve extends TomcatBaseTest {
     private static final class ExceptionServlet extends HttpServlet {
 
         private static final long serialVersionUID = 1L;
+
         @Override
-        public void service(ServletRequest request, ServletResponse response)
-                throws IOException {
+        public void service(ServletRequest request, ServletResponse response) throws IOException {
             throw new RuntimeException();
         }
     }
@@ -229,9 +235,9 @@ public class TestErrorReportValve extends TomcatBaseTest {
     private static final class ErrorPageServlet extends HttpServlet {
 
         private static final long serialVersionUID = 1L;
+
         @Override
-        public void service(ServletRequest request, ServletResponse response)
-                throws IOException {
+        public void service(ServletRequest request, ServletResponse response) throws IOException {
             response.getWriter().print("OK");
         }
     }
@@ -242,12 +248,12 @@ public class TestErrorReportValve extends TomcatBaseTest {
         Tomcat tomcat = getTomcatInstance();
 
         // No file system docBase required
-        Context ctx = tomcat.addContext("", null);
+        Context ctx = getProgrammaticRootContext();
 
         Tomcat.addServlet(ctx, "exception", new ExceptionServlet());
-        ctx.addServletMappingDecoded("/exception", "exception");
+        ctx.addServletMapping("/exception", "exception");
         Tomcat.addServlet(ctx, "erropage", new ErrorPageServlet());
-        ctx.addServletMappingDecoded("/erropage", "erropage");
+        ctx.addServletMapping("/erropage", "erropage");
         ErrorPage errorPage = new ErrorPage();
         errorPage.setErrorCode(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
         errorPage.setLocation("/erropage");
@@ -260,6 +266,60 @@ public class TestErrorReportValve extends TomcatBaseTest {
 
         Assert.assertEquals(res.toString(), "OK");
         Assert.assertEquals(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, rc);
+    }
+
+
+    @Test
+    public void testAcceptLanguageResourceBundleCacheUsage() throws Exception {
+        Tomcat tomcat = getTomcatInstance();
+
+        // No file system docBase required
+        getProgrammaticRootContext();
+
+        tomcat.start();
+
+        int initial = resourceBundleCacheSize();
+
+        final int requests = 20;
+        final int localesPerRequest = 20;
+        for (int i = 0; i < requests; i++) {
+            StringBuilder acceptLanguage = new StringBuilder();
+            for (int j = 0; j < localesPerRequest; j++) {
+                if (acceptLanguage.length() > 0) {
+                    acceptLanguage.append(',');
+                }
+                acceptLanguage.append(fakeLanguageTag(i * localesPerRequest + j));
+            }
+            Map<String,List<String>> reqHead = new HashMap<>();
+            reqHead.put("Accept-Language", Collections.singletonList(acceptLanguage.toString()));
+            ByteChunk res = new ByteChunk();
+            int rc = getUrl("http://localhost:" + getPort() + "/does-not-exist-" + i, res, reqHead, null);
+            Assert.assertEquals(HttpServletResponse.SC_NOT_FOUND, rc);
+        }
+
+        int delta = resourceBundleCacheSize() - initial;
+        Assert.assertTrue("ResourceBundle cache grew by " + delta + " entries for " +
+                (requests * localesPerRequest) + " unknown request locales", delta < 50);
+    }
+
+
+    private static String fakeLanguageTag(int i) {
+        StringBuilder tag = new StringBuilder("xxxxx");
+        int v = i;
+        for (int k = 4; k >= 0; k--) {
+            tag.setCharAt(k, (char) ('a' + v % 26));
+            v /= 26;
+        }
+        return tag.toString();
+    }
+
+
+    @SuppressWarnings("unchecked")
+    private static int resourceBundleCacheSize() throws Exception {
+        Field field = ResourceBundle.class.getDeclaredField("cacheList");
+        field.setAccessible(true);
+        Map<Object,Object> cache = (Map<Object,Object>) field.get(null);
+        return cache.size();
     }
 
 

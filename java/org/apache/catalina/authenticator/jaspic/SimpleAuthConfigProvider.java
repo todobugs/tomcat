@@ -1,4 +1,4 @@
-/**
+/*
  *  Licensed to the Apache Software Foundation (ASF) under one or more
  *  contributor license agreements.  See the NOTICE file distributed with
  *  this work for additional information regarding copyright ownership.
@@ -27,15 +27,18 @@ import javax.security.auth.message.config.ServerAuthConfig;
 
 /**
  * Basic implementation primarily intended for use when using third-party
- * {@link javax.security.auth.message.module.ServerAuthModule} implementations
- * that only provide the module.
+ * {@link javax.security.auth.message.module.ServerAuthModule} implementations that only provide the module.
  */
 public class SimpleAuthConfigProvider implements AuthConfigProvider {
 
     private final Map<String,String> properties;
 
-    private volatile ServerAuthConfig serverAuthConfig;
-
+    /**
+     * Creates a new SimpleAuthConfigProvider.
+     *
+     * @param properties Properties to pass to the ServerAuthConfig
+     * @param factory    AuthConfigFactory to register this provider with, or {@code null}
+     */
     public SimpleAuthConfigProvider(Map<String,String> properties, AuthConfigFactory factory) {
         this.properties = properties;
         if (factory != null) {
@@ -47,43 +50,45 @@ public class SimpleAuthConfigProvider implements AuthConfigProvider {
     /**
      * {@inheritDoc}
      * <p>
-     * This implementation does not support client-side authentication and
-     * therefore always returns {@code null}.
+     * This implementation does not support client-side authentication and therefore always returns {@code null}.
      */
     @Override
-    public ClientAuthConfig getClientAuthConfig(String layer, String appContext,
-            CallbackHandler handler) throws AuthException {
+    public ClientAuthConfig getClientAuthConfig(String layer, String appContext, CallbackHandler handler)
+            throws AuthException {
         return null;
     }
 
 
     @Override
-    public ServerAuthConfig getServerAuthConfig(String layer, String appContext,
-            CallbackHandler handler) throws AuthException {
-        ServerAuthConfig serverAuthConfig = this.serverAuthConfig;
-        if (serverAuthConfig == null) {
-            synchronized (this) {
-                if (this.serverAuthConfig == null) {
-                    this.serverAuthConfig = createServerAuthConfig(layer, appContext, handler, properties);
-                }
-                serverAuthConfig = this.serverAuthConfig;
-            }
-        }
-        return serverAuthConfig;
+    public ServerAuthConfig getServerAuthConfig(String layer, String appContext, CallbackHandler handler)
+            throws AuthException {
+        return createServerAuthConfig(layer, appContext, handler, properties);
     }
 
 
-    protected ServerAuthConfig createServerAuthConfig(String layer, String appContext,
-            CallbackHandler handler, Map<String,String> properties) {
+    /**
+     * Creates the ServerAuthConfig. Can be overridden by subclasses to provide a custom implementation.
+     *
+     * @param layer      Message layer
+     * @param appContext Application context
+     * @param handler    Callback handler
+     * @param properties Configuration properties
+     *
+     * @return The ServerAuthConfig instance
+     */
+    protected ServerAuthConfig createServerAuthConfig(String layer, String appContext, CallbackHandler handler,
+            Map<String,String> properties) {
         return new SimpleServerAuthConfig(layer, appContext, handler, properties);
     }
 
 
+    /**
+     * {@inheritDoc}
+     * <p>
+     * NO-OP for this implementation.
+     */
     @Override
     public void refresh() {
-        ServerAuthConfig serverAuthConfig = this.serverAuthConfig;
-        if (serverAuthConfig != null) {
-            serverAuthConfig.refresh();
-        }
+        // NO-OP
     }
 }

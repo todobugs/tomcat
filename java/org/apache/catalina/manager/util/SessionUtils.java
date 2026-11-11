@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.catalina.manager.util;
 
 import java.lang.reflect.Method;
@@ -31,52 +30,58 @@ import org.apache.catalina.Session;
 import org.apache.tomcat.util.ExceptionUtils;
 
 /**
- * Utility methods on HttpSessions...
- * @author C&eacute;drik LIME
+ * Utility methods on {@link Session} and {@link HttpSession} objects.
  */
 public class SessionUtils {
 
-    /**
-     *
-     */
     private SessionUtils() {
         super();
     }
 
     /**
-     * The session attributes key under which the user's selected
-     * <code>java.util.Locale</code> is stored, if any.
+     * The session attribute keys under which the user's selected <code>java.util.Locale</code> is stored, if any.
      */
     // org.apache.struts.Globals.LOCALE_KEY
     private static final String STRUTS_LOCALE_KEY = "org.apache.struts.action.LOCALE";//$NON-NLS-1$
     // javax.servlet.jsp.jstl.core.Config.FMT_LOCALE
-    private static final String JSTL_LOCALE_KEY   = "javax.servlet.jsp.jstl.fmt.locale";//$NON-NLS-1$
+    private static final String JSTL_LOCALE_KEY = "javax.servlet.jsp.jstl.fmt.locale";//$NON-NLS-1$
     // org.springframework.web.servlet.i18n.SessionLocaleResolver.LOCALE_SESSION_ATTRIBUTE_NAME
     private static final String SPRING_LOCALE_KEY = "org.springframework.web.servlet.i18n.SessionLocaleResolver.LOCALE";//$NON-NLS-1$
     /**
      * Lower and upper-case strings will be dynamically generated. Put mid-capitalised strings here!
      */
-    private static final String[] LOCALE_TEST_ATTRIBUTES = new String[] {
-        STRUTS_LOCALE_KEY, SPRING_LOCALE_KEY, JSTL_LOCALE_KEY, "Locale", "java.util.Locale" };
+    private static final String[] LOCALE_TEST_ATTRIBUTES =
+            new String[] { STRUTS_LOCALE_KEY, SPRING_LOCALE_KEY, JSTL_LOCALE_KEY, "Locale", "java.util.Locale" };
     /**
-     * For efficient operation, list the attributes here with the typically used
-     * capitalisation. This will be tried first and then the auto-generated
-     * upper and lower case versions will be tried.
+     * For efficient operation, list the attributes here with the typically used capitalisation. This will be tried
+     * first and then the auto-generated upper and lower case versions will be tried.
      */
-    private static final String[] USER_TEST_ATTRIBUTES = new String[] {
-        "Login", "User", "userName", "UserName", "Utilisateur",
-        "SPRING_SECURITY_LAST_USERNAME"};
+    private static final String[] USER_TEST_ATTRIBUTES =
+            new String[] { "Login", "User", "userName", "UserName", "Utilisateur", "SPRING_SECURITY_LAST_USERNAME" };
 
     /**
      * Try to get user locale from the session, if possible.
-     * IMPLEMENTATION NOTE: this method has explicit support for Tapestry 3, Struts 1.x and Spring
-     * JSF check the browser meta tag "accept languages" to choose what language to display.
+     *
      * @param in_session The session
-     * @return the locale
+     *
+     * @return the locale, or {@code null} if it cannot be determined
      */
     public static Locale guessLocaleFromSession(final Session in_session) {
+        if (null == in_session) {
+            return null;
+        }
         return guessLocaleFromSession(in_session.getSession());
     }
+
+    /**
+     * Try to get user locale from the session, if possible. Searches for Locale objects stored under known attribute
+     * names used by common frameworks (Struts, JSTL, Spring MVC), and falls back to iterating all session attributes if
+     * exactly one Locale is found.
+     *
+     * @param in_session The HTTP session
+     *
+     * @return the locale, or {@code null} if it cannot be determined
+     */
     public static Locale guessLocaleFromSession(final HttpSession in_session) {
         if (null == in_session) {
             return null;
@@ -85,18 +90,18 @@ public class SessionUtils {
             Locale locale = null;
 
             // First search "known locations"
-            for (int i = 0; i < LOCALE_TEST_ATTRIBUTES.length; ++i) {
-                Object obj = in_session.getAttribute(LOCALE_TEST_ATTRIBUTES[i]);
+            for (String localeTestAttribute : LOCALE_TEST_ATTRIBUTES) {
+                Object obj = in_session.getAttribute(localeTestAttribute);
                 if (obj instanceof Locale) {
                     locale = (Locale) obj;
                     break;
                 }
-                obj = in_session.getAttribute(LOCALE_TEST_ATTRIBUTES[i].toLowerCase(Locale.ENGLISH));
+                obj = in_session.getAttribute(localeTestAttribute.toLowerCase(Locale.ENGLISH));
                 if (obj instanceof Locale) {
                     locale = (Locale) obj;
                     break;
                 }
-                obj = in_session.getAttribute(LOCALE_TEST_ATTRIBUTES[i].toUpperCase(Locale.ENGLISH));
+                obj = in_session.getAttribute(localeTestAttribute.toUpperCase(Locale.ENGLISH));
                 if (obj instanceof Locale) {
                     locale = (Locale) obj;
                     break;
@@ -121,15 +126,14 @@ public class SessionUtils {
                 Object probableEngine = tapestryArray.get(0);
                 if (null != probableEngine) {
                     try {
-                        Method readMethod = probableEngine.getClass().getMethod("getLocale", (Class<?>[])null);//$NON-NLS-1$
+                        Method readMethod = probableEngine.getClass().getMethod("getLocale", (Class<?>[]) null);//$NON-NLS-1$
                         // Call the property getter and return the value
                         Object possibleLocale = readMethod.invoke(probableEngine, (Object[]) null);
                         if (possibleLocale instanceof Locale) {
                             locale = (Locale) possibleLocale;
                         }
                     } catch (Exception e) {
-                        Throwable t = ExceptionUtils
-                                .unwrapInvocationTargetException(e);
+                        Throwable t = ExceptionUtils.unwrapInvocationTargetException(e);
                         ExceptionUtils.handleThrowable(t);
                         // stay silent
                     }
@@ -156,15 +160,18 @@ public class SessionUtils {
 
             return locale;
         } catch (IllegalStateException ise) {
-            //ignore: invalidated session
+            // ignore: invalidated session
             return null;
         }
     }
 
     /**
      * Try to get user from the session, if possible.
+     *
      * @param in_session The session
-     * @return the user
+     *
+     * @return the user, that is the name of the session principal if the session has one, otherwise a value guessed
+     *         from the session attributes, or {@code null} if it cannot be determined
      */
     public static Object guessUserFromSession(final Session in_session) {
         if (null == in_session) {
@@ -174,24 +181,25 @@ public class SessionUtils {
             return in_session.getPrincipal().getName();
         }
         HttpSession httpSession = in_session.getSession();
-        if (httpSession == null)
+        if (httpSession == null) {
             return null;
+        }
 
         try {
             Object user = null;
             // First search "known locations"
-            for (int i = 0; i < USER_TEST_ATTRIBUTES.length; ++i) {
-                Object obj = httpSession.getAttribute(USER_TEST_ATTRIBUTES[i]);
+            for (String userTestAttribute : USER_TEST_ATTRIBUTES) {
+                Object obj = httpSession.getAttribute(userTestAttribute);
                 if (null != obj) {
                     user = obj;
                     break;
                 }
-                obj = httpSession.getAttribute(USER_TEST_ATTRIBUTES[i].toLowerCase(Locale.ENGLISH));
+                obj = httpSession.getAttribute(userTestAttribute.toLowerCase(Locale.ENGLISH));
                 if (null != obj) {
                     user = obj;
                     break;
                 }
-                obj = httpSession.getAttribute(USER_TEST_ATTRIBUTES[i].toUpperCase(Locale.ENGLISH));
+                obj = httpSession.getAttribute(userTestAttribute.toUpperCase(Locale.ENGLISH));
                 if (null != obj) {
                     user = obj;
                     break;
@@ -216,44 +224,76 @@ public class SessionUtils {
                 user = principalArray.get(0);
             }
 
-            if (null != user) {
-                return user;
-            }
-
             return user;
         } catch (IllegalStateException ise) {
-            //ignore: invalidated session
+            // ignore: invalidated session
             return null;
         }
     }
 
 
+    /**
+     * Returns the time in milliseconds between session creation and the session's last access.
+     *
+     * @param in_session The session
+     * @return the time in milliseconds between session creation and the last access, or -1 if the session is
+     *         invalidated or its times are unknown (proxy sessions of a cluster member)
+     */
     public static long getUsedTimeForSession(Session in_session) {
         try {
-            long diffMilliSeconds = in_session.getThisAccessedTime() - in_session.getCreationTime();
-            return diffMilliSeconds;
+            if (in_session.getCreationTime() <= 0) {
+                // Unknown times, e.g. a proxy session of a cluster member
+                return -1;
+            }
+            return in_session.getThisAccessedTime() - in_session.getCreationTime();
         } catch (IllegalStateException ise) {
-            //ignore: invalidated session
+            // ignore: invalidated session
             return -1;
         }
     }
 
+    /**
+     * Returns the remaining time-to-live for the session in milliseconds.
+     *
+     * @param in_session The session
+     * @return the remaining TTL in milliseconds, {@link Long#MAX_VALUE} if the session never times out, or -1 if the
+     *         session is invalidated or its times are unknown (proxy sessions of a cluster member)
+     */
     public static long getTTLForSession(Session in_session) {
         try {
-            long diffMilliSeconds = (1000*in_session.getMaxInactiveInterval()) - (System.currentTimeMillis() - in_session.getThisAccessedTime());
-            return diffMilliSeconds;
+            if (in_session.getCreationTime() <= 0) {
+                // Unknown times, e.g. a proxy session of a cluster member
+                return -1;
+            }
+            int maxInactiveInterval = in_session.getMaxInactiveInterval();
+            if (maxInactiveInterval <= 0) {
+                // A non-positive interval means the session never times out
+                return Long.MAX_VALUE;
+            }
+            return 1000L * maxInactiveInterval -
+                    (System.currentTimeMillis() - in_session.getThisAccessedTime());
         } catch (IllegalStateException ise) {
-            //ignore: invalidated session
+            // ignore: invalidated session
             return -1;
         }
     }
 
+    /**
+     * Returns the time in milliseconds since the session was last accessed.
+     *
+     * @param in_session The session
+     * @return the inactive time in milliseconds, or -1 if the session is invalidated or its times are unknown (proxy
+     *         sessions of a cluster member)
+     */
     public static long getInactiveTimeForSession(Session in_session) {
         try {
-            long diffMilliSeconds =  System.currentTimeMillis() - in_session.getThisAccessedTime();
-            return diffMilliSeconds;
+            if (in_session.getCreationTime() <= 0) {
+                // Unknown times, e.g. a proxy session of a cluster member
+                return -1;
+            }
+            return System.currentTimeMillis() - in_session.getThisAccessedTime();
         } catch (IllegalStateException ise) {
-            //ignore: invalidated session
+            // ignore: invalidated session
             return -1;
         }
     }

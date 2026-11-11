@@ -21,6 +21,7 @@ import java.nio.ByteBuffer;
 import java.security.AccessController;
 import java.security.PrivilegedActionException;
 import java.security.PrivilegedExceptionAction;
+import java.util.Objects;
 
 import javax.servlet.ReadListener;
 import javax.servlet.ServletInputStream;
@@ -30,17 +31,26 @@ import org.apache.tomcat.util.res.StringManager;
 
 /**
  * This class handles reading bytes.
- *
- * @author Remy Maucherat
  */
 public class CoyoteInputStream extends ServletInputStream {
 
+    /**
+     * The string manager for this class.
+     */
     protected static final StringManager sm = StringManager.getManager(CoyoteInputStream.class);
 
 
+    /**
+     * The underlying input buffer.
+     */
     protected InputBuffer ib;
 
 
+    /**
+     * Construct a new CoyoteInputStream.
+     *
+     * @param ib The underlying input buffer
+     */
     protected CoyoteInputStream(InputBuffer ib) {
         this.ib = ib;
     }
@@ -58,7 +68,7 @@ public class CoyoteInputStream extends ServletInputStream {
      * Prevent cloning the facade.
      */
     @Override
-    protected Object clone() throws CloneNotSupportedException {
+    public Object clone() throws CloneNotSupportedException {
         throw new CloneNotSupportedException();
     }
 
@@ -117,8 +127,7 @@ public class CoyoteInputStream extends ServletInputStream {
 
         if (SecurityUtil.isPackageProtectionEnabled()) {
             try {
-                Integer result = AccessController.doPrivileged(
-                        new PrivilegedReadArray(ib, b, off, len));
+                Integer result = AccessController.doPrivileged(new PrivilegedReadArray(ib, b, off, len));
                 return result.intValue();
             } catch (PrivilegedActionException pae) {
                 Exception e = pae.getException();
@@ -135,17 +144,18 @@ public class CoyoteInputStream extends ServletInputStream {
 
 
     /**
-     * Transfers bytes from the buffer to the specified ByteBuffer. After the
-     * operation the position of the ByteBuffer will be returned to the one
-     * before the operation, the limit will be the position incremented by
-     * the number of the transferred bytes.
+     * Transfers bytes from the buffer to the specified ByteBuffer. After the operation the position of the ByteBuffer
+     * will be returned to the one before the operation, the limit will be the position incremented by the number of the
+     * transferred bytes.
      *
      * @param b the ByteBuffer into which bytes are to be written.
-     * @return an integer specifying the actual number of bytes read, or -1 if
-     *         the end of the stream is reached
+     *
+     * @return an integer specifying the actual number of bytes read, or -1 if the end of the stream is reached
+     *
      * @throws IOException if an input or output exception has occurred
      */
     public int read(final ByteBuffer b) throws IOException {
+        Objects.requireNonNull(b);
         checkNonBlockingRead();
 
         if (SecurityUtil.isPackageProtectionEnabled()) {
@@ -167,9 +177,7 @@ public class CoyoteInputStream extends ServletInputStream {
 
 
     /**
-     * Close the stream
-     * Since we re-cycle, we can't allow the call to super.close()
-     * which would permanently disable us.
+     * Close the stream Since we re-cycle, we can't allow the call to super.close() which would permanently disable us.
      */
     @Override
     public void close() throws IOException {
@@ -198,6 +206,9 @@ public class CoyoteInputStream extends ServletInputStream {
 
     @Override
     public boolean isReady() {
+        if (ib == null) {
+            throw new IllegalStateException(sm.getString("coyoteInputStream.null"));
+        }
         return ib.isReady();
     }
 
@@ -219,7 +230,7 @@ public class CoyoteInputStream extends ServletInputStream {
 
         private final InputBuffer inputBuffer;
 
-        public PrivilegedAvailable(InputBuffer inputBuffer) {
+        PrivilegedAvailable(InputBuffer inputBuffer) {
             this.inputBuffer = inputBuffer;
         }
 
@@ -234,7 +245,7 @@ public class CoyoteInputStream extends ServletInputStream {
 
         private final InputBuffer inputBuffer;
 
-        public PrivilegedClose(InputBuffer inputBuffer) {
+        PrivilegedClose(InputBuffer inputBuffer) {
             this.inputBuffer = inputBuffer;
         }
 
@@ -250,7 +261,7 @@ public class CoyoteInputStream extends ServletInputStream {
 
         private final InputBuffer inputBuffer;
 
-        public PrivilegedRead(InputBuffer inputBuffer) {
+        PrivilegedRead(InputBuffer inputBuffer) {
             this.inputBuffer = inputBuffer;
         }
 
@@ -269,7 +280,7 @@ public class CoyoteInputStream extends ServletInputStream {
         private final int off;
         private final int len;
 
-        public PrivilegedReadArray(InputBuffer inputBuffer, byte[] buf, int off, int len) {
+        PrivilegedReadArray(InputBuffer inputBuffer, byte[] buf, int off, int len) {
             this.inputBuffer = inputBuffer;
             this.buf = buf;
             this.off = off;
@@ -289,7 +300,7 @@ public class CoyoteInputStream extends ServletInputStream {
         private final InputBuffer inputBuffer;
         private final ByteBuffer bb;
 
-        public PrivilegedReadBuffer(InputBuffer inputBuffer, ByteBuffer bb) {
+        PrivilegedReadBuffer(InputBuffer inputBuffer, ByteBuffer bb) {
             this.inputBuffer = inputBuffer;
             this.bb = bb;
         }

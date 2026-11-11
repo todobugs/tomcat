@@ -32,24 +32,38 @@ import org.apache.el.lang.ELArithmetic;
 import org.apache.el.lang.ELSupport;
 import org.apache.el.util.MessageFactory;
 
+/**
+ * A stream of elements supporting sequential operations such as filter, map,
+ * reduce, and various terminal operations.
+ */
 public class Stream {
 
     private final Iterator<Object> iterator;
 
 
+    /**
+     * Constructs a new Stream from the given iterator.
+     *
+     * @param iterator the iterator providing the stream elements
+     */
     public Stream(Iterator<Object> iterator) {
         this.iterator = iterator;
     }
 
 
+    /**
+     * Returns a stream consisting of the elements that match the given predicate.
+     *
+     * @param le the predicate to apply to each element
+     * @return the new filtered stream
+     */
     public Stream filter(final LambdaExpression le) {
         Iterator<Object> downStream = new OpIterator() {
             @Override
             protected void findNext() {
                 while (iterator.hasNext()) {
                     Object obj = iterator.next();
-                    if (ELSupport.coerceToBoolean(null, le.invoke(obj),
-                            true).booleanValue()) {
+                    if (ELSupport.coerceToBoolean(null, le.invoke(obj), true).booleanValue()) {
                         next = obj;
                         foundNext = true;
                         break;
@@ -61,6 +75,13 @@ public class Stream {
     }
 
 
+    /**
+     * Returns a stream consisting of the results of applying the given function
+     * to the elements of this stream.
+     *
+     * @param le the function to apply to each element
+     * @return the new mapped stream
+     */
     public Stream map(final LambdaExpression le) {
         Iterator<Object> downStream = new OpIterator() {
             @Override
@@ -76,6 +97,14 @@ public class Stream {
     }
 
 
+    /**
+     * Returns a stream consisting of the results of replacing each element of
+     * this stream with the contents of a stream produced by applying the provided
+     * function to each element.
+     *
+     * @param le the function to apply to each element which produces a new stream
+     * @return the new flattened stream
+     */
     public Stream flatMap(final LambdaExpression le) {
         Iterator<Object> downStream = new OpIterator() {
 
@@ -83,13 +112,15 @@ public class Stream {
 
             @Override
             protected void findNext() {
-                while (iterator.hasNext() ||
-                        (inner != null && inner.hasNext())) {
+                while (iterator.hasNext() || (inner != null && inner.hasNext())) {
                     if (inner == null || !inner.hasNext()) {
-                        inner = ((Stream) le.invoke(iterator.next())).iterator;
+                        Object obj = le.invoke(iterator.next());
+                        if (obj instanceof Stream) {
+                            inner = ((Stream) obj).iterator;
+                        }
                     }
 
-                    if (inner.hasNext()) {
+                    if (inner != null && inner.hasNext()) {
                         next = inner.next();
                         foundNext = true;
                         break;
@@ -101,10 +132,15 @@ public class Stream {
     }
 
 
+    /**
+     * Returns a stream consisting of the distinct elements of this stream.
+     *
+     * @return the new stream with distinct elements
+     */
     public Stream distinct() {
         Iterator<Object> downStream = new OpIterator() {
 
-            private Set<Object> values = new HashSet<>();
+            private final Set<Object> values = new HashSet<>();
 
             @Override
             protected void findNext() {
@@ -122,6 +158,12 @@ public class Stream {
     }
 
 
+    /**
+     * Returns a stream consisting of the elements of this stream, sorted
+     * according to natural order.
+     *
+     * @return the new sorted stream
+     */
     public Stream sorted() {
         Iterator<Object> downStream = new OpIterator() {
 
@@ -139,12 +181,17 @@ public class Stream {
             }
 
             @SuppressWarnings({ "rawtypes", "unchecked" })
-            private final void sort() {
+            private void sort() {
                 List list = new ArrayList<>();
                 while (iterator.hasNext()) {
                     list.add(iterator.next());
                 }
-                Collections.sort(list);
+                try {
+                    Collections.sort(list);
+                } catch (ClassCastException cce) {
+                    // The elements are not Comparable or are not Comparable with each other
+                    throw new ELException(MessageFactory.get("stream.compare.sortFailed"), cce);
+                }
                 sorted = list.iterator();
             }
         };
@@ -152,6 +199,13 @@ public class Stream {
     }
 
 
+    /**
+     * Returns a stream consisting of the elements of this stream, sorted
+     * according to the order induced by the provided comparator.
+     *
+     * @param le the comparator to determine sort order
+     * @return the new sorted stream
+     */
     public Stream sorted(final LambdaExpression le) {
         Iterator<Object> downStream = new OpIterator() {
 
@@ -169,13 +223,13 @@ public class Stream {
             }
 
             @SuppressWarnings({ "rawtypes", "unchecked" })
-            private final void sort(LambdaExpression le) {
+            private void sort(LambdaExpression le) {
                 List list = new ArrayList<>();
                 Comparator<Object> c = new LambdaExpressionComparator(le);
                 while (iterator.hasNext()) {
                     list.add(iterator.next());
                 }
-                Collections.sort(list, c);
+                list.sort(c);
                 sorted = list.iterator();
             }
         };
@@ -183,6 +237,12 @@ public class Stream {
     }
 
 
+    /**
+     * Performs an action for each element of this stream.
+     *
+     * @param le the action to perform for each element
+     * @return null
+     */
     public Object forEach(final LambdaExpression le) {
         while (iterator.hasNext()) {
             le.invoke(iterator.next());
@@ -191,6 +251,13 @@ public class Stream {
     }
 
 
+    /**
+     * Returns a stream consisting of the elements of this stream, additionally
+     * performing the provided action on each element as elements are consumed.
+     *
+     * @param le the action to perform on each element
+     * @return the new stream
+     */
     public Stream peek(final LambdaExpression le) {
         Iterator<Object> downStream = new OpIterator() {
             @Override
@@ -207,36 +274,74 @@ public class Stream {
     }
 
 
+    /**
+     * Returns the underlying iterator for this stream.
+     *
+     * @return the underlying iterator
+     */
     public Iterator<?> iterator() {
         return iterator;
     }
 
 
+    /**
+     * Returns a stream consisting of the first {@code count} elements of this stream.
+     *
+     * @param count the number of elements to limit to
+     * @return the new limited stream
+     */
     public Stream limit(final Number count) {
         return substream(Integer.valueOf(0), count);
     }
 
 
+    /**
+     * Returns a stream consisting of the elements of this stream after
+     * skipping the first {@code start} elements. No elements are skipped if
+     * {@code start} is less than or equal to zero.
+     *
+     * @param start the number of elements to skip
+     * @return the new substream
+     */
     public Stream substream(final Number start) {
         return substream(start, Integer.valueOf(Integer.MAX_VALUE));
     }
 
+    /**
+     * Returns a stream consisting of the elements of this stream, skipping
+     * the first {@code start} elements and including the next
+     * {@code end - start} elements. No elements are skipped if {@code start}
+     * is less than or equal to zero.
+     *
+     * @param start the number of elements to skip
+     * @param end used to calculate the number of elements to include, which is {@code end - start}. This is the
+     *                exclusive end position only if {@code start} is greater than or equal to zero. If
+     *                {@code end - start} is less than or equal to zero, no elements are included.
+     * @return the new substream
+     */
     public Stream substream(final Number start, final Number end) {
 
         Iterator<Object> downStream = new OpIterator() {
 
-            private final int startPos = start.intValue();
-            private final int endPos = end.intValue();
-            private int itemCount = 0;
+            // The specification counts the elements to include from the
+            // position at which the start elements were skipped, so a start
+            // that is less than or equal to zero, which skips no elements,
+            // includes end minus start elements. The count is calculated as
+            // a long because the single argument form passes an end of
+            // Integer.MAX_VALUE.
+            private final int skipCount = Math.max(start.intValue(), 0);
+            private final long includeCount = (long) end.intValue() - start.intValue();
+            private int skipped = 0;
+            private long included = 0;
 
             @Override
             protected void findNext() {
-                while (itemCount < startPos && iterator.hasNext()) {
+                while (skipped < skipCount && iterator.hasNext()) {
                     iterator.next();
-                    itemCount++;
+                    skipped++;
                 }
-                if (itemCount < endPos && iterator.hasNext()) {
-                    itemCount++;
+                if (skipped == skipCount && included < includeCount && iterator.hasNext()) {
+                    included++;
                     next = iterator.next();
                     foundNext = true;
                 }
@@ -246,6 +351,11 @@ public class Stream {
     }
 
 
+    /**
+     * Returns a list containing all the elements of this stream.
+     *
+     * @return the list of elements
+     */
     public List<Object> toList() {
         List<Object> result = new ArrayList<>();
         while (iterator.hasNext()) {
@@ -255,30 +365,48 @@ public class Stream {
     }
 
 
+    /**
+     * Returns an array containing all the elements of this stream.
+     *
+     * @return the array of elements
+     */
     public Object[] toArray() {
         List<Object> result = new ArrayList<>();
         while (iterator.hasNext()) {
             result.add(iterator.next());
         }
-        return result.toArray(new Object[result.size()]);
+        return result.toArray(new Object[0]);
     }
 
 
+    /**
+     * Performs a reduction on the elements of this stream, using the provided
+     * accumulator function. The first element is used as the initial value.
+     *
+     * @param le the accumulator function
+     * @return an Optional describing the reduced value, or empty if this stream is empty
+     */
     public Optional reduce(LambdaExpression le) {
         Object seed = null;
 
         if (iterator.hasNext()) {
             seed = iterator.next();
+        } else {
+            return Optional.EMPTY;
         }
 
-        if (seed == null) {
-            return Optional.EMPTY;
-        } else {
-            return new Optional(reduce(seed, le));
-        }
+        return new Optional(reduce(seed, le));
     }
 
 
+    /**
+     * Performs a reduction on the elements of this stream, using the provided
+     * initial value and accumulator function.
+     *
+     * @param seed the initial value for the reduction
+     * @param le the accumulator function
+     * @return the result of the reduction
+     */
     public Object reduce(Object seed, LambdaExpression le) {
         Object result = seed;
 
@@ -290,26 +418,54 @@ public class Stream {
     }
 
 
+    /**
+     * Returns the maximum element of this stream according to natural order.
+     *
+     * @return an Optional describing the maximum element, or empty if this stream is empty
+     */
     public Optional max() {
         return compare(true);
     }
 
 
+    /**
+     * Returns the maximum element of this stream according to the provided comparator.
+     *
+     * @param le the comparator to determine the maximum
+     * @return an Optional describing the maximum element, or empty if this stream is empty
+     */
     public Optional max(LambdaExpression le) {
         return compare(true, le);
     }
 
 
+    /**
+     * Returns the minimum element of this stream according to natural order.
+     *
+     * @return an Optional describing the minimum element, or empty if this stream is empty
+     */
     public Optional min() {
         return compare(false);
     }
 
 
+    /**
+     * Returns the minimum element of this stream according to the provided comparator.
+     *
+     * @param le the comparator to determine the minimum
+     * @return an Optional describing the minimum element, or empty if this stream is empty
+     */
     public Optional min(LambdaExpression le) {
         return compare(false, le);
     }
 
 
+    /**
+     * Calculates the average of all elements in the stream. Elements are coerced to a numeric type; a non-convertible
+     * element results in an {@code ELException}.
+     *
+     * @return an Optional containing the average, or empty if the stream is empty
+     */
     public Optional average() {
         long count = 0;
         Number sum = Long.valueOf(0);
@@ -327,6 +483,12 @@ public class Stream {
     }
 
 
+    /**
+     * Returns the sum of all elements in the stream. Elements are coerced to a numeric type; a non-convertible
+     * element results in an {@code ELException}.
+     *
+     * @return the sum of all elements
+     */
     public Number sum() {
         Number sum = Long.valueOf(0);
 
@@ -338,18 +500,29 @@ public class Stream {
     }
 
 
+    /**
+     * Counts the number of elements in the stream.
+     *
+     * @return the number of elements
+     */
     public Long count() {
         long count = 0;
 
         while (iterator.hasNext()) {
             iterator.next();
-            count ++;
+            count++;
         }
 
         return Long.valueOf(count);
     }
 
 
+    /**
+     * Checks if any element in the stream matches the given predicate.
+     *
+     * @param le the predicate lambda expression
+     * @return an Optional containing true if any element matches, or empty if the stream is empty
+     */
     public Optional anyMatch(LambdaExpression le) {
         if (!iterator.hasNext()) {
             return Optional.EMPTY;
@@ -358,13 +531,19 @@ public class Stream {
         Boolean match = Boolean.FALSE;
 
         while (!match.booleanValue() && iterator.hasNext()) {
-            match = (Boolean) le.invoke(iterator.next());
+            match = ELSupport.coerceToBoolean(null, le.invoke(iterator.next()), true);
         }
 
         return new Optional(match);
     }
 
 
+    /**
+     * Checks if all elements in the stream match the given predicate.
+     *
+     * @param le the predicate lambda expression
+     * @return an Optional containing true if all elements match, or empty if the stream is empty
+     */
     public Optional allMatch(LambdaExpression le) {
         if (!iterator.hasNext()) {
             return Optional.EMPTY;
@@ -373,13 +552,19 @@ public class Stream {
         Boolean match = Boolean.TRUE;
 
         while (match.booleanValue() && iterator.hasNext()) {
-            match = (Boolean) le.invoke(iterator.next());
+            match = ELSupport.coerceToBoolean(null, le.invoke(iterator.next()), true);
         }
 
         return new Optional(match);
     }
 
 
+    /**
+     * Checks if no elements of this stream match the given predicate.
+     *
+     * @param le the predicate lambda expression
+     * @return an Optional containing true if no elements match, or empty if the stream is empty
+     */
     public Optional noneMatch(LambdaExpression le) {
         if (!iterator.hasNext()) {
             return Optional.EMPTY;
@@ -388,13 +573,19 @@ public class Stream {
         Boolean match = Boolean.FALSE;
 
         while (!match.booleanValue() && iterator.hasNext()) {
-            match = (Boolean) le.invoke(iterator.next());
+            match = ELSupport.coerceToBoolean(null, le.invoke(iterator.next()), true);
         }
 
         return new Optional(Boolean.valueOf(!match.booleanValue()));
     }
 
 
+    /**
+     * Returns an Optional describing the first element of this stream,
+     * or an empty Optional if the stream is empty.
+     *
+     * @return an Optional describing the first element of this stream
+     */
     public Optional findFirst() {
         if (iterator.hasNext()) {
             return new Optional(iterator.next());
@@ -413,22 +604,27 @@ public class Stream {
             if ((obj instanceof Comparable)) {
                 result = (Comparable) obj;
             } else {
-                throw new ELException(
-                        MessageFactory.get("stream.compare.notComparable"));
+                throw new ELException(MessageFactory.get("stream.compare.notComparable"));
             }
         }
 
         while (iterator.hasNext()) {
             Object obj = iterator.next();
             if ((obj instanceof Comparable)) {
-                if (isMax && ((Comparable) obj).compareTo(result) > 0) {
+                int comparison;
+                try {
+                    comparison = ((Comparable) obj).compareTo(result);
+                } catch (ClassCastException cce) {
+                    // The elements are Comparable but not with each other
+                    throw new ELException(MessageFactory.get("error.compare", obj, result), cce);
+                }
+                if (isMax && comparison > 0) {
                     result = (Comparable) obj;
-                } else if (!isMax && ((Comparable) obj).compareTo(result) < 0) {
+                } else if (!isMax && comparison < 0) {
                     result = (Comparable) obj;
                 }
             } else {
-                throw new ELException(
-                        MessageFactory.get("stream.compare.notComparable"));
+                throw new ELException(MessageFactory.get("stream.compare.notComparable"));
             }
         }
 
@@ -444,17 +640,16 @@ public class Stream {
         Object result = null;
 
         if (iterator.hasNext()) {
-            Object obj = iterator.next();
-            result = obj;
+            result = iterator.next();
         }
 
         while (iterator.hasNext()) {
             Object obj = iterator.next();
-            if (isMax && ELSupport.coerceToNumber(null, le.invoke(obj, result),
-                    Integer.class).intValue() > 0) {
+            // Coerce to the primitive type so that a null comparator result
+            // coerces to zero rather than producing a NullPointerException
+            if (isMax && ELSupport.coerceToNumber(null, le.invoke(obj, result), Integer.TYPE).intValue() > 0) {
                 result = obj;
-            } else if (!isMax && ELSupport.coerceToNumber(null, le.invoke(obj, result),
-                    Integer.class).intValue() < 0) {
+            } else if (!isMax && ELSupport.coerceToNumber(null, le.invoke(obj, result), Integer.TYPE).intValue() < 0) {
                 result = obj;
             }
         }
@@ -467,19 +662,19 @@ public class Stream {
     }
 
 
-    private static class LambdaExpressionComparator
-            implements Comparator<Object> {
+    private static class LambdaExpressionComparator implements Comparator<Object> {
 
         private final LambdaExpression le;
 
-        public LambdaExpressionComparator(LambdaExpression le) {
+        LambdaExpressionComparator(LambdaExpression le) {
             this.le = le;
         }
 
         @Override
         public int compare(Object o1, Object o2) {
-            return ELSupport.coerceToNumber(
-                    null, le.invoke(o1, o2), Integer.class).intValue();
+            // Coerce to the primitive type so that a null comparator result
+            // coerces to zero rather than producing a NullPointerException
+            return ELSupport.coerceToNumber(null, le.invoke(o1, o2), Integer.TYPE).intValue();
         }
     }
 

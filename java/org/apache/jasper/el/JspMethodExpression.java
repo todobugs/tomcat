@@ -20,6 +20,7 @@ import java.io.Externalizable;
 import java.io.IOException;
 import java.io.ObjectInput;
 import java.io.ObjectOutput;
+import java.util.Objects;
 
 import javax.el.ELContext;
 import javax.el.ELException;
@@ -28,17 +29,31 @@ import javax.el.MethodInfo;
 import javax.el.MethodNotFoundException;
 import javax.el.PropertyNotFoundException;
 
-public final class JspMethodExpression extends MethodExpression implements
-        Externalizable {
+/**
+ * Wrapper around a MethodExpression that adds JSP-specific error tracking with marks.
+ * Implements Externalizable for serialization support.
+ */
+public final class JspMethodExpression extends MethodExpression implements Externalizable {
+
+    private static final long serialVersionUID = 5387881870932678316L;
 
     private String mark;
 
     private MethodExpression target;
 
+    /**
+     * Default constructor required by Externalizable.
+     */
     public JspMethodExpression() {
         super();
     }
 
+    /**
+     * Creates a new JspMethodExpression wrapping the given target expression.
+     *
+     * @param mark the mark for error tracking
+     * @param target the underlying MethodExpression to wrap
+     */
     public JspMethodExpression(String mark, MethodExpression target) {
         this.target = target;
         this.mark = mark;
@@ -46,49 +61,71 @@ public final class JspMethodExpression extends MethodExpression implements
 
     @Override
     public MethodInfo getMethodInfo(ELContext context)
-            throws NullPointerException, PropertyNotFoundException,
-            MethodNotFoundException, ELException {
+            throws NullPointerException, PropertyNotFoundException, MethodNotFoundException, ELException {
         context.notifyBeforeEvaluation(getExpressionString());
         try {
             MethodInfo result = this.target.getMethodInfo(context);
             context.notifyAfterEvaluation(getExpressionString());
             return result;
         } catch (MethodNotFoundException e) {
-            if (e instanceof JspMethodNotFoundException) throw e;
+            if (e instanceof JspMethodNotFoundException) {
+                throw e;
+            }
             throw new JspMethodNotFoundException(this.mark, e);
         } catch (PropertyNotFoundException e) {
-            if (e instanceof JspPropertyNotFoundException) throw e;
+            if (e instanceof JspPropertyNotFoundException) {
+                throw e;
+            }
             throw new JspPropertyNotFoundException(this.mark, e);
         } catch (ELException e) {
-            if (e instanceof JspELException) throw e;
+            if (e instanceof JspELException) {
+                throw e;
+            }
             throw new JspELException(this.mark, e);
         }
     }
 
     @Override
     public Object invoke(ELContext context, Object[] params)
-            throws NullPointerException, PropertyNotFoundException,
-            MethodNotFoundException, ELException {
+            throws NullPointerException, PropertyNotFoundException, MethodNotFoundException, ELException {
         context.notifyBeforeEvaluation(getExpressionString());
         try {
             Object result = this.target.invoke(context, params);
             context.notifyAfterEvaluation(getExpressionString());
             return result;
         } catch (MethodNotFoundException e) {
-            if (e instanceof JspMethodNotFoundException) throw e;
+            if (e instanceof JspMethodNotFoundException) {
+                throw e;
+            }
             throw new JspMethodNotFoundException(this.mark, e);
         } catch (PropertyNotFoundException e) {
-            if (e instanceof JspPropertyNotFoundException) throw e;
+            if (e instanceof JspPropertyNotFoundException) {
+                throw e;
+            }
             throw new JspPropertyNotFoundException(this.mark, e);
         } catch (ELException e) {
-            if (e instanceof JspELException) throw e;
+            if (e instanceof JspELException) {
+                throw e;
+            }
             throw new JspELException(this.mark, e);
         }
     }
 
     @Override
+    public boolean isParametersProvided() {
+        return this.target.isParametersProvided();
+    }
+
+    @Override
     public boolean equals(Object obj) {
-        return this.target.equals(obj);
+        if (obj == this) {
+            return true;
+        }
+        if (!(obj instanceof JspMethodExpression)) {
+            return false;
+        }
+        JspMethodExpression other = (JspMethodExpression) obj;
+        return Objects.equals(this.mark, other.mark) && this.target.equals(other.target);
     }
 
     @Override
@@ -113,8 +150,7 @@ public final class JspMethodExpression extends MethodExpression implements
     }
 
     @Override
-    public void readExternal(ObjectInput in) throws IOException,
-            ClassNotFoundException {
+    public void readExternal(ObjectInput in) throws IOException, ClassNotFoundException {
         this.mark = in.readUTF();
         this.target = (MethodExpression) in.readObject();
     }

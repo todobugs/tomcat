@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.el.lang;
 
 import java.util.List;
@@ -28,6 +27,10 @@ import javax.el.FunctionMapper;
 import javax.el.ImportHandler;
 import javax.el.VariableMapper;
 
+/**
+ * Extended EL context that wraps an existing ELContext and provides additional
+ * functionality for lambda expression evaluation.
+ */
 public final class EvaluationContext extends ELContext {
 
     private final ELContext elContext;
@@ -36,13 +39,26 @@ public final class EvaluationContext extends ELContext {
 
     private final VariableMapper varMapper;
 
-    public EvaluationContext(ELContext elContext, FunctionMapper fnMapper,
-            VariableMapper varMapper) {
+    private LambdaExpressionNestedState lambdaExpressionNestedState;
+
+    /**
+     * Creates a new EvaluationContext wrapping the given ELContext.
+     *
+     * @param elContext The underlying ELContext to wrap
+     * @param fnMapper  The function mapper
+     * @param varMapper The variable mapper
+     */
+    public EvaluationContext(ELContext elContext, FunctionMapper fnMapper, VariableMapper varMapper) {
         this.elContext = elContext;
         this.fnMapper = fnMapper;
         this.varMapper = varMapper;
     }
 
+    /**
+     * Returns the underlying wrapped ELContext.
+     *
+     * @return the wrapped ELContext
+     */
     public ELContext getELContext() {
         return elContext;
     }
@@ -75,8 +91,7 @@ public final class EvaluationContext extends ELContext {
 
     @Override
     // Can't use Class<?> because API needs to match specification in superclass
-    public void putContext(@SuppressWarnings("rawtypes") Class key,
-            Object contextObject) {
+    public void putContext(@SuppressWarnings("rawtypes") Class key, Object contextObject) {
         elContext.putContext(key, contextObject);
     }
 
@@ -88,7 +103,7 @@ public final class EvaluationContext extends ELContext {
     @Override
     public Locale getLocale() {
         return elContext.getLocale();
-        }
+    }
 
     @Override
     public void setLocale(Locale locale) {
@@ -141,7 +156,7 @@ public final class EvaluationContext extends ELContext {
     }
 
     @Override
-    public void enterLambdaScope(Map<String, Object> arguments) {
+    public void enterLambdaScope(Map<String,Object> arguments) {
         elContext.enterLambdaScope(arguments);
     }
 
@@ -153,5 +168,44 @@ public final class EvaluationContext extends ELContext {
     @Override
     public Object convertToType(Object obj, Class<?> type) {
         return elContext.convertToType(obj, type);
+    }
+
+
+    /**
+     * Returns the lambda expression nested state, if this context or its wrapped
+     * context is associated with a nested lambda expression.
+     *
+     * @return the lambda expression nested state, or {@code null} if none
+     */
+    public LambdaExpressionNestedState getLambdaExpressionNestedState() {
+        // State is stored in the EvaluationContext instance associated with the
+        // outermost lambda expression of a set of nested expressions.
+
+        if (lambdaExpressionNestedState != null) {
+            // This instance is storing state so it must be associated with the
+            // outermost lambda expression.
+            return lambdaExpressionNestedState;
+        }
+
+        // Check to see if the associated lambda expression is nested as state
+        // will be stored in the EvaluationContext associated with the outermost
+        // lambda expression.
+        if (elContext instanceof EvaluationContext) {
+            return ((EvaluationContext) elContext).getLambdaExpressionNestedState();
+        }
+
+        return null;
+    }
+
+
+    /**
+     * Sets the lambda expression nested state for this context. Any existing state is replaced. This happens when a
+     * sibling lambda expression (one that is not nested inside the lambda expression that created the existing state)
+     * is evaluated during the same evaluation.
+     *
+     * @param lambdaExpressionNestedState The lambda expression nested state
+     */
+    public void setLambdaExpressionNestedState(LambdaExpressionNestedState lambdaExpressionNestedState) {
+        this.lambdaExpressionNestedState = lambdaExpressionNestedState;
     }
 }

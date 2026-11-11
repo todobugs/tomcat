@@ -23,9 +23,17 @@ import java.nio.ByteBuffer;
 
 public interface Decoder {
 
-    abstract void init(EndpointConfig endpointConfig);
+    /**
+     * Initialise the decoder.
+     *
+     * @param endpointConfig The end-point configuration
+     */
+    void init(EndpointConfig endpointConfig);
 
-    abstract void destroy();
+    /**
+     * Destroy the decoder.
+     */
+    void destroy();
 
     interface Binary<T> extends Decoder {
 

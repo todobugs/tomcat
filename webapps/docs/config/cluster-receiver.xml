@@ -23,7 +23,6 @@
   &project;
 
   <properties>
-    <author email="fhanik@apache.org">Filip Hanik</author>
     <title>The Cluster Receiver object</title>
   </properties>
 
@@ -78,11 +77,14 @@
       from the sockets.
     </attribute>
     <attribute name="port" required="false">
-      The listen port for incoming data. The default value is <code>4000</code>.
-      To avoid port conflicts the receiver will automatically bind to a free port within the range of
-      <code> port &lt;= bindPort &lt; port+autoBind</code>
+      The listen port for incoming data. The default value is <code>4000</code> unless the channel
+      is secure in which case the non-secure port is not opened. If enabled, to avoid port conflicts
+      the receiver will automatically bind to a free port within the range of
+      <code>port &lt;= bindPort &lt; port+autoBind</code>.
       So for example, if port is 4000, and autoBind is set to 10, then the receiver will open up
-      a server socket on the first available port in the range 4000-4009.
+      a server socket on the first available port in the range 4000-4009. The configured value is not
+      changed by auto-binding; the port actually bound is available via the read-only
+      <code>boundPort</code> property.
     </attribute>
     <attribute name="autoBind" required="false">
       Default value is <code>100</code>.
@@ -90,12 +92,17 @@
       server socket on the <code>port</code> attribute port, and then work up <code>autoBind</code> number of times.
     </attribute>
     <attribute name="securePort" required="false">
-      The secure listen port. This port is SSL enabled. If this attribute is omitted no SSL port is opened up.
-      There default value is unset, meaning there is no SSL socket available.
+      The secure listen port. This port is TLS enabled. If this attribute is omitted no TLS port is opened up.
+      The default value is unset, meaning there is no TLS socket available.
+      As with <code>port</code>, auto-binding does not change the configured value; the port actually bound is
+      available via the read-only <code>boundSecurePort</code> property.
     </attribute>
     <attribute name="udpPort" required="false">
       The UDP listen port. If this attribute is omitted no UDP port is opened up.
-      There default value is unset, meaning there is no UDP listener available.
+      The default value is unset, meaning there is no UDP listener available. A value of <code>0</code> lets the
+      operating system select a free port.
+      As with <code>port</code>, auto-binding does not change the configured value; the port actually bound is
+      available via the read-only <code>boundUdpPort</code> property.
     </attribute>
     <attribute name="selectorTimeout" required="false">
       The value in milliseconds for the polling timeout in the <code>NioReceiver</code>. On older versions of the JDK
@@ -118,7 +125,7 @@
       Boolean value for the socket OOBINLINE option. Possible values are <code>true</code> or <code>false</code>.
     </attribute>
     <attribute name="rxBufSize" required="false">
-      The receiver buffer size on the receiving sockets. Value is in bytes, the default value is <code>43800</code> bytes.
+      The receiver buffer size on the receiving sockets. Value is in bytes, the default value is <code>65536</code> bytes.
     </attribute>
     <attribute name="txBufSize" required="false">
       The sending buffer size on the receiving sockets. Value is in bytes, the default value is <code>25188</code> bytes.
@@ -129,7 +136,7 @@
     </attribute>
     <attribute name="udpTxBufSize" required="false">
        The send buffer size on the datagram socket.
-       Default value is <code>43800</code> bytes.
+       Default value is <code>65536</code> bytes.
     </attribute>
     <attribute name="soKeepAlive" required="false">
       Boolean value for the socket SO_KEEPALIVE option. Possible values are <code>true</code> or <code>false</code>.

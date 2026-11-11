@@ -29,20 +29,25 @@ import org.apache.tomcat.JarScannerCallback;
 import org.xml.sax.InputSource;
 
 /**
-* Callback handling a web-fragment.xml descriptor.
-*/
+ * Callback handling a web-fragment.xml descriptor.
+ */
 public class FragmentJarScannerCallback implements JarScannerCallback {
 
-    private static final String FRAGMENT_LOCATION =
-        "META-INF/web-fragment.xml";
+    private static final String FRAGMENT_LOCATION = "META-INF/web-fragment.xml";
     private final WebXmlParser webXmlParser;
     private final boolean delegate;
     private final boolean parseRequired;
     private final Map<String,WebXml> fragments = new HashMap<>();
-    private boolean ok  = true;
+    private boolean ok = true;
 
-    public FragmentJarScannerCallback(WebXmlParser webXmlParser, boolean delegate,
-            boolean parseRequired) {
+    /**
+     * Creates a new fragment jar scanner callback.
+     *
+     * @param webXmlParser The parser used to parse web-fragment.xml files
+     * @param delegate Whether delegation is enabled
+     * @param parseRequired Whether parsing is required
+     */
+    public FragmentJarScannerCallback(WebXmlParser webXmlParser, boolean delegate, boolean parseRequired) {
         this.webXmlParser = webXmlParser;
         this.delegate = delegate;
         this.parseRequired = parseRequired;
@@ -53,7 +58,8 @@ public class FragmentJarScannerCallback implements JarScannerCallback {
     public void scan(Jar jar, String webappPath, boolean isWebapp) throws IOException {
 
         InputStream is = null;
-        WebXml fragment = new WebXml();
+        @SuppressWarnings("deprecation")
+        WebXml fragment = new WebXml(webXmlParser.getUrlPatternsProvidedInDecodedForm());
         fragment.setWebappJar(isWebapp);
         fragment.setDelegate(delegate);
 
@@ -99,7 +105,8 @@ public class FragmentJarScannerCallback implements JarScannerCallback {
     @Override
     public void scan(File file, String webappPath, boolean isWebapp) throws IOException {
 
-        WebXml fragment = new WebXml();
+        @SuppressWarnings("deprecation")
+        WebXml fragment = new WebXml(webXmlParser.getUrlPatternsProvidedInDecodedForm());
         fragment.setWebappJar(isWebapp);
         fragment.setDelegate(delegate);
 
@@ -107,8 +114,7 @@ public class FragmentJarScannerCallback implements JarScannerCallback {
         try {
             if (fragmentFile.isFile()) {
                 try (InputStream stream = new FileInputStream(fragmentFile)) {
-                    InputSource source =
-                        new InputSource(fragmentFile.toURI().toURL().toString());
+                    InputSource source = new InputSource(fragmentFile.toURI().toURL().toString());
                     source.setByteStream(stream);
                     if (!webXmlParser.parseWebXml(source, fragment, true)) {
                         ok = false;
@@ -136,7 +142,7 @@ public class FragmentJarScannerCallback implements JarScannerCallback {
             // this name as having a duplicate so Tomcat can handle it
             // correctly when the fragments are being ordered.
             String duplicateName = fragment.getName();
-            fragments.get(duplicateName).setDuplicated(true);
+            fragments.get(duplicateName).addDuplicate(url.toString());
             // Rename the current fragment so it doesn't clash
             fragment.setName(url.toString());
         }
@@ -151,10 +157,20 @@ public class FragmentJarScannerCallback implements JarScannerCallback {
         // handle multiple web-fragment.xml files.
     }
 
+    /**
+     * Returns whether all fragments were parsed successfully.
+     *
+     * @return {@code true} if parsing was successful
+     */
     public boolean isOk() {
         return ok;
     }
 
+    /**
+     * Returns the map of parsed web fragments, keyed by fragment name.
+     *
+     * @return The map of fragment name to WebXml
+     */
     public Map<String,WebXml> getFragments() {
         return fragments;
     }

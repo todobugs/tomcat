@@ -18,16 +18,22 @@ package org.apache.tomcat.util.descriptor.web;
 
 
 /**
- * <p>Representation of a message destination for a web application, as
- * represented in a <code>&lt;message-destination&gt;</code> element
- * in the deployment descriptor.</p>
+ * <p>
+ * Representation of a message destination for a web application, as represented in a
+ * <code>&lt;message-destination&gt;</code> element in the deployment descriptor.
+ * </p>
  *
- * @author Craig R. McClanahan
  * @since Tomcat 5.0
  */
 public class MessageDestination extends ResourceBase {
 
     private static final long serialVersionUID = 1L;
+
+    /**
+     * Default constructor.
+     */
+    public MessageDestination() {
+    }
 
     // ------------------------------------------------------------- Properties
 
@@ -37,10 +43,18 @@ public class MessageDestination extends ResourceBase {
      */
     private String displayName = null;
 
+    /**
+     * Get the display name.
+     * @return the display name
+     */
     public String getDisplayName() {
         return this.displayName;
     }
 
+    /**
+     * Set the display name.
+     * @param displayName the display name
+     */
     public void setDisplayName(String displayName) {
         this.displayName = displayName;
     }
@@ -51,10 +65,18 @@ public class MessageDestination extends ResourceBase {
      */
     private String largeIcon = null;
 
+    /**
+     * Get the large icon.
+     * @return the large icon
+     */
     public String getLargeIcon() {
         return this.largeIcon;
     }
 
+    /**
+     * Set the large icon.
+     * @param largeIcon the large icon
+     */
     public void setLargeIcon(String largeIcon) {
         this.largeIcon = largeIcon;
     }
@@ -65,10 +87,18 @@ public class MessageDestination extends ResourceBase {
      */
     private String smallIcon = null;
 
+    /**
+     * Get the small icon.
+     * @return the small icon
+     */
     public String getSmallIcon() {
         return this.smallIcon;
     }
 
+    /**
+     * Set the small icon.
+     * @param smallIcon the small icon
+     */
     public void setSmallIcon(String smallIcon) {
         this.smallIcon = smallIcon;
     }
@@ -101,7 +131,7 @@ public class MessageDestination extends ResourceBase {
             sb.append(", description=");
             sb.append(getDescription());
         }
-        sb.append("]");
+        sb.append(']');
         return sb.toString();
     }
 
@@ -110,12 +140,9 @@ public class MessageDestination extends ResourceBase {
     public int hashCode() {
         final int prime = 31;
         int result = super.hashCode();
-        result = prime * result +
-                ((displayName == null) ? 0 : displayName.hashCode());
-        result = prime * result +
-                ((largeIcon == null) ? 0 : largeIcon.hashCode());
-        result = prime * result +
-                ((smallIcon == null) ? 0 : smallIcon.hashCode());
+        result = prime * result + ((displayName == null) ? 0 : displayName.hashCode());
+        result = prime * result + ((largeIcon == null) ? 0 : largeIcon.hashCode());
+        result = prime * result + ((smallIcon == null) ? 0 : smallIcon.hashCode());
         return result;
     }
 
@@ -147,12 +174,9 @@ public class MessageDestination extends ResourceBase {
             return false;
         }
         if (smallIcon == null) {
-            if (other.smallIcon != null) {
-                return false;
-            }
-        } else if (!smallIcon.equals(other.smallIcon)) {
-            return false;
+            return other.smallIcon == null;
+        } else {
+            return smallIcon.equals(other.smallIcon);
         }
-        return true;
     }
 }

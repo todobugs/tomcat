@@ -24,8 +24,10 @@ import java.nio.ByteBuffer;
 import javax.websocket.EncodeException;
 import javax.websocket.RemoteEndpoint;
 
-public class WsRemoteEndpointBasic extends WsRemoteEndpointBase
-        implements RemoteEndpoint.Basic {
+/**
+ * Synchronous (basic) remote endpoint for sending WebSocket messages.
+ */
+public class WsRemoteEndpointBasic extends WsRemoteEndpointBase implements RemoteEndpoint.Basic {
 
     WsRemoteEndpointBasic(WsRemoteEndpointImplBase base) {
         super(base);
@@ -51,8 +53,7 @@ public class WsRemoteEndpointBasic extends WsRemoteEndpointBase
 
 
     @Override
-    public void sendBinary(ByteBuffer partialByte, boolean isLast)
-            throws IOException {
+    public void sendBinary(ByteBuffer partialByte, boolean isLast) throws IOException {
         base.sendPartialBytes(partialByte, isLast);
     }
 

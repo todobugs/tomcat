@@ -28,16 +28,14 @@ import org.apache.tomcat.websocket.server.WsContextListener;
 
 public abstract class WebSocketBaseTest extends TomcatBaseTest {
 
-    protected Tomcat startServer(
-            final Class<? extends WsContextListener> configClass)
-            throws LifecycleException {
+    protected Tomcat startServer(final Class<? extends WsContextListener> configClass) throws LifecycleException {
 
         Tomcat tomcat = getTomcatInstance();
         // No file system docBase required
-        Context ctx = tomcat.addContext("", null);
+        Context ctx = getProgrammaticRootContext();
         ctx.addApplicationListener(configClass.getName());
         Tomcat.addServlet(ctx, "default", new DefaultServlet());
-        ctx.addServletMappingDecoded("/", "default");
+        ctx.addServletMapping("/", "default");
 
         tomcat.start();
         return tomcat;

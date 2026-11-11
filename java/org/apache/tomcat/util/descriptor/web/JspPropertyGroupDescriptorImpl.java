@@ -22,15 +22,20 @@ import java.util.Collection;
 import javax.servlet.descriptor.JspPropertyGroupDescriptor;
 
 
-
-public class JspPropertyGroupDescriptorImpl
-        implements JspPropertyGroupDescriptor{
+/**
+ * Implementation of JspPropertyGroupDescriptor that wraps a JspPropertyGroup.
+ */
+public class JspPropertyGroupDescriptorImpl implements JspPropertyGroupDescriptor {
 
     private final JspPropertyGroup jspPropertyGroup;
 
 
-    public JspPropertyGroupDescriptorImpl(
-            JspPropertyGroup jspPropertyGroup) {
+    /**
+     * Constructs an instance that wraps the given JspPropertyGroup.
+     *
+     * @param jspPropertyGroup The underlying JspPropertyGroup
+     */
+    public JspPropertyGroupDescriptorImpl(JspPropertyGroup jspPropertyGroup) {
         this.jspPropertyGroup = jspPropertyGroup;
     }
 
@@ -76,8 +81,7 @@ public class JspPropertyGroupDescriptorImpl
         String result = null;
 
         if (jspPropertyGroup.getErrorOnUndeclaredNamespace() != null) {
-            result =
-                jspPropertyGroup.getErrorOnUndeclaredNamespace().toString();
+            result = jspPropertyGroup.getErrorOnUndeclaredNamespace().toString();
         }
 
         return result;

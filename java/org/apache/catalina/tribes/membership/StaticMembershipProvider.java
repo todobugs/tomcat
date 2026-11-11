@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.catalina.tribes.membership;
 
 import java.io.Serializable;
@@ -32,6 +31,7 @@ import org.apache.catalina.tribes.ChannelException.FaultyMember;
 import org.apache.catalina.tribes.ChannelListener;
 import org.apache.catalina.tribes.Heartbeat;
 import org.apache.catalina.tribes.Member;
+import org.apache.catalina.tribes.group.GroupChannel;
 import org.apache.catalina.tribes.group.Response;
 import org.apache.catalina.tribes.group.RpcCallback;
 import org.apache.catalina.tribes.group.RpcChannel;
@@ -41,31 +41,97 @@ import org.apache.catalina.tribes.util.StringManager;
 import org.apache.juli.logging.Log;
 import org.apache.juli.logging.LogFactory;
 
-public class StaticMembershipProvider extends MembershipProviderBase implements RpcCallback, ChannelListener, Heartbeat {
+/**
+ * Provider that manages static membership for a cluster.
+ */
+public class StaticMembershipProvider extends MembershipProviderBase
+        implements RpcCallback, ChannelListener, Heartbeat {
 
+    /**
+     * String manager for this class.
+     */
     protected static final StringManager sm = StringManager.getManager(StaticMembershipProvider.class);
     private static final Log log = LogFactory.getLog(StaticMembershipProvider.class);
 
+    /**
+     * The channel associated with this provider.
+     */
     protected Channel channel;
+    /**
+     * RPC channel for sending messages.
+     */
     protected RpcChannel rpcChannel;
+    /**
+     * Name of this membership group.
+     */
     private String membershipName = null;
+    /**
+     * Byte array identifier for this membership group.
+     */
     private byte[] membershipId = null;
-    protected ArrayList<StaticMember> staticMembers;
+    /**
+     * List of static members for this cluster.
+     */
+    protected List<StaticMember> staticMembers;
+    /**
+     * Send options flag for channel messages.
+     */
     protected int sendOptions = Channel.SEND_OPTIONS_ASYNCHRONOUS;
+    /**
+     * Time in milliseconds after which a member is considered expired.
+     */
     protected long expirationTime = 5000;
+    /**
+     * Socket connection timeout in milliseconds.
+     */
     protected int connectTimeout = 500;
+    /**
+     * RPC operation timeout in milliseconds.
+     */
     protected long rpcTimeout = 3000;
+    /**
+     * Current start level bitmask.
+     */
     protected int startLevel = 0;
     // for ping thread
+    /**
+     * Whether to use a background thread for pinging.
+     */
     protected boolean useThread = false;
+    /**
+     * Interval between ping messages in milliseconds.
+     */
     protected long pingInterval = 1000;
+    /**
+     * Whether the ping thread is currently running.
+     */
     protected volatile boolean running = true;
+    /**
+     * Background ping thread instance.
+     */
     protected PingThread thread = null;
+
+    /**
+     * Default constructor.
+     */
+    public StaticMembershipProvider() {
+    }
 
     @Override
     public void init(Properties properties) throws Exception {
+        // All the default properties have been set by StaticMembershipService.setDefaults, so no need to check
         String expirationTimeStr = properties.getProperty("expirationTime");
         this.expirationTime = Long.parseLong(expirationTimeStr);
+        if (expirationTime <= 0) {
+            throw new IllegalArgumentException(sm.getString("membershipService.invalidTimingProperty", "expirationTime",
+                    Long.valueOf(expirationTime)));
+        }
+        String pingIntervalStr = properties.getProperty("pingInterval");
+        this.pingInterval = Long.parseLong(pingIntervalStr);
+        if (pingInterval <= 0) {
+            throw new IllegalArgumentException(sm.getString("membershipService.invalidTimingProperty", "pingInterval",
+                    Long.valueOf(pingInterval)));
+        }
         String connectTimeoutStr = properties.getProperty("connectTimeout");
         this.connectTimeout = Integer.parseInt(connectTimeoutStr);
         String rpcTimeouStr = properties.getProperty("rpcTimeout");
@@ -77,26 +143,32 @@ public class StaticMembershipProvider extends MembershipProviderBase implements 
         this.channel.addChannelListener(this);
         String useThreadStr = properties.getProperty("useThread");
         this.useThread = Boolean.parseBoolean(useThreadStr);
-        String pingIntervalStr = properties.getProperty("pingInterval");
-        this.pingInterval = Long.parseLong(pingIntervalStr);
     }
 
     @Override
     public void start(int level) throws Exception {
-        if (Channel.MBR_RX_SEQ==(level & Channel.MBR_RX_SEQ)) {
-            //no-op
+        if (Channel.MBR_RX_SEQ == (level & Channel.MBR_RX_SEQ)) {
+            // no-op
         }
-        if (Channel.MBR_TX_SEQ==(level & Channel.MBR_TX_SEQ)) {
-            //no-op
+        if (Channel.MBR_TX_SEQ == (level & Channel.MBR_TX_SEQ)) {
+            // no-op
         }
         startLevel = (startLevel | level);
         if (startLevel == (Channel.MBR_RX_SEQ | Channel.MBR_TX_SEQ)) {
-            startMembership(getAliveMembers(staticMembers.toArray(new Member[0])));
+            try {
+                startMembership(getAliveMembers(staticMembers.toArray(new Member[0])));
+            } catch (ChannelException ce) {
+                // A member that was reachable at the liveness check above may still fail the actual
+                // RPC (e.g. it has not finished its own startup yet). That is expected during cluster
+                // start-up and must not prevent this member from starting; the next ping will pick up
+                // any member that is not yet up.
+                log.warn(sm.getString("staticMembershipProvider.startMembership.failed"), ce);
+            }
             running = true;
-            if ( thread == null && useThread) {
+            if (thread == null && useThread) {
                 thread = new PingThread();
                 thread.setDaemon(true);
-                thread.setName("StaticMembership.PingThread[" + this.channel.getName() +"]");
+                thread.setName("StaticMembership.PingThread[" + this.channel.getName() + "]");
                 thread.start();
             }
         }
@@ -104,14 +176,14 @@ public class StaticMembershipProvider extends MembershipProviderBase implements 
 
     @Override
     public boolean stop(int level) throws Exception {
-        if (Channel.MBR_RX_SEQ==(level & Channel.MBR_RX_SEQ)) {
+        if (Channel.MBR_RX_SEQ == (level & Channel.MBR_RX_SEQ)) {
             // no-op
         }
-        if (Channel.MBR_TX_SEQ==(level & Channel.MBR_TX_SEQ)) {
+        if (Channel.MBR_TX_SEQ == (level & Channel.MBR_TX_SEQ)) {
             // no-op
         }
         startLevel = (startLevel & (~level));
-        if ( startLevel == 0 ) {
+        if (startLevel == 0) {
             running = false;
             if (thread != null) {
                 thread.interrupt();
@@ -136,67 +208,95 @@ public class StaticMembershipProvider extends MembershipProviderBase implements 
         return (startLevel == 0);
     }
 
+    /**
+     * Sends start messages to the given members.
+     * @param members the members to notify
+     * @throws ChannelException if sending fails
+     */
     protected void startMembership(Member[] members) throws ChannelException {
-        if (members.length == 0) return;
+        if (members.length == 0) {
+            return;
+        }
         MemberMessage msg = new MemberMessage(membershipId, MemberMessage.MSG_START, service.getLocalMember(true));
         Response[] resp = rpcChannel.send(members, msg, RpcChannel.ALL_REPLY, sendOptions, rpcTimeout);
         if (resp.length > 0) {
-            for (int i = 0; i < resp.length; i++) {
-                messageReceived(resp[i].getMessage(), resp[i].getSource());
+            for (Response response : resp) {
+                messageReceived(response.getMessage(), response.getSource());
             }
         } else {
             log.warn(sm.getString("staticMembershipProvider.startMembership.noReplies"));
         }
     }
 
+    /**
+     * Sets up a member after it joins. Override for customization.
+     * @param mbr the member to set up
+     * @return the configured member
+     */
     protected Member setupMember(Member mbr) {
         // no-op
         return mbr;
     }
 
+    /**
+     * Handles the addition of a new member to the cluster.
+     * @param member the member that was added
+     */
     protected void memberAdded(Member member) {
         Member mbr = setupMember(member);
-        if(membership.memberAlive(mbr)) {
-            Runnable r = new Runnable() {
-                @Override
-                public void run(){
-                    String name = Thread.currentThread().getName();
-                    try {
-                        Thread.currentThread().setName("StaticMembership-memberAdded");
-                        membershipListener.memberAdded(mbr);
-                    } finally {
-                        Thread.currentThread().setName(name);
-                    }
+        if (membership.memberAlive(mbr)) {
+            Runnable r = () -> {
+                Thread currentThread = Thread.currentThread();
+                String name = currentThread.getName();
+                try {
+                    currentThread.setName("StaticMembership-memberAdded");
+                    membershipListener.memberAdded(mbr);
+                } finally {
+                    currentThread.setName(name);
                 }
             };
             executor.execute(r);
         }
     }
 
+    /**
+     * Handles the disappearance of a member from the cluster.
+     * @param member the member that disappeared
+     */
     protected void memberDisappeared(Member member) {
         membership.removeMember(member);
-        Runnable r = new Runnable() {
-            @Override
-            public void run(){
-                String name = Thread.currentThread().getName();
-                try {
-                    Thread.currentThread().setName("StaticMembership-memberDisappeared");
-                    membershipListener.memberDisappeared(member);
-                } finally {
-                    Thread.currentThread().setName(name);
-                }
+        Runnable r = () -> {
+            Thread currentThread = Thread.currentThread();
+            String name = currentThread.getName();
+            try {
+                currentThread.setName("StaticMembership-memberDisappeared");
+                membershipListener.memberDisappeared(member);
+            } finally {
+                currentThread.setName(name);
             }
         };
         executor.execute(r);
     }
 
+    /**
+     * Updates the alive status of a member.
+     * @param member the member to update
+     */
     protected void memberAlive(Member member) {
-        if (!membership.contains(member)) memberAdded(member);
+        if (!membership.contains(member)) {
+            memberAdded(member);
+        }
         membership.memberAlive(member);
     }
 
+    /**
+     * Sends stop messages to the given members.
+     * @param members the members to notify
+     */
     protected void stopMembership(Member[] members) {
-        if (members.length == 0 ) return;
+        if (members.length == 0) {
+            return;
+        }
         Member localmember = service.getLocalMember(false);
         localmember.setCommand(Member.SHUTDOWN_PAYLOAD);
         MemberMessage msg = new MemberMessage(membershipId, MemberMessage.MSG_STOP, localmember);
@@ -231,7 +331,9 @@ public class StaticMembershipProvider extends MembershipProviderBase implements 
 
     @Override
     public Serializable replyRequest(Serializable msg, final Member sender) {
-        if (!(msg instanceof MemberMessage)) return null;
+        if (!(msg instanceof MemberMessage)) {
+            return null;
+        }
         MemberMessage memMsg = (MemberMessage) msg;
         if (memMsg.getMsgtype() == MemberMessage.MSG_START) {
             messageReceived(memMsg, sender);
@@ -243,16 +345,18 @@ public class StaticMembershipProvider extends MembershipProviderBase implements 
             return memMsg;
         } else {
             // other messages are ignored.
-            if (log.isInfoEnabled())
-                log.info(sm.getString("staticMembershipProvider.replyRequest.ignored",
-                        memMsg.getTypeDesc()));
+            if (log.isInfoEnabled()) {
+                log.info(sm.getString("staticMembershipProvider.replyRequest.ignored", memMsg.getTypeDesc()));
+            }
             return null;
         }
     }
 
     @Override
     public void leftOver(Serializable msg, Member sender) {
-        if (!(msg instanceof MemberMessage)) return;
+        if (!(msg instanceof MemberMessage)) {
+            return;
+        }
         MemberMessage memMsg = (MemberMessage) msg;
         if (memMsg.getMsgtype() == MemberMessage.MSG_START) {
             messageReceived(memMsg, sender);
@@ -260,30 +364,37 @@ public class StaticMembershipProvider extends MembershipProviderBase implements 
             messageReceived(memMsg, sender);
         } else {
             // other messages are ignored.
-            if (log.isInfoEnabled())
-                log.info(sm.getString("staticMembershipProvider.leftOver.ignored",
-                        memMsg.getTypeDesc()));
+            if (log.isInfoEnabled()) {
+                log.info(sm.getString("staticMembershipProvider.leftOver.ignored", memMsg.getTypeDesc()));
+            }
         }
     }
 
     @Override
     public void heartbeat() {
         try {
-            if (!useThread) ping();
+            if (!useThread) {
+                ping();
+            }
         } catch (ChannelException e) {
             log.warn(sm.getString("staticMembershipProvider.heartbeat.failed"), e);
         }
     }
 
+    /**
+     * Sends ping messages to all static members and checks for expired members.
+     * @throws ChannelException if pinging fails
+     */
     protected void ping() throws ChannelException {
         // send ping
         Member[] members = getAliveMembers(staticMembers.toArray(new Member[0]));
         if (members.length > 0) {
             try {
-                MemberMessage msg = new MemberMessage(membershipId, MemberMessage.MSG_PING, service.getLocalMember(true));
+                MemberMessage msg =
+                        new MemberMessage(membershipId, MemberMessage.MSG_PING, service.getLocalMember(true));
                 Response[] resp = rpcChannel.send(members, msg, RpcChannel.ALL_REPLY, sendOptions, rpcTimeout);
-                for (int i = 0; i < resp.length; i++) {
-                    messageReceived(resp[i].getMessage(), resp[i].getSource());
+                for (Response response : resp) {
+                    messageReceived(response.getMessage(), response.getSource());
                 }
             } catch (ChannelException ce) {
                 // Handle known failed members
@@ -298,27 +409,45 @@ public class StaticMembershipProvider extends MembershipProviderBase implements 
         checkExpired();
     }
 
+    /**
+     * Checks for and removes expired members.
+     */
     protected void checkExpired() {
         Member[] expired = membership.expire(expirationTime);
         for (Member member : expired) {
-            membershipListener.memberDisappeared(member);
+            memberDisappeared(member);
         }
     }
 
+    /**
+     * Sets the channel for this provider.
+     * @param channel the channel
+     */
     public void setChannel(Channel channel) {
         this.channel = channel;
     }
 
-    public void setStaticMembers(ArrayList<StaticMember> staticMembers) {
+    /**
+     * Sets the static members for this cluster.
+     * @param staticMembers the list of static members
+     */
+    public void setStaticMembers(List<StaticMember> staticMembers) {
         this.staticMembers = staticMembers;
     }
 
     private Member[] getAliveMembers(Member[] members) {
+        boolean channelSecure = channel instanceof GroupChannel && ((GroupChannel) channel).getSecure();
         List<Member> aliveMembers = new ArrayList<>();
         for (Member member : members) {
+            boolean useSecurePort = channelSecure || member.getSecurePort() >= 0 && member.getPort() < 0;
+            int port = useSecurePort ? member.getSecurePort() : member.getPort();
+            if (port < 0) {
+                // no usable port to connect to, so the member can't be checked
+                continue;
+            }
             try (Socket socket = new Socket()) {
                 InetAddress ia = InetAddress.getByAddress(member.getHost());
-                InetSocketAddress addr = new InetSocketAddress(ia, member.getPort());
+                InetSocketAddress addr = new InetSocketAddress(ia, port);
                 socket.connect(addr, connectTimeout);
                 aliveMembers.add(member);
             } catch (Throwable t) {
@@ -332,74 +461,118 @@ public class StaticMembershipProvider extends MembershipProviderBase implements 
     // ------------------------------------------------------------------------------
     // member message to send to and from other memberships
     // ------------------------------------------------------------------------------
+    /**
+     * Message sent between membership providers to coordinate membership state.
+     */
     public static class MemberMessage implements Serializable {
         private static final long serialVersionUID = 1L;
+        /**
+         * Message type for member start.
+         */
         public static final int MSG_START = 1;
+        /**
+         * Message type for member stop.
+         */
         public static final int MSG_STOP = 2;
+        /**
+         * Message type for member ping.
+         */
         public static final int MSG_PING = 3;
+        /** The type of this member message. */
         private final int msgtype;
+        /** The membership group identifier. */
         private final byte[] membershipId;
+        /** The member associated with this message. */
         private Member member;
 
+        /**
+         * Creates a new MemberMessage.
+         * @param membershipId the membership group identifier
+         * @param msgtype the message type
+         * @param member the member associated with this message
+         */
         public MemberMessage(byte[] membershipId, int msgtype, Member member) {
             this.membershipId = membershipId;
             this.msgtype = msgtype;
             this.member = member;
         }
 
+        /**
+         * Returns the message type.
+         * @return the message type constant
+         */
         public int getMsgtype() {
             return msgtype;
         }
 
+        /**
+         * Returns the membership group identifier.
+         * @return the membership ID byte array
+         */
         public byte[] getMembershipId() {
             return membershipId;
         }
 
+        /**
+         * Returns the member associated with this message.
+         * @return the member
+         */
         public Member getMember() {
             return member;
         }
 
+        /**
+         * Sets the member for this message.
+         * @param local the member
+         */
         public void setMember(Member local) {
             this.member = local;
         }
 
         @Override
         public String toString() {
-            StringBuilder buf = new StringBuilder("MemberMessage[");
-            buf.append("name=");
-            buf.append(new String(membershipId));
-            buf.append("; type=");
-            buf.append(getTypeDesc());
-            buf.append("; member=");
-            buf.append(member);
-            buf.append("]");
-            return buf.toString();
+            return "MemberMessage[" + "name=" + new String(membershipId, StandardCharsets.ISO_8859_1) + "; type=" +
+                    getTypeDesc() + "; member=" + member + ']';
         }
 
+        /**
+         * Returns a human-readable description of the message type.
+         * @return the type description string
+         */
         protected String getTypeDesc() {
             switch (msgtype) {
-            case MSG_START:
-                return "MSG_START";
-            case MSG_STOP:
-                return "MSG_STOP";
-            case MSG_PING:
-                return "MSG_PING";
-            default:
-                return "UNKNOWN";
+                case MSG_START:
+                    return "MSG_START";
+                case MSG_STOP:
+                    return "MSG_STOP";
+                case MSG_PING:
+                    return "MSG_PING";
+                default:
+                    return "UNKNOWN";
             }
         }
     }
 
+    /**
+     * Background thread that periodically sends ping messages to cluster members.
+     */
     protected class PingThread extends Thread {
+        /**
+         * Default constructor.
+         */
+        public PingThread() {
+        }
+
         @Override
         public void run() {
             while (running) {
                 try {
                     sleep(pingInterval);
                     ping();
-                }catch (InterruptedException ix) {
-                }catch (Exception x) {
-                    log.warn(sm.getString("staticMembershipProvider.pingThread.failed"),x);
+                } catch (InterruptedException ix) {
+                    // Expected during shutdown. The running flag is already set to false, so the loop will exit.
+                } catch (Exception e) {
+                    log.warn(sm.getString("staticMembershipProvider.pingThread.failed"), e);
                 }
             }
         }

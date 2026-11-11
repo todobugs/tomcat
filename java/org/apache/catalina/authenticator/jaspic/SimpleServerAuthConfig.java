@@ -1,4 +1,4 @@
-/**
+/*
  *  Licensed to the Apache Software Foundation (ASF) under one or more
  *  contributor license agreements.  See the NOTICE file distributed with
  *  this work for additional information regarding copyright ownership.
@@ -32,14 +32,13 @@ import javax.security.auth.message.module.ServerAuthModule;
 import org.apache.tomcat.util.res.StringManager;
 
 /**
- * Basic implementation primarily intended for use when using third-party
- * {@link ServerAuthModule} implementations that only provide the module. This
- * implementation supports configuring the {@link ServerAuthContext} with
- * multiple modules.
+ * Basic implementation primarily intended for use when using third-party {@link ServerAuthModule} implementations that
+ * only provide the module. This implementation supports configuring the {@link ServerAuthContext} with multiple
+ * modules.
  */
 public class SimpleServerAuthConfig implements ServerAuthConfig {
 
-    private static StringManager sm = StringManager.getManager(SimpleServerAuthConfig.class);
+    private static final StringManager sm = StringManager.getManager(SimpleServerAuthConfig.class);
 
     private static final String SERVER_AUTH_MODULE_KEY_PREFIX =
             "org.apache.catalina.authenticator.jaspic.ServerAuthModule.";
@@ -51,6 +50,14 @@ public class SimpleServerAuthConfig implements ServerAuthConfig {
 
     private volatile ServerAuthContext serverAuthContext;
 
+    /**
+     * Creates a new SimpleServerAuthConfig.
+     *
+     * @param layer      Message layer
+     * @param appContext Application context
+     * @param handler    Callback handler
+     * @param properties Configuration properties
+     */
     public SimpleServerAuthConfig(String layer, String appContext, CallbackHandler handler,
             Map<String,String> properties) {
         this.layer = layer;
@@ -72,28 +79,50 @@ public class SimpleServerAuthConfig implements ServerAuthConfig {
     }
 
 
+    /**
+     * {@inheritDoc}
+     * <p>
+     * Returns the MessageInfo's string representation as the auth context ID.
+     */
     @Override
     public String getAuthContextID(MessageInfo messageInfo) {
         return messageInfo.toString();
     }
 
 
+    /**
+     * {@inheritDoc}
+     * <p>
+     * Clears the cached ServerAuthContext so it will be recreated on next use.
+     */
     @Override
     public void refresh() {
         serverAuthContext = null;
     }
 
 
+    /**
+     * {@inheritDoc}
+     * <p>
+     * This implementation always returns {@code false}.
+     */
     @Override
     public boolean isProtected() {
         return false;
     }
 
 
-    @SuppressWarnings({"rawtypes", "unchecked"}) // JASPIC API uses raw types
+    /**
+     * {@inheritDoc}
+     * <p>
+     * Loads ServerAuthModule instances from properties keyed with
+     * {@code org.apache.catalina.authenticator.jaspic.ServerAuthModule.N} where N is 1-based index. The returned
+     * context is cached and reused for subsequent calls.
+     */
+    @SuppressWarnings({ "rawtypes", "unchecked" }) // JASPIC API uses raw types
     @Override
-    public ServerAuthContext getAuthContext(String authContextID, Subject serviceSubject,
-            Map properties) throws AuthException {
+    public ServerAuthContext getAuthContext(String authContextID, Subject serviceSubject, Map properties)
+            throws AuthException {
         ServerAuthContext serverAuthContext = this.serverAuthContext;
         if (serverAuthContext == null) {
             synchronized (this) {
@@ -112,13 +141,21 @@ public class SimpleServerAuthConfig implements ServerAuthConfig {
                     String moduleClassName = mergedProperties.get(key);
                     while (moduleClassName != null) {
                         try {
-                            Class<?> clazz = Class.forName(moduleClassName);
-                            ServerAuthModule module =
-                                    (ServerAuthModule) clazz.getConstructor().newInstance();
+                            Class<?> clazz = null;
+                            try {
+                                clazz = Class.forName(moduleClassName, true,
+                                        Thread.currentThread().getContextClassLoader());
+                            } catch (ClassNotFoundException ignore) {
+                                // Ignore so the re-try below can proceed
+                            }
+                            if (clazz == null) {
+                                clazz = Class.forName(moduleClassName);
+                            }
+                            ServerAuthModule module = (ServerAuthModule) clazz.getConstructor().newInstance();
                             module.initialize(null, null, handler, mergedProperties);
                             modules.add(module);
-                        } catch (ReflectiveOperationException | IllegalArgumentException |
-                                SecurityException e) {
+                        } catch (ReflectiveOperationException | IllegalArgumentException | SecurityException |
+                                ClassCastException e) {
                             AuthException ae = new AuthException();
                             ae.initCause(e);
                             throw ae;
@@ -130,7 +167,7 @@ public class SimpleServerAuthConfig implements ServerAuthConfig {
                         moduleClassName = mergedProperties.get(key);
                     }
 
-                    if (modules.size() == 0) {
+                    if (modules.isEmpty()) {
                         throw new AuthException(sm.getString("simpleServerAuthConfig.noModules"));
                     }
 
@@ -144,6 +181,13 @@ public class SimpleServerAuthConfig implements ServerAuthConfig {
     }
 
 
+    /**
+     * Creates the ServerAuthContext. Can be overridden by subclasses to provide a custom implementation.
+     *
+     * @param modules List of ServerAuthModule instances
+     *
+     * @return The ServerAuthContext instance
+     */
     protected ServerAuthContext createServerAuthContext(List<ServerAuthModule> modules) {
         return new SimpleServerAuthContext(modules);
     }

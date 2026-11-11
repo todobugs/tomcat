@@ -18,6 +18,7 @@ package org.apache.catalina.filters;
 
 import java.io.IOException;
 import java.nio.charset.Charset;
+import java.util.Locale;
 
 import javax.servlet.FilterChain;
 import javax.servlet.FilterConfig;
@@ -32,20 +33,19 @@ import org.apache.juli.logging.LogFactory;
 
 
 /**
- * Filter that explicitly sets the default character set for media subtypes of
- * the "text" type to ISO-8859-1, or another user defined character set. RFC2616
- * explicitly states that browsers must use ISO-8859-1 if no character set is
- * defined for media with subtype "text". However, browsers may attempt to
- * auto-detect the character set. This may be exploited by an attacker to
- * perform an XSS attack. Internet Explorer has this behaviour by default. Other
- * browsers have an option to enable it.<br>
- *
- * This filter prevents the attack by explicitly setting a character set. Unless
- * the provided character set is explicitly overridden by the user - in which
- * case they deserve everything they get - the browser will adhere to an
+ * Filter that explicitly sets the default character set for media subtypes of the "text" type to ISO-8859-1, or another
+ * user defined character set. RFC 9110 explicitly states that browsers must use ISO-8859-1 if no character set is
+ * defined for media with subtype "text". However, browsers may attempt to auto-detect the character set. This may be
+ * exploited by an attacker to perform an XSS attack. Internet Explorer has this behaviour by default. Other browsers
+ * have an option to enable it.<br>
+ * This filter prevents the attack by explicitly setting a character set. Unless the provided character set is
+ * explicitly overridden by the user - in which case they deserve everything they get - the browser will adhere to an
  * explicitly set character set, thus preventing the XSS attack.
  */
 public class AddDefaultCharsetFilter extends FilterBase {
+
+    /** Constructs a new AddDefaultCharsetFilter. */
+    public AddDefaultCharsetFilter() {}
 
     // Log must be non-static as loggers are created per class-loader and this
     // Filter may be used in multiple class loaders
@@ -55,6 +55,11 @@ public class AddDefaultCharsetFilter extends FilterBase {
 
     private String encoding;
 
+    /**
+     * Sets the character encoding to use.
+     *
+     * @param encoding The character encoding
+     */
     public void setEncoding(String encoding) {
         this.encoding = encoding;
     }
@@ -67,25 +72,22 @@ public class AddDefaultCharsetFilter extends FilterBase {
     @Override
     public void init(FilterConfig filterConfig) throws ServletException {
         super.init(filterConfig);
-        if (encoding == null || encoding.length() == 0 ||
-                encoding.equalsIgnoreCase("default")) {
+        if (encoding == null || encoding.isEmpty() || encoding.equalsIgnoreCase("default")) {
             encoding = DEFAULT_ENCODING;
         } else if (encoding.equalsIgnoreCase("system")) {
             encoding = Charset.defaultCharset().name();
         } else if (!Charset.isSupported(encoding)) {
-            throw new IllegalArgumentException(sm.getString(
-                    "addDefaultCharset.unsupportedCharset", encoding));
+            throw new IllegalArgumentException(sm.getString("addDefaultCharset.unsupportedCharset", encoding));
         }
     }
 
     @Override
-    public void doFilter(ServletRequest request, ServletResponse response,
-            FilterChain chain) throws IOException, ServletException {
+    public void doFilter(ServletRequest request, ServletResponse response, FilterChain chain)
+            throws IOException, ServletException {
 
         // Wrap the response
         if (response instanceof HttpServletResponse) {
-            ResponseWrapper wrapped =
-                new ResponseWrapper((HttpServletResponse)response, encoding);
+            ResponseWrapper wrapped = new ResponseWrapper((HttpServletResponse) response, encoding);
             chain.doFilter(request, wrapped);
         } else {
             chain.doFilter(request, response);
@@ -93,13 +95,18 @@ public class AddDefaultCharsetFilter extends FilterBase {
     }
 
     /**
-     * Wrapper that adds a character set for text media types if no character
-     * set is specified.
+     * Wrapper that adds a character set for text media types if no character set is specified.
      */
     public static class ResponseWrapper extends HttpServletResponseWrapper {
 
         private String encoding;
 
+        /**
+         * Constructs a new ResponseWrapper.
+         *
+         * @param response The HTTP servlet response to wrap
+         * @param encoding The character encoding to use
+         */
         public ResponseWrapper(HttpServletResponse response, String encoding) {
             super(response);
             this.encoding = encoding;
@@ -108,17 +115,20 @@ public class AddDefaultCharsetFilter extends FilterBase {
         @Override
         public void setContentType(String contentType) {
 
-            if (contentType != null && contentType.startsWith("text/")) {
-                if (!contentType.contains("charset=")) {
-                    super.setContentType(contentType + ";charset=" + encoding);
-                } else {
-                    super.setContentType(contentType);
-                    encoding = getCharacterEncoding();
+            if (contentType != null) {
+                String lowerCaseContentType = contentType.toLowerCase(Locale.ENGLISH).trim();
+                if (lowerCaseContentType.startsWith("text/")) {
+                    if (!lowerCaseContentType.contains("charset=")) {
+                        super.setContentType(contentType + ";charset=" + encoding);
+                    } else {
+                        super.setContentType(contentType);
+                        encoding = getCharacterEncoding();
+                    }
+                    return;
                 }
-            } else {
-                super.setContentType(contentType);
             }
 
+            super.setContentType(contentType);
         }
 
         @Override
@@ -142,7 +152,11 @@ public class AddDefaultCharsetFilter extends FilterBase {
         @Override
         public void setCharacterEncoding(String charset) {
             super.setCharacterEncoding(charset);
-            encoding = charset;
+            if (charset == null) {
+                encoding = DEFAULT_ENCODING;
+            } else {
+                encoding = charset;
+            }
         }
     }
 }

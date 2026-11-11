@@ -18,10 +18,10 @@ package org.apache.catalina.core;
 
 import java.nio.charset.Charset;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.Enumeration;
 import java.util.HashSet;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -127,8 +127,7 @@ public class ApplicationPushBuilder implements PushBuilder {
         if (sessionId == null) {
             sessionId = request.getRequestedSessionId();
         }
-        if (!request.isRequestedSessionIdFromCookie() && !request.isRequestedSessionIdFromURL() &&
-                sessionId != null) {
+        if (!request.isRequestedSessionIdFromCookie() && !request.isRequestedSessionIdFromURL() && sessionId != null) {
             Set<SessionTrackingMode> sessionTrackingModes =
                     request.getServletContext().getEffectiveSessionTrackingModes();
             addSessionCookie = sessionTrackingModes.contains(SessionTrackingMode.COOKIE);
@@ -140,35 +139,28 @@ public class ApplicationPushBuilder implements PushBuilder {
 
         // Cookies
         if (request.getCookies() != null) {
-            for (Cookie requestCookie : request.getCookies()) {
-                cookies.add(requestCookie);
-            }
+            cookies.addAll(Arrays.asList(request.getCookies()));
         }
         for (Cookie responseCookie : catalinaRequest.getResponse().getCookies()) {
             if (responseCookie.getMaxAge() < 0) {
                 // Path information not available so can only remove based on
                 // name.
-                Iterator<Cookie> cookieIterator = cookies.iterator();
-                while (cookieIterator.hasNext()) {
-                    Cookie cookie = cookieIterator.next();
-                    if (cookie.getName().equals(responseCookie.getName())) {
-                        cookieIterator.remove();
-                    }
-                }
+                cookies.removeIf(cookie -> cookie.getName().equals(responseCookie.getName()));
             } else {
                 cookies.add(new Cookie(responseCookie.getName(), responseCookie.getValue()));
             }
         }
-        List<String> cookieValues = new ArrayList<>(1);
-        cookieValues.add(generateCookieHeader(cookies,
-                catalinaRequest.getContext().getCookieProcessor()));
-        headers.put("cookie", cookieValues);
+        if (cookies.size() > 0) {
+            List<String> cookieValues = new ArrayList<>(1);
+            cookieValues.add(generateCookieHeader(cookies, catalinaRequest.getContext().getCookieProcessor()));
+            headers.put("cookie", cookieValues);
+        }
 
         // Authentication
         if (catalinaRequest.getPrincipal() != null) {
-            if ((session == null) || catalinaRequest.getSessionInternal(false).getPrincipal() == null
-                    || !(context.getAuthenticator() instanceof AuthenticatorBase)
-                    || !((AuthenticatorBase) context.getAuthenticator()).getCache()) {
+            if ((session == null) || catalinaRequest.getSessionInternal(false).getPrincipal() == null ||
+                    !(context.getAuthenticator() instanceof AuthenticatorBase) ||
+                    !((AuthenticatorBase) context.getAuthenticator()).getCache()) {
                 // Set a username only if there is no session cache for the principal
                 userName = catalinaRequest.getPrincipal().getName();
             }
@@ -203,15 +195,11 @@ public class ApplicationPushBuilder implements PushBuilder {
     public PushBuilder method(String method) {
         String upperMethod = method.trim().toUpperCase(Locale.ENGLISH);
         if (DISALLOWED_METHODS.contains(upperMethod) || upperMethod.length() == 0) {
-            throw new IllegalArgumentException(
-                    sm.getString("applicationPushBuilder.methodInvalid", upperMethod));
+            throw new IllegalArgumentException(sm.getString("applicationPushBuilder.methodInvalid", upperMethod));
         }
         // Check a token was supplied
-        for (char c : upperMethod.toCharArray()) {
-            if (!HttpParser.isToken(c)) {
-                throw new IllegalArgumentException(
-                        sm.getString("applicationPushBuilder.methodNotToken", upperMethod));
-            }
+        if (!HttpParser.isToken(upperMethod)) {
+            throw new IllegalArgumentException(sm.getString("applicationPushBuilder.methodNotToken", upperMethod));
         }
         this.method = method;
         return this;
@@ -252,13 +240,7 @@ public class ApplicationPushBuilder implements PushBuilder {
 
     @Override
     public PushBuilder addHeader(String name, String value) {
-        List<String> values = headers.get(name);
-        if (values == null) {
-            values = new ArrayList<>();
-            headers.put(name, values);
-        }
-        values.add(value);
-
+        headers.computeIfAbsent(name, k -> new ArrayList<>()).add(value);
         return this;
     }
 
@@ -311,7 +293,7 @@ public class ApplicationPushBuilder implements PushBuilder {
 
         org.apache.coyote.Request pushTarget = new org.apache.coyote.Request();
 
-        pushTarget.method().setString(method);
+        pushTarget.setMethod(method);
         // The next three are implied by the Javadoc getPath()
         pushTarget.serverName().setString(baseRequest.getServerName());
         pushTarget.setServerPort(baseRequest.getServerPort());
@@ -357,8 +339,7 @@ public class ApplicationPushBuilder implements PushBuilder {
 
         // Undecoded path - just %nn encoded
         pushTarget.requestURI().setString(pushPath);
-        pushTarget.decodedURI().setString(decode(pushPath,
-                catalinaRequest.getConnector().getURICharset()));
+        pushTarget.decodedURI().setString(decode(pushPath, catalinaRequest.getConnector().getURICharset()));
 
         // Query string
         if (pushQueryString == null && queryString != null) {
@@ -366,7 +347,7 @@ public class ApplicationPushBuilder implements PushBuilder {
         } else if (pushQueryString != null && queryString == null) {
             pushTarget.queryString().setString(pushQueryString);
         } else if (pushQueryString != null && queryString != null) {
-            pushTarget.queryString().setString(pushQueryString + "&" +queryString);
+            pushTarget.queryString().setString(pushQueryString + "&" + queryString);
         }
 
         // Authorization
@@ -401,7 +382,7 @@ public class ApplicationPushBuilder implements PushBuilder {
             result.append(input.substring(end, start));
             // Advance the end 3 characters: %nn
             end = start + 3;
-            while (end <input.length() && input.charAt(end) == '%') {
+            while (end < input.length() && input.charAt(end) == '%') {
                 end += 3;
             }
             result.append(decodePercentSequence(input.substring(start, end), charset));
@@ -415,7 +396,7 @@ public class ApplicationPushBuilder implements PushBuilder {
 
 
     private static String decodePercentSequence(String sequence, Charset charset) {
-        byte[] bytes = new byte[sequence.length()/3];
+        byte[] bytes = new byte[sequence.length() / 3];
         for (int i = 0; i < bytes.length; i += 3) {
             bytes[i] = (byte) ((HexUtils.getDec(sequence.charAt(1 + 3 * i)) << 4) +
                     HexUtils.getDec(sequence.charAt(2 + 3 * i)));
@@ -439,7 +420,7 @@ public class ApplicationPushBuilder implements PushBuilder {
             // However, if passed a Cookie with just a name and value set it
             // will generate an appropriate header for the Cookie header on the
             // pushed request.
-            result.append(cookieProcessor.generateHeader(cookie));
+            result.append(cookieProcessor.generateHeader(cookie, null));
         }
         return result.toString();
     }

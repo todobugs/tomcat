@@ -14,8 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
-
 package org.apache.catalina.startup;
 
 
@@ -38,17 +36,18 @@ import org.apache.tomcat.util.res.StringManager;
 
 
 /**
- * Startup event listener for a <b>Host</b> that configures Contexts (web
- * applications) for all defined "users" who have a web application in a
- * directory with the specified name in their home directories.  The context
- * path of each deployed application will be set to <code>~xxxxx</code>, where
- * xxxxx is the username of the owning user for that web application
- *
- * @author Craig R. McClanahan
+ * Startup event listener for a <b>Host</b> that configures Contexts (web applications) for all defined "users" who have
+ * a web application in a directory with the specified name in their home directories. The context path of each deployed
+ * application will be set to <code>/~xxxxx</code>, where xxxxx is the username of the owning user for that web
+ * application
  */
-public final class UserConfig
-    implements LifecycleListener {
+public final class UserConfig implements LifecycleListener {
 
+    /**
+     * Constructs a new UserConfig.
+     */
+    public UserConfig() {
+    }
 
     private static final Log log = LogFactory.getLog(UserConfig.class);
 
@@ -89,31 +88,31 @@ public final class UserConfig
     /**
      * The string resources for this package.
      */
-    private static final StringManager sm =
-        StringManager.getManager(Constants.Package);
+    private static final StringManager sm = StringManager.getManager(Constants.Package);
 
 
     /**
      * The Java class name of the user database class we should use.
      */
-    private String userClass =
-        "org.apache.catalina.startup.PasswdUserDatabase";
+    private String userClass = "org.apache.catalina.startup.PasswdUserDatabase";
 
     /**
-     * A regular expression defining user who deployment is allowed.
+     * A regular expression defining users for whom deployment is allowed.
      */
-    Pattern allow = null;
+    private Pattern allow = null;
 
     /**
-     * A regular expression defining user who deployment is denied.
+     * A regular expression defining users for whom deployment is denied.
      */
-    Pattern deny = null;
+    private Pattern deny = null;
 
     // ------------------------------------------------------------- Properties
 
 
     /**
-     * @return the Context configuration class name.
+     * Returns the Context configuration class name.
+     *
+     * @return the Context configuration class name
      */
     public String getConfigClass() {
         return this.configClass;
@@ -121,9 +120,9 @@ public final class UserConfig
 
 
     /**
-     * Set the Context configuration class name.
+     * Sets the Context configuration class name.
      *
-     * @param configClass The new Context configuration class name.
+     * @param configClass The new Context configuration class name
      */
     public void setConfigClass(String configClass) {
         this.configClass = configClass;
@@ -131,7 +130,9 @@ public final class UserConfig
 
 
     /**
-     * @return the Context implementation class name.
+     * Returns the Context implementation class name.
+     *
+     * @return the Context implementation class name
      */
     public String getContextClass() {
         return this.contextClass;
@@ -139,9 +140,9 @@ public final class UserConfig
 
 
     /**
-     * Set the Context implementation class name.
+     * Sets the Context implementation class name.
      *
-     * @param contextClass The new Context implementation class name.
+     * @param contextClass The new Context implementation class name
      */
     public void setContextClass(String contextClass) {
         this.contextClass = contextClass;
@@ -149,7 +150,9 @@ public final class UserConfig
 
 
     /**
-     * @return the directory name for user web applications.
+     * Returns the directory name for user web applications.
+     *
+     * @return the directory name
      */
     public String getDirectoryName() {
         return this.directoryName;
@@ -157,7 +160,7 @@ public final class UserConfig
 
 
     /**
-     * Set the directory name for user web applications.
+     * Sets the directory name for user web applications.
      *
      * @param directoryName The new directory name
      */
@@ -167,7 +170,9 @@ public final class UserConfig
 
 
     /**
-     * @return the base directory containing user home directories.
+     * Returns the base directory containing user home directories.
+     *
+     * @return the base directory
      */
     public String getHomeBase() {
         return this.homeBase;
@@ -175,7 +180,7 @@ public final class UserConfig
 
 
     /**
-     * Set the base directory containing user home directories.
+     * Sets the base directory containing user home directories.
      *
      * @param homeBase The new base directory
      */
@@ -185,7 +190,9 @@ public final class UserConfig
 
 
     /**
-     * @return the user database class name for this component.
+     * Returns the user database class name.
+     *
+     * @return the user database class name
      */
     public String getUserClass() {
         return this.userClass;
@@ -193,7 +200,8 @@ public final class UserConfig
 
 
     /**
-     * Set the user database class name for this component.
+     * Sets the user database class name.
+     *
      * @param userClass The user database class name
      */
     public void setUserClass(String userClass) {
@@ -201,21 +209,25 @@ public final class UserConfig
     }
 
     /**
-     * @return the regular expression used to test for user who deployment is allowed.
+     * Returns the regular expression that defines allowed users.
+     *
+     * @return the allow pattern, or null if all users are allowed
      */
     public String getAllow() {
-        if (allow == null) return null;
+        if (allow == null) {
+            return null;
+        }
         return allow.toString();
     }
 
 
     /**
-     * Set the regular expression used to test for user who deployment is allowed.
+     * Set the regular expression used to test for users for whom deployment is allowed.
      *
      * @param allow The new allow expression
      */
     public void setAllow(String allow) {
-        if (allow == null || allow.length() == 0) {
+        if (allow == null || allow.isEmpty()) {
             this.allow = null;
         } else {
             this.allow = Pattern.compile(allow);
@@ -224,21 +236,25 @@ public final class UserConfig
 
 
     /**
-     * @return the regular expression used to test for user who deployment is denied.
+     * Returns the regular expression that defines denied users.
+     *
+     * @return the deny pattern, or null if no users are denied
      */
     public String getDeny() {
-        if (deny == null) return null;
+        if (deny == null) {
+            return null;
+        }
         return deny.toString();
     }
 
 
     /**
-     * Set the regular expression used to test for user who deployment is denied.
+     * Set the regular expression used to test for users for whom deployment is denied.
      *
      * @param deny The new deny expression
      */
     public void setDeny(String deny) {
-        if (deny == null || deny.length() == 0) {
+        if (deny == null || deny.isEmpty()) {
             this.deny = null;
         } else {
             this.deny = Pattern.compile(deny);
@@ -249,7 +265,7 @@ public final class UserConfig
 
 
     /**
-     * Process the START event for an associated Host.
+     * Process the START and STOP events for an associated Host.
      *
      * @param event The lifecycle event that has occurred
      */
@@ -265,10 +281,11 @@ public final class UserConfig
         }
 
         // Process the event that has occurred
-        if (event.getType().equals(Lifecycle.START_EVENT))
+        if (event.getType().equals(Lifecycle.START_EVENT)) {
             start();
-        else if (event.getType().equals(Lifecycle.STOP_EVENT))
+        } else if (event.getType().equals(Lifecycle.STOP_EVENT)) {
             stop();
+        }
 
     }
 
@@ -277,16 +294,17 @@ public final class UserConfig
 
 
     /**
-     * Deploy a web application for any user who has a web application present
-     * in a directory with a specified name within their home directory.
+     * Deploy a web application for any user who has a web application present in a directory with a specified name
+     * within their home directory.
      */
     private void deploy() {
 
-        if (host.getLogger().isDebugEnabled())
-            host.getLogger().debug(sm.getString("userConfig.deploying"));
+        if (host.getLogger().isTraceEnabled()) {
+            host.getLogger().trace(sm.getString("userConfig.deploying"));
+        }
 
         // Load the user database object for this host
-        UserDatabase database = null;
+        UserDatabase database;
         try {
             Class<?> clazz = Class.forName(userClass);
             database = (UserDatabase) clazz.getConstructor().newInstance();
@@ -303,7 +321,9 @@ public final class UserConfig
         Enumeration<String> users = database.getUsers();
         while (users.hasMoreElements()) {
             String user = users.nextElement();
-            if (!isDeployAllowed(user)) continue;
+            if (!isDeployAllowed(user)) {
+                continue;
+            }
             String home = database.getHome(user);
             results.add(executor.submit(new DeployUserDirectory(this, user, home)));
         }
@@ -319,8 +339,8 @@ public final class UserConfig
 
 
     /**
-     * Deploy a web application for the specified user if they have such an
-     * application in the defined directory within their home directory.
+     * Deploy a web application for the specified user if they have such an application in the defined directory within
+     * their home directory.
      *
      * @param user Username owning the application to be deployed
      * @param home Home directory of this user
@@ -329,11 +349,13 @@ public final class UserConfig
 
         // Does this user have a web application to be deployed?
         String contextPath = "/~" + user;
-        if (host.findChild(contextPath) != null)
+        if (host.findChild(contextPath) != null) {
             return;
+        }
         File app = new File(home, directoryName);
-        if (!app.exists() || !app.isDirectory())
+        if (!app.exists() || !app.isDirectory()) {
             return;
+        }
 
         host.getLogger().info(sm.getString("userConfig.deploy", user));
 
@@ -341,6 +363,7 @@ public final class UserConfig
         try {
             Class<?> clazz = Class.forName(contextClass);
             Context context = (Context) clazz.getConstructor().newInstance();
+            // StandardContext or any compatible Context impl should also set the name derived from the path
             context.setPath(contextPath);
             context.setDocBase(app.toString());
             clazz = Class.forName(configClass);
@@ -359,8 +382,9 @@ public final class UserConfig
      */
     private void start() {
 
-        if (host.getLogger().isDebugEnabled())
+        if (host.getLogger().isDebugEnabled()) {
             host.getLogger().debug(sm.getString("userConfig.start"));
+        }
 
         deploy();
 
@@ -372,41 +396,37 @@ public final class UserConfig
      */
     private void stop() {
 
-        if (host.getLogger().isDebugEnabled())
+        if (host.getLogger().isDebugEnabled()) {
             host.getLogger().debug(sm.getString("userConfig.stop"));
+        }
 
     }
 
     /**
      * Test allow and deny rules for the provided user.
      *
-     * @return <code>true</code> if this user is allowed to deploy,
-     *         <code>false</code> otherwise
+     * @return <code>true</code> if this user is allowed to deploy, <code>false</code> otherwise
      */
     private boolean isDeployAllowed(String user) {
         if (deny != null && deny.matcher(user).matches()) {
             return false;
         }
         if (allow != null) {
-            if (allow.matcher(user).matches()) {
-                return true;
-            } else {
-                return false;
-            }
+            return allow.matcher(user).matches();
         }
         return true;
     }
 
     private static class DeployUserDirectory implements Runnable {
 
-        private UserConfig config;
-        private String user;
-        private String home;
+        private final UserConfig config;
+        private final String user;
+        private final String home;
 
-        public DeployUserDirectory(UserConfig config, String user, String home) {
+        DeployUserDirectory(UserConfig config, String user, String home) {
             this.config = config;
             this.user = user;
-            this.home= home;
+            this.home = home;
         }
 
         @Override

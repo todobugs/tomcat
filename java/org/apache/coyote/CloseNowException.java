@@ -19,32 +19,50 @@ package org.apache.coyote;
 import java.io.IOException;
 
 /**
- * This exception is thrown to signal to the Tomcat internals that an error has
- * occurred that requires the connection to be closed. For multiplexed protocols
- * such as HTTP/2, this means the channel must be closed but the connection can
- * continue. For non-multiplexed protocols, the connection must be closed. It
- * corresponds to {@link ErrorState#CLOSE_NOW}.
+ * This exception is thrown to signal to the Tomcat internals that an error has occurred that requires the connection to
+ * be closed. For multiplexed protocols such as HTTP/2, this means the channel must be closed but the connection can
+ * continue. For non-multiplexed protocols, the connection must be closed. It corresponds to
+ * {@link ErrorState#CLOSE_NOW}.
  */
 public class CloseNowException extends IOException {
 
     private static final long serialVersionUID = 1L;
 
 
+    /**
+     * Creates a new CloseNowException with no detail message.
+     */
     public CloseNowException() {
         super();
     }
 
 
+    /**
+     * Creates a new CloseNowException with the specified detail message and cause.
+     *
+     * @param message the detail message
+     * @param cause the cause
+     */
     public CloseNowException(String message, Throwable cause) {
         super(message, cause);
     }
 
 
+    /**
+     * Creates a new CloseNowException with the specified detail message.
+     *
+     * @param message the detail message
+     */
     public CloseNowException(String message) {
         super(message);
     }
 
 
+    /**
+     * Creates a new CloseNowException with the specified cause.
+     *
+     * @param cause the cause
+     */
     public CloseNowException(Throwable cause) {
         super(cause);
     }

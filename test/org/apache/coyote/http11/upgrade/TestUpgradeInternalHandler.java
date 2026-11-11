@@ -85,11 +85,11 @@ public class TestUpgradeInternalHandler extends TomcatBaseTest {
         Assert.assertTrue(tomcat.getConnector().setProperty("useAsyncIO", "true"));
 
         // No file system docBase required
-        Context ctx = tomcat.addContext("", null);
+        Context ctx = getProgrammaticRootContext();
 
         UpgradeServlet servlet = new UpgradeServlet(upgradeHandlerClass);
         Tomcat.addServlet(ctx, "servlet", servlet);
-        ctx.addServletMappingDecoded("/", "servlet");
+        ctx.addServletMapping("/", "servlet");
 
         tomcat.start();
 
@@ -128,7 +128,7 @@ public class TestUpgradeInternalHandler extends TomcatBaseTest {
 
         private final Class<? extends HttpUpgradeHandler> upgradeHandlerClass;
 
-        public UpgradeServlet(Class<? extends HttpUpgradeHandler> upgradeHandlerClass) {
+        UpgradeServlet(Class<? extends HttpUpgradeHandler> upgradeHandlerClass) {
             this.upgradeHandlerClass = upgradeHandlerClass;
         }
 
@@ -136,6 +136,8 @@ public class TestUpgradeInternalHandler extends TomcatBaseTest {
         protected void doGet(HttpServletRequest req, HttpServletResponse resp)
                 throws ServletException, IOException {
 
+            // No request Upgrade header is sent in these tests so set a fixed value on the response
+            resp.setHeader("upgrade", "test");
             req.upgrade(upgradeHandlerClass);
         }
     }
@@ -145,7 +147,7 @@ public class TestUpgradeInternalHandler extends TomcatBaseTest {
         private final Writer writer;
         private final BufferedReader reader;
 
-        public UpgradeConnection(Socket socket) {
+        UpgradeConnection(Socket socket) {
             this.socket = socket;
             InputStream is;
             OutputStream os;
@@ -223,7 +225,7 @@ public class TestUpgradeInternalHandler extends TomcatBaseTest {
             }, buffer);
             System.out.println("CompletionState: " + state);
             // Test zero length write used by websockets
-            state = wrapper.write(BlockingMode.BLOCK, 10, TimeUnit.SECONDS, null, SocketWrapperBase.COMPLETE_WRITE_WITH_COMPLETION, new CompletionHandler<Long, Void>() {
+            wrapper.write(BlockingMode.BLOCK, 10, TimeUnit.SECONDS, null, SocketWrapperBase.COMPLETE_WRITE_WITH_COMPLETION, new CompletionHandler<Long, Void>() {
                 @Override
                 public void completed(Long result, Void attachment) {
                     System.out.println("Write: " + result.longValue());

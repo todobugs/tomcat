@@ -17,34 +17,58 @@
 package org.apache.tomcat.util.collections;
 
 /**
- * This is intended as a (mostly) GC-free alternative to
- * {@link java.util.concurrent.ConcurrentLinkedQueue} when the requirement is to
- * create a pool of re-usable objects with no requirement to shrink the pool.
- * The aim is to provide the bare minimum of required functionality as quickly
- * as possible with minimum garbage.
+ * This is intended as a (mostly) GC-free alternative to {@link java.util.Stack} when the requirement is to create a
+ * pool of re-usable objects with no requirement to shrink the pool. The aim is to provide the bare minimum of required
+ * functionality as quickly as possible with minimum garbage.
  *
  * @param <T> The type of object managed by this stack
  */
 public class SynchronizedStack<T> {
 
+    /**
+     * The default initial capacity for a new stack.
+     */
     public static final int DEFAULT_SIZE = 128;
+
+    /**
+     * Indicates no limit on stack size.
+     */
     private static final int DEFAULT_LIMIT = -1;
 
+    /**
+     * The current capacity of the internal array.
+     */
     private int size;
-    private final int limit;
+
+    /**
+     * The maximum capacity, or -1 for unlimited.
+     */
+    private int limit;
 
     /*
      * Points to the next available object in the stack
      */
     private int index = -1;
 
+    /**
+     * The internal array backing the stack.
+     */
     private Object[] stack;
 
 
+    /**
+     * Constructs a new SynchronizedStack with default size and no limit.
+     */
     public SynchronizedStack() {
         this(DEFAULT_SIZE, DEFAULT_LIMIT);
     }
 
+    /**
+     * Constructs a new SynchronizedStack with the specified initial size and limit.
+     *
+     * @param size the initial capacity
+     * @param limit the maximum capacity, or -1 for unlimited
+     */
     public SynchronizedStack(int size, int limit) {
         if (limit > -1 && size > limit) {
             this.size = limit;
@@ -52,10 +76,17 @@ public class SynchronizedStack<T> {
             this.size = size;
         }
         this.limit = limit;
-        stack = new Object[size];
+        stack = new Object[this.size];
     }
 
 
+    /**
+     * Pushes an object onto the stack.
+     *
+     * @param obj The object to push
+     *
+     * @return {@code true} if the object was pushed, {@code false} if the stack is full
+     */
     public synchronized boolean push(T obj) {
         index++;
         if (index == size) {
@@ -70,6 +101,11 @@ public class SynchronizedStack<T> {
         return true;
     }
 
+    /**
+     * Pops an object from the stack.
+     *
+     * @return the object at the top of the stack, or {@code null} if the stack is empty
+     */
     @SuppressWarnings("unchecked")
     public synchronized T pop() {
         if (index == -1) {
@@ -80,6 +116,9 @@ public class SynchronizedStack<T> {
         return result;
     }
 
+    /**
+     * Clears all objects from the stack.
+     */
     public synchronized void clear() {
         if (index > -1) {
             for (int i = 0; i < index + 1; i++) {
@@ -89,16 +128,44 @@ public class SynchronizedStack<T> {
         index = -1;
     }
 
+    /**
+     * Sets the maximum number of elements that can be pushed onto this stack.
+     * If the new limit is lower than the current capacity, the stack is
+     * shrunk. When the stack already holds more elements than the new limit,
+     * the most recently pushed elements are retained and the remaining
+     * elements are discarded.
+     *
+     * @param limit the maximum size, or -1 for unlimited
+     */
+    public synchronized void setLimit(int limit) {
+        this.limit = limit;
+        if (limit > -1 && limit < size) {
+            // Keep the most recently pushed elements. They occupy
+            // stack[0..index] so the elements to keep are the last 'keep' of
+            // those.
+            int keep = Math.min(index + 1, limit);
+            Object[] newStack = new Object[limit];
+            System.arraycopy(stack, index + 1 - keep, newStack, 0, keep);
+            // The old array becomes garbage, releasing any references held by
+            // the discarded elements
+            stack = newStack;
+            size = limit;
+            index = keep - 1;
+        }
+    }
+
     private void expand() {
-        int newSize = size * 2;
+        // At least one slot of growth is required to make progress. A size of
+        // zero can occur via the constructor or via setLimit(0).
+        int newSize = Math.max(1, size * 2);
         if (limit != -1 && newSize > limit) {
             newSize = limit;
         }
         Object[] newStack = new Object[newSize];
         System.arraycopy(stack, 0, newStack, 0, size);
-        // This is the only point where garbage is created by throwing away the
-        // old array. Note it is only the array, not the contents, that becomes
-        // garbage.
+        // This is one of the points where garbage is created by throwing away
+        // the old array (setLimit() being another). Note it is only the array,
+        // not the contents, that becomes garbage.
         stack = newStack;
         size = newSize;
     }

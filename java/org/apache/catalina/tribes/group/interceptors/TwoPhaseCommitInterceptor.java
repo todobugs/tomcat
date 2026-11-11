@@ -16,8 +16,9 @@
  */
 package org.apache.catalina.tribes.group.interceptors;
 
-import java.util.HashMap;
+import java.util.Iterator;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 import org.apache.catalina.tribes.ChannelException;
 import org.apache.catalina.tribes.ChannelMessage;
@@ -31,39 +32,96 @@ import org.apache.catalina.tribes.util.UUIDGenerator;
 import org.apache.juli.logging.Log;
 import org.apache.juli.logging.LogFactory;
 
+/**
+ * Two-phase commit interceptor. The sender transmits a confirmation message after each message. The receiver stores
+ * each message and only passes it on when the matching confirmation message is received. A confirmation that arrives
+ * before its original message is remembered for the expiration time, so the original is still released when it
+ * arrives late. There is no retransmission, so a message whose confirmation is lost is dropped after the expiration
+ * time. <br>
+ * <b>Configuration Options</b><br>
+ * When combined with the <code>FragmentationInterceptor</code>, this interceptor must be declared before it in the
+ * channel configuration, so that it confirms complete messages and never individual fragments. All fragments of a
+ * message share its unique id; if this interceptor is declared below the fragmentation interceptor, it sees the
+ * fragments as separate messages with equal ids, keeps only one of them in its pending map, and the large message is
+ * never delivered.
+ */
 public class TwoPhaseCommitInterceptor extends ChannelInterceptorBase {
 
-    private static final byte[] START_DATA = new byte[] {113, 1, -58, 2, -34, -60, 75, -78, -101, -12, 32, -29, 32, 111, -40, 4};
-    private static final byte[] END_DATA = new byte[] {54, -13, 90, 110, 47, -31, 75, -24, -81, -29, 36, 52, -58, 77, -110, 56};
+    /**
+     * Constructs a new TwoPhaseCommitInterceptor.
+     */
+    public TwoPhaseCommitInterceptor() {
+    }
+
+    private static final byte[] START_DATA =
+            new byte[] { 113, 1, -58, 2, -34, -60, 75, -78, -101, -12, 32, -29, 32, 111, -40, 4 };
+    private static final byte[] END_DATA =
+            new byte[] { 54, -13, 90, 110, 47, -31, 75, -24, -81, -29, 36, 52, -58, 77, -110, 56 };
     private static final Log log = LogFactory.getLog(TwoPhaseCommitInterceptor.class);
+    /**
+     * The string manager for this package.
+     */
     protected static final StringManager sm = StringManager.getManager(TwoPhaseCommitInterceptor.class);
 
-    protected final HashMap<UniqueId, MapEntry> messages = new HashMap<>();
-    protected long expire = 1000 * 60; //one minute expiration
+    /**
+     * Map of pending messages keyed by their unique ID.
+     */
+    protected final Map<UniqueId,MapEntry> messages = new ConcurrentHashMap<>();
+
+    /**
+     * Map of confirmations that were received before the original message they confirm,
+     * mapped to the time of their arrival. An original message that arrives while its
+     * confirmation is pending here is released immediately instead of waiting for a
+     * confirmation that has already been consumed.
+     */
+    protected final Map<UniqueId,Long> earlyConfirmations = new ConcurrentHashMap<>();
+
+    /**
+     * Lock used to hand over messages and confirmations that arrive concurrently, so that
+     * the check of one against the other cannot miss an insertion of the other.
+     */
+    private final Object deliveryLock = new Object();
+
+    /**
+     * Message expiration time in milliseconds.
+     */
+    protected long expire = 1000 * 60; // one minute expiration
+
+    /**
+     * Whether the confirmation message is deep cloned (true) or shallow cloned (false) before it is sent. Messages
+     * that are stored for later delivery are always deep cloned.
+     */
     protected boolean deepclone = true;
 
     @Override
-    public void sendMessage(Member[] destination, ChannelMessage msg, InterceptorPayload payload) throws
-        ChannelException {
-        //todo, optimize, if destination.length==1, then we can do
-        //msg.setOptions(msg.getOptions() & (~getOptionFlag())
-        //and just send one message
-        if (okToProcess(msg.getOptions()) ) {
-            super.sendMessage(destination, msg, null);
-            ChannelMessage confirmation = null;
-            if ( deepclone ) confirmation = (ChannelMessage)msg.deepclone();
-            else confirmation = (ChannelMessage)msg.clone();
-            confirmation.getMessage().reset();
-            UUIDGenerator.randomUUID(false,confirmation.getUniqueId(),0);
-            confirmation.getMessage().append(START_DATA,0,START_DATA.length);
-            confirmation.getMessage().append(msg.getUniqueId(),0,msg.getUniqueId().length);
-            confirmation.getMessage().append(END_DATA,0,END_DATA.length);
-            super.sendMessage(destination,confirmation,payload);
+    public void sendMessage(Member[] destination, ChannelMessage msg, InterceptorPayload payload)
+            throws ChannelException {
+        // todo, optimize, if destination.length==1, then we can do
+        // msg.setOptions(msg.getOptions() & (~getOptionFlag())
+        // and just send one message
+        if (okToProcess(msg.getOptions())) {
+            // The payload carries the application error handler. It applies to the real
+            // message, so forward it with the original. The confirmation is an internal
+            // message with a random id the application cannot correlate, so it goes without
+            // a payload, which also keeps the handler from being notified twice per send
+            super.sendMessage(destination, msg, payload);
+            ChannelMessage confirmation;
+            if (deepclone) {
+                confirmation = (ChannelMessage) msg.deepclone();
+            } else {
+                confirmation = (ChannelMessage) msg.clone();
+            }
+            confirmation.getMessage().clear();
+            UUIDGenerator.randomUUID(false, confirmation.getUniqueId(), 0);
+            confirmation.getMessage().append(START_DATA, 0, START_DATA.length);
+            confirmation.getMessage().append(msg.getUniqueId(), 0, msg.getUniqueId().length);
+            confirmation.getMessage().append(END_DATA, 0, END_DATA.length);
+            super.sendMessage(destination, confirmation, null);
         } else {
-            //turn off two phase commit
-            //this wont work if the interceptor has 0 as a flag
-            //since there is no flag to turn off
-            //msg.setOptions(msg.getOptions() & (~getOptionFlag()));
+            // turn off two phase commit
+            // this won't work if the interceptor has 0 as a flag
+            // since there is no flag to turn off
+            // msg.setOptions(msg.getOptions() & (~getOptionFlag()));
             super.sendMessage(destination, msg, payload);
         }
     }
@@ -71,37 +129,74 @@ public class TwoPhaseCommitInterceptor extends ChannelInterceptorBase {
     @Override
     public void messageReceived(ChannelMessage msg) {
         if (okToProcess(msg.getOptions())) {
-            if ( msg.getMessage().getLength() == (START_DATA.length+msg.getUniqueId().length+END_DATA.length) &&
-                 Arrays.contains(msg.getMessage().getBytesDirect(),0,START_DATA,0,START_DATA.length) &&
-                 Arrays.contains(msg.getMessage().getBytesDirect(),START_DATA.length+msg.getUniqueId().length,END_DATA,0,END_DATA.length) ) {
-                UniqueId id = new UniqueId(msg.getMessage().getBytesDirect(),START_DATA.length,msg.getUniqueId().length);
-                MapEntry original = messages.get(id);
-                if ( original != null ) {
+            if (msg.getMessage().getLength() == (START_DATA.length + msg.getUniqueId().length + END_DATA.length) &&
+                    Arrays.contains(msg.getMessage().getBytesDirect(), 0, START_DATA, 0, START_DATA.length) &&
+                    Arrays.contains(msg.getMessage().getBytesDirect(), START_DATA.length + msg.getUniqueId().length,
+                            END_DATA, 0, END_DATA.length)) {
+                UniqueId id =
+                        new UniqueId(msg.getMessage().getBytesDirect(), START_DATA.length, msg.getUniqueId().length);
+                MapEntry original = null;
+                synchronized (deliveryLock) {
+                    original = messages.remove(id);
+                    if (original == null) {
+                        // The confirmation overtook its original message. Remember the
+                        // confirmation, so the original is released as soon as it arrives
+                        earlyConfirmations.put(id, Long.valueOf(System.currentTimeMillis()));
+                    }
+                }
+                if (original != null) {
                     super.messageReceived(original.msg);
-                    messages.remove(id);
-                } else log.warn(sm.getString("twoPhaseCommitInterceptor.originalMessage.missing", Arrays.toString(id.getBytes())));
+                } else {
+                    log.warn(sm.getString("twoPhaseCommitInterceptor.originalMessage.missing",
+                            Arrays.toString(id.getBytes())));
+                }
             } else {
                 UniqueId id = new UniqueId(msg.getUniqueId());
-                MapEntry entry = new MapEntry((ChannelMessage)msg.deepclone(),id,System.currentTimeMillis());
-                messages.put(id,entry);
+                MapEntry entry = new MapEntry((ChannelMessage) msg.deepclone(), id, System.currentTimeMillis());
+                MapEntry release = null;
+                synchronized (deliveryLock) {
+                    messages.put(id, entry);
+                    if (earlyConfirmations.remove(id) != null) {
+                        release = messages.remove(id);
+                    }
+                }
+                if (release != null) {
+                    super.messageReceived(release.msg);
+                }
             }
         } else {
             super.messageReceived(msg);
         }
     }
 
+    /**
+     * Returns whether deep cloning is enabled.
+     * @return true if deep cloning is enabled
+     */
     public boolean getDeepclone() {
         return deepclone;
     }
 
+    /**
+     * Returns the message expiration time in milliseconds.
+     * @return the expiration time
+     */
     public long getExpire() {
         return expire;
     }
 
+    /**
+     * Sets whether deep cloning should be used.
+     * @param deepclone true to enable deep cloning
+     */
     public void setDeepclone(boolean deepclone) {
         this.deepclone = deepclone;
     }
 
+    /**
+     * Sets the message expiration time in milliseconds.
+     * @param expire the expiration time
+     */
     public void setExpire(long expire) {
         this.expire = expire;
     }
@@ -110,17 +205,26 @@ public class TwoPhaseCommitInterceptor extends ChannelInterceptorBase {
     public void heartbeat() {
         try {
             long now = System.currentTimeMillis();
-            @SuppressWarnings("unchecked")
-            Map.Entry<UniqueId,MapEntry>[] entries = messages.entrySet().toArray(new Map.Entry[messages.size()]);
-            for (int i=0; i<entries.length; i++ ) {
-                MapEntry entry = entries[i].getValue();
-                if ( entry.expired(now,expire) ) {
-                    log.info(sm.getString("twoPhaseCommitInterceptor.expiredMessage", entry.id));
-                    messages.remove(entry.id);
+            Iterator<Map.Entry<UniqueId,MapEntry>> iter = messages.entrySet().iterator();
+            while (iter.hasNext()) {
+                Map.Entry<UniqueId,MapEntry> entry = iter.next();
+                MapEntry value = entry.getValue();
+                if (value.expired(now, expire)) {
+                    log.info(sm.getString("twoPhaseCommitInterceptor.expiredMessage", value.id));
+                    iter.remove();
                 }
             }
-        } catch ( Exception x ) {
-            log.warn(sm.getString("twoPhaseCommitInterceptor.heartbeat.failed"),x);
+            Iterator<Map.Entry<UniqueId,Long>> confirmations = earlyConfirmations.entrySet().iterator();
+            while (confirmations.hasNext()) {
+                Map.Entry<UniqueId,Long> entry = confirmations.next();
+                if (now - entry.getValue().longValue() > expire) {
+                    log.info(sm.getString("twoPhaseCommitInterceptor.expiredConfirmation",
+                            Arrays.toString(entry.getKey().getBytes())));
+                    confirmations.remove();
+                }
+            }
+        } catch (Exception e) {
+            log.warn(sm.getString("twoPhaseCommitInterceptor.heartbeat.failed"), e);
         } finally {
             super.heartbeat();
         }
@@ -136,10 +240,16 @@ public class TwoPhaseCommitInterceptor extends ChannelInterceptorBase {
             this.id = id;
             this.timestamp = timestamp;
         }
-        public boolean expired(long now, long expiration) {
-            return (now - timestamp ) > expiration;
-        }
 
+        /**
+         * Checks if this entry has expired.
+         * @param now the current time
+         * @param expiration the expiration period
+         * @return true if expired
+         */
+        public boolean expired(long now, long expiration) {
+            return (now - timestamp) > expiration;
+        }
     }
 
 }

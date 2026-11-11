@@ -20,8 +20,12 @@ import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.PrintWriter;
+import java.io.UnsupportedEncodingException;
 import java.net.MalformedURLException;
+import java.net.URI;
+import java.net.URISyntaxException;
 import java.net.URL;
+import java.net.URLEncoder;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -64,12 +68,8 @@ import org.apache.tomcat.util.scan.StandardJarScanner;
 
 
 /**
- * Simple <code>ServletContext</code> implementation without
- * HTTP-specific methods.
- *
- * @author Peter Rossbach (pr@webapp.de)
+ * Simple <code>ServletContext</code> implementation without HTTP-specific methods.
  */
-
 public class JspCServletContext implements ServletContext {
 
 
@@ -103,13 +103,13 @@ public class JspCServletContext implements ServletContext {
     /**
      * Merged web.xml for the application.
      */
-    private WebXml webXml;
+    private final WebXml webXml;
 
 
     private List<URL> resourceJARs;
 
 
-    private JspConfigDescriptor jspConfigDescriptor;
+    private final JspConfigDescriptor jspConfigDescriptor;
 
 
     /**
@@ -123,21 +123,19 @@ public class JspCServletContext implements ServletContext {
     /**
      * Create a new instance of this ServletContext implementation.
      *
-     * @param aLogWriter PrintWriter which is used for <code>log()</code> calls
+     * @param aLogWriter       PrintWriter which is used for <code>log()</code> calls
      * @param aResourceBaseURL Resource base URL
-     * @param classLoader   Class loader for this {@link ServletContext}
-     * @param validate      Should a validating parser be used to parse web.xml?
-     * @param blockExternal Should external entities be blocked when parsing
-     *                      web.xml?
+     * @param classLoader      Class loader for this {@link ServletContext}
+     * @param validate         Should a validating parser be used to parse web.xml?
+     * @param blockExternal    Should external entities be blocked when parsing web.xml?
+     *
      * @throws JasperException An error occurred building the merged web.xml
      */
-    public JspCServletContext(PrintWriter aLogWriter, URL aResourceBaseURL,
-            ClassLoader classLoader, boolean validate, boolean blockExternal)
-            throws JasperException {
+    public JspCServletContext(PrintWriter aLogWriter, URL aResourceBaseURL, ClassLoader classLoader, boolean validate,
+            boolean blockExternal) throws JasperException {
 
         myAttributes = new HashMap<>();
-        myParameters.put(Constants.XML_BLOCK_EXTERNAL_INIT_PARAM,
-                String.valueOf(blockExternal));
+        myParameters.put(Constants.XML_BLOCK_EXTERNAL_INIT_PARAM, String.valueOf(blockExternal));
         myLogWriter = aLogWriter;
         myResourceBaseURL = aResourceBaseURL;
         this.loader = classLoader;
@@ -145,21 +143,19 @@ public class JspCServletContext implements ServletContext {
         jspConfigDescriptor = webXml.getJspConfigDescriptor();
     }
 
-    private WebXml buildMergedWebXml(boolean validate, boolean blockExternal)
-            throws JasperException {
+    private WebXml buildMergedWebXml(boolean validate, boolean blockExternal) throws JasperException {
         WebXml webXml = new WebXml();
         WebXmlParser webXmlParser = new WebXmlParser(validate, validate, blockExternal);
         // Use this class's classloader as Ant will have set the TCCL to its own
         webXmlParser.setClassLoader(getClass().getClassLoader());
 
         try {
-            URL url = getResource(
-                    org.apache.tomcat.util.descriptor.web.Constants.WEB_XML_LOCATION);
+            URL url = getResource(org.apache.tomcat.util.descriptor.web.Constants.WEB_XML_LOCATION);
             if (!webXmlParser.parseWebXml(url, webXml, false)) {
                 throw new JasperException(Localizer.getMessage("jspc.error.invalidWebXml"));
             }
-        } catch (IOException e) {
-            throw new JasperException(e);
+        } catch (IOException ioe) {
+            throw new JasperException(ioe);
         }
 
         // if the application is metadata-complete then we can skip fragment processing
@@ -174,7 +170,7 @@ public class JspCServletContext implements ServletContext {
             return webXml;
         }
 
-        Map<String, WebXml> fragments = scanForFragments(webXmlParser);
+        Map<String,WebXml> fragments = scanForFragments(webXmlParser);
         Set<WebXml> orderedFragments = WebXml.orderWebFragments(webXml, fragments, this);
 
         // Find resource JARs
@@ -190,15 +186,8 @@ public class JspCServletContext implements ServletContext {
             throws JasperException {
         List<URL> resourceJars = new ArrayList<>();
         // Build list of potential resource JARs. Use same ordering as ContextConfig
-        Set<WebXml> resourceFragments = new LinkedHashSet<>();
-        for (WebXml fragment : orderedFragments) {
-            resourceFragments.add(fragment);
-        }
-        for (WebXml fragment : fragments) {
-            if (!resourceFragments.contains(fragment)) {
-                resourceFragments.add(fragment);
-            }
-        }
+        Set<WebXml> resourceFragments = new LinkedHashSet<>(orderedFragments);
+        resourceFragments.addAll(fragments);
 
         for (WebXml resourceFragment : resourceFragments) {
             try (Jar jar = JarFactory.newInstance(resourceFragment.getURL())) {
@@ -215,15 +204,14 @@ public class JspCServletContext implements ServletContext {
     }
 
 
-    private Map<String, WebXml> scanForFragments(WebXmlParser webXmlParser) throws JasperException {
+    private Map<String,WebXml> scanForFragments(WebXmlParser webXmlParser) throws JasperException {
         StandardJarScanner scanner = new StandardJarScanner();
         // TODO - enabling this means initializing the classloader first in JspC
         scanner.setScanClassPath(false);
         // TODO - configure filter rules from Ant rather then system properties
         scanner.setJarScanFilter(new StandardJarScanFilter());
 
-        FragmentJarScannerCallback callback =
-                new FragmentJarScannerCallback(webXmlParser, false, true);
+        FragmentJarScannerCallback callback = new FragmentJarScannerCallback(webXmlParser, false, true);
         scanner.scan(JarScanType.PLUGGABILITY, this, callback);
         if (!callback.isOk()) {
             throw new JasperException(Localizer.getMessage("jspc.error.invalidFragment"));
@@ -234,121 +222,80 @@ public class JspCServletContext implements ServletContext {
 
     // --------------------------------------------------------- Public Methods
 
-    /**
-     * Return the specified context attribute, if any.
-     *
-     * @param name Name of the requested attribute
-     */
     @Override
     public Object getAttribute(String name) {
         return myAttributes.get(name);
     }
 
 
-    /**
-     * Return an enumeration of context attribute names.
-     */
     @Override
     public Enumeration<String> getAttributeNames() {
         return Collections.enumeration(myAttributes.keySet());
     }
 
 
-    /**
-     * Return the servlet context for the specified path.
-     *
-     * @param uripath Server-relative path starting with '/'
-     */
     @Override
     public ServletContext getContext(String uripath) {
         return null;
     }
 
 
-    /**
-     * Return the context path.
-     */
     @Override
     public String getContextPath() {
         return null;
     }
 
 
-    /**
-     * Return the specified context initialization parameter.
-     *
-     * @param name Name of the requested parameter
-     */
     @Override
     public String getInitParameter(String name) {
         return myParameters.get(name);
     }
 
 
-    /**
-     * Return an enumeration of the names of context initialization
-     * parameters.
-     */
     @Override
     public Enumeration<String> getInitParameterNames() {
         return Collections.enumeration(myParameters.keySet());
     }
 
 
-    /**
-     * Return the Servlet API major version number.
-     */
     @Override
     public int getMajorVersion() {
         return 4;
     }
 
 
-    /**
-     * Return the MIME type for the specified filename.
-     *
-     * @param file Filename whose MIME type is requested
-     */
     @Override
     public String getMimeType(String file) {
         return null;
     }
 
 
-    /**
-     * Return the Servlet API minor version number.
-     */
     @Override
     public int getMinorVersion() {
         return 0;
     }
 
 
-    /**
-     * Return a request dispatcher for the specified servlet name.
-     *
-     * @param name Name of the requested servlet
-     */
     @Override
     public RequestDispatcher getNamedDispatcher(String name) {
         return null;
     }
 
 
-    /**
-     * Return the real path for the specified context-relative
-     * virtual path.
-     *
-     * @param path The context-relative virtual path to resolve
-     */
     @Override
     public String getRealPath(String path) {
-        if (!myResourceBaseURL.getProtocol().equals("file"))
+        if (!myResourceBaseURL.getProtocol().equals("file")) {
             return null;
-        if (!path.startsWith("/"))
+        }
+        if (!path.startsWith("/")) {
             return null;
+        }
         try {
-            File f = new File(getResource(path).toURI());
+            URL url = getResource(path);
+            if (url == null) {
+                return null;
+            }
+            File f = new File(url.toURI());
             return f.getAbsolutePath();
         } catch (Throwable t) {
             ExceptionUtils.handleThrowable(t);
@@ -357,26 +304,12 @@ public class JspCServletContext implements ServletContext {
     }
 
 
-    /**
-     * Return a request dispatcher for the specified context-relative path.
-     *
-     * @param path Context-relative path for which to acquire a dispatcher
-     */
     @Override
     public RequestDispatcher getRequestDispatcher(String path) {
         return null;
     }
 
 
-    /**
-     * Return a URL object of a resource that is mapped to the
-     * specified context-relative path.
-     *
-     * @param path Context-relative path of the desired resource
-     *
-     * @exception MalformedURLException if the resource path is
-     *  not properly formed
-     */
     @Override
     public URL getResource(String path) throws MalformedURLException {
 
@@ -387,10 +320,19 @@ public class JspCServletContext implements ServletContext {
         // Strip leading '/'
         path = path.substring(1);
 
-        URL url = new URL(myResourceBaseURL, path);
-        try (InputStream is = url.openStream()) {
-        } catch (Throwable t) {
-            ExceptionUtils.handleThrowable(t);
+        URL url;
+        try {
+            // The path is a decoded logical path. Percent-encode it before
+            // appending it to the (already encoded) base URL so that
+            // resources whose name contains characters that are not
+            // permitted in a URI, for example a space, can be resolved, as
+            // they are by the runtime container.
+            URI uri = new URI(myResourceBaseURL.toExternalForm() + encodePath(path));
+            url = uri.toURL();
+            try (@SuppressWarnings("unused") InputStream is = url.openStream()) {
+            }
+        } catch (IOException | URISyntaxException e) {
+            // The resource does not exist or the URL could not be built.
             url = null;
         }
 
@@ -401,9 +343,13 @@ public class JspCServletContext implements ServletContext {
             for (URL jarUrl : resourceJARs) {
                 try (Jar jar = JarFactory.newInstance(jarUrl)) {
                     if (jar.exists(jarPath)) {
-                        return new URL(jar.getURL(jarPath));
+                        // The entry name is a decoded path. Encode it so
+                        // that names containing characters that are not
+                        // permitted in a URI, such as a space, can be used
+                        // to build the URL.
+                        return new URI(jar.getURL(encodePath(jarPath))).toURL();
                     }
-                } catch (IOException ioe) {
+                } catch (IOException | URISyntaxException ioe) {
                     // Ignore
                 }
             }
@@ -412,16 +358,42 @@ public class JspCServletContext implements ServletContext {
     }
 
 
-    /**
-     * Return an InputStream allowing access to the resource at the
-     * specified context-relative path.
-     *
-     * @param path Context-relative path of the desired resource
+    /*
+     * Percent-encodes each segment of the given decoded resource path so the
+     * result can be appended to an already encoded base URL.
      */
+    private static String encodePath(String path) {
+        StringBuilder result = new StringBuilder(path.length());
+        int start = 0;
+        for (;;) {
+            int slash = path.indexOf('/', start);
+            String segment = slash < 0 ? path.substring(start) : path.substring(start, slash);
+            // URLEncoder implements form encoding. It uses '+' for a space,
+            // which is not equivalent in a path segment. A literal '+' in the
+            // input is encoded as "%2B", so any '+' in the output is a space.
+            try {
+                result.append(URLEncoder.encode(segment, "UTF-8").replace("+", "%20"));
+            } catch (UnsupportedEncodingException e) {
+                // Won't happen
+            }
+            if (slash < 0) {
+                break;
+            }
+            result.append('/');
+            start = slash + 1;
+        }
+        return result.toString();
+    }
+
+
     @Override
     public InputStream getResourceAsStream(String path) {
         try {
-            return getResource(path).openStream();
+            URL url = getResource(path);
+            if (url == null) {
+                return null;
+            }
+            return url.openStream();
         } catch (Throwable t) {
             ExceptionUtils.handleThrowable(t);
             return null;
@@ -429,12 +401,6 @@ public class JspCServletContext implements ServletContext {
     }
 
 
-    /**
-     * Return the set of resource paths for the "directory" at the
-     * specified context path.
-     *
-     * @param path Context-relative base path
-     */
     @Override
     public Set<String> getResourcePaths(String path) {
 
@@ -446,14 +412,14 @@ public class JspCServletContext implements ServletContext {
         if (basePath != null) {
             File theBaseDir = new File(basePath);
             if (theBaseDir.isDirectory()) {
-                String theFiles[] = theBaseDir.list();
+                String[] theFiles = theBaseDir.list();
                 if (theFiles != null) {
-                    for (int i = 0; i < theFiles.length; i++) {
-                        File testFile = new File(basePath + File.separator + theFiles[i]);
+                    for (String theFile : theFiles) {
+                        File testFile = new File(basePath + File.separator + theFile);
                         if (testFile.isFile()) {
-                            thePaths.add(path + theFiles[i]);
+                            thePaths.add(path + theFile);
                         } else if (testFile.isDirectory()) {
-                            thePaths.add(path + theFiles[i] + "/");
+                            thePaths.add(path + theFile + "/");
                         }
                     }
                 }
@@ -467,13 +433,11 @@ public class JspCServletContext implements ServletContext {
             for (URL jarUrl : resourceJARs) {
                 try (Jar jar = JarFactory.newInstance(jarUrl)) {
                     jar.nextEntry();
-                    for (String entryName = jar.getEntryName();
-                            entryName != null;
-                            jar.nextEntry(), entryName = jar.getEntryName()) {
-                        if (entryName.startsWith(jarPath) &&
-                                entryName.length() > jarPath.length()) {
+                    for (String entryName = jar.getEntryName(); entryName != null; jar.nextEntry(), entryName =
+                            jar.getEntryName()) {
+                        if (entryName.startsWith(jarPath) && entryName.length() > jarPath.length()) {
                             // Let the Set implementation handle duplicates
-                            int sep = entryName.indexOf("/", jarPath.length());
+                            int sep = entryName.indexOf('/', jarPath.length());
                             if (sep < 0) {
                                 // This is a file - strip leading "META-INF/resources"
                                 thePaths.add(entryName.substring(18));
@@ -483,8 +447,8 @@ public class JspCServletContext implements ServletContext {
                             }
                         }
                     }
-                } catch (IOException e) {
-                    log(e.getMessage(), e);
+                } catch (IOException ioe) {
+                    log(ioe.getMessage(), ioe);
                 }
             }
         }
@@ -493,9 +457,6 @@ public class JspCServletContext implements ServletContext {
     }
 
 
-    /**
-     * Return descriptive information about this server.
-     */
     @Override
     public String getServerInfo() {
         return "JspC/ApacheTomcat9";
@@ -516,20 +477,12 @@ public class JspCServletContext implements ServletContext {
     }
 
 
-    /**
-     * Return the name of this servlet context.
-     */
     @Override
     public String getServletContextName() {
         return getServerInfo();
     }
 
 
-    /**
-     * Return an empty enumeration of servlet names.
-     *
-     * @deprecated This method has been deprecated with no replacement
-     */
     @Override
     @Deprecated
     public Enumeration<String> getServletNames() {
@@ -537,11 +490,6 @@ public class JspCServletContext implements ServletContext {
     }
 
 
-    /**
-     * Return an empty enumeration of servlets.
-     *
-     * @deprecated This method has been deprecated with no replacement
-     */
     @Override
     @Deprecated
     public Enumeration<Servlet> getServlets() {
@@ -549,25 +497,12 @@ public class JspCServletContext implements ServletContext {
     }
 
 
-    /**
-     * Log the specified message.
-     *
-     * @param message The message to be logged
-     */
     @Override
     public void log(String message) {
         myLogWriter.println(message);
     }
 
 
-    /**
-     * Log the specified message and exception.
-     *
-     * @param exception The exception to be logged
-     * @param message The message to be logged
-     *
-     * @deprecated Use log(String,Throwable) instead
-     */
     @Override
     @Deprecated
     public void log(Exception exception, String message) {
@@ -575,12 +510,6 @@ public class JspCServletContext implements ServletContext {
     }
 
 
-    /**
-     * Log the specified message and exception.
-     *
-     * @param message The message to be logged
-     * @param exception The exception to be logged
-     */
     @Override
     public void log(String message, Throwable exception) {
         myLogWriter.println(message);
@@ -588,23 +517,12 @@ public class JspCServletContext implements ServletContext {
     }
 
 
-    /**
-     * Remove the specified context attribute.
-     *
-     * @param name Name of the attribute to remove
-     */
     @Override
     public void removeAttribute(String name) {
         myAttributes.remove(name);
     }
 
 
-    /**
-     * Set or replace the specified context attribute.
-     *
-     * @param name Name of the context attribute to set
-     * @param value Corresponding attribute value
-     */
     @Override
     public void setAttribute(String name, Object value) {
         myAttributes.put(name, value);
@@ -612,15 +530,13 @@ public class JspCServletContext implements ServletContext {
 
 
     @Override
-    public FilterRegistration.Dynamic addFilter(String filterName,
-            String className) {
+    public FilterRegistration.Dynamic addFilter(String filterName, String className) {
         return null;
     }
 
 
     @Override
-    public ServletRegistration.Dynamic addServlet(String servletName,
-            String className) {
+    public ServletRegistration.Dynamic addServlet(String servletName, String className) {
         return null;
     }
 
@@ -644,8 +560,7 @@ public class JspCServletContext implements ServletContext {
 
 
     @Override
-    public void setSessionTrackingModes(
-            Set<SessionTrackingMode> sessionTrackingModes) {
+    public void setSessionTrackingModes(Set<SessionTrackingMode> sessionTrackingModes) {
         // Do nothing
     }
 
@@ -657,42 +572,37 @@ public class JspCServletContext implements ServletContext {
 
 
     @Override
-    public Dynamic addFilter(String filterName,
-            Class<? extends Filter> filterClass) {
+    public Dynamic addFilter(String filterName, Class<? extends Filter> filterClass) {
         return null;
     }
 
 
     @Override
-    public ServletRegistration.Dynamic addServlet(String servletName,
-            Servlet servlet) {
+    public ServletRegistration.Dynamic addServlet(String servletName, Servlet servlet) {
         return null;
     }
 
 
     @Override
-    public ServletRegistration.Dynamic addServlet(String servletName,
-            Class<? extends Servlet> servletClass) {
+    public ServletRegistration.Dynamic addServlet(String servletName, Class<? extends Servlet> servletClass) {
         return null;
     }
 
 
     @Override
-    public javax.servlet.ServletRegistration.Dynamic addJspFile(String jspName, String jspFile) {
+    public ServletRegistration.Dynamic addJspFile(String jspName, String jspFile) {
         return null;
     }
 
 
     @Override
-    public <T extends Filter> T createFilter(Class<T> c)
-            throws ServletException {
+    public <T extends Filter> T createFilter(Class<T> c) throws ServletException {
         return null;
     }
 
 
     @Override
-    public <T extends Servlet> T createServlet(Class<T> c)
-            throws ServletException {
+    public <T extends Servlet> T createServlet(Class<T> c) throws ServletException {
         return null;
     }
 
@@ -734,8 +644,7 @@ public class JspCServletContext implements ServletContext {
 
 
     @Override
-    public <T extends EventListener> T createListener(Class<T> c)
-            throws ServletException {
+    public <T extends EventListener> T createListener(Class<T> c) throws ServletException {
         return null;
     }
 
@@ -765,7 +674,7 @@ public class JspCServletContext implements ServletContext {
 
 
     @Override
-    public Map<String, ? extends FilterRegistration> getFilterRegistrations() {
+    public Map<String,? extends FilterRegistration> getFilterRegistrations() {
         return null;
     }
 
@@ -777,7 +686,7 @@ public class JspCServletContext implements ServletContext {
 
 
     @Override
-    public Map<String, ? extends ServletRegistration> getServletRegistrations() {
+    public Map<String,? extends ServletRegistration> getServletRegistrations() {
         return null;
     }
 

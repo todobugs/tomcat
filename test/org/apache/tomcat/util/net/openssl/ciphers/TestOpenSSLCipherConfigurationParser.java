@@ -16,34 +16,28 @@
  */
 package org.apache.tomcat.util.net.openssl.ciphers;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.TreeSet;
+import java.util.logging.Handler;
+import java.util.logging.Level;
+import java.util.logging.LogRecord;
+import java.util.logging.Logger;
 
 import org.junit.Assert;
-import org.junit.Ignore;
 import org.junit.Test;
 
 public class TestOpenSSLCipherConfigurationParser {
 
     @Test
     public void testDEFAULT() throws Exception {
-        if (TesterOpenSSL.VERSION < 10100) {
-            // Account for classes of ciphers removed from DEFAULT in 1.1.0
-            testSpecification("DEFAULT:!RC4:!DSS:!SEED:!IDEA:!CAMELLIA:!AESCCM:!3DES");
-        } else {
-            testSpecification("DEFAULT");
-        }
+        testSpecification("DEFAULT");
     }
 
 
     @Test
     public void testCOMPLEMENTOFDEFAULT() throws Exception {
-        if (TesterOpenSSL.VERSION < 10100) {
-            // Account for classes of ciphers removed from DEFAULT in 1.1.0
-            testSpecification("COMPLEMENTOFDEFAULT:RC4:DSS:SEED:IDEA:CAMELLIA:AESCCM:aNULL:3DES");
-        } else {
-            testSpecification("COMPLEMENTOFDEFAULT");
-        }
+        testSpecification("COMPLEMENTOFDEFAULT");
     }
 
 
@@ -73,31 +67,29 @@ public class TestOpenSSLCipherConfigurationParser {
 
     @Test
     public void testHIGH() throws Exception {
-        testSpecification("HIGH");
+        if (TesterOpenSSL.VERSION < 30200) {
+            // OpenSSL 3.2.x moved the CCM8 ciphers from high to medium
+            testSpecification("HIGH:!AESCCM8");
+        } else {
+            testSpecification("HIGH");
+        }
     }
 
 
     @Test
     public void testMEDIUM() throws Exception {
-        testSpecification("MEDIUM");
+        if (TesterOpenSSL.VERSION < 30200) {
+            // OpenSSL 3.2.x moved the CCM8 ciphers from high to medium
+            testSpecification("MEDIUM:AESCCM8");
+        } else {
+            testSpecification("MEDIUM");
+        }
     }
 
 
     @Test
     public void testLOW() throws Exception {
         testSpecification("LOW");
-    }
-
-
-    @Test
-    public void testEXPORT40() throws Exception {
-        testSpecification("EXPORT40");
-    }
-
-
-    @Test
-    public void testEXPORT() throws Exception {
-        testSpecification("EXPORT");
     }
 
 
@@ -127,10 +119,7 @@ public class TestOpenSSLCipherConfigurationParser {
 
     @Test
     public void testkDHE() throws Exception {
-        // This alias was introduced in 1.0.2
-        if (TesterOpenSSL.VERSION >= 10002) {
-            testSpecification("kDHE");
-        }
+        testSpecification("kDHE");
     }
 
 
@@ -142,46 +131,7 @@ public class TestOpenSSLCipherConfigurationParser {
 
     @Test
     public void testDHE() throws Exception {
-        // This alias was introduced in 1.0.2
-        if (TesterOpenSSL.VERSION >= 10002) {
-            testSpecification("DHE");
-        }
-    }
-
-
-    @Test
-    public void testkDHr() throws Exception {
-        testSpecification("kDHr");
-    }
-
-
-    @Test
-    public void testkDHd() throws Exception {
-        testSpecification("kDHd");
-    }
-
-
-    @Test
-    public void testkDH() throws Exception {
-        testSpecification("kDH");
-    }
-
-
-    @Test
-    public void testkECDHr() throws Exception {
-        testSpecification("kECDHr");
-    }
-
-
-    @Test
-    public void testkECDHe() throws Exception {
-        testSpecification("kECDHe");
-    }
-
-
-    @Test
-    public void testkECDH() throws Exception {
-        testSpecification("kECDH");
+        testSpecification("DHE");
     }
 
 
@@ -210,13 +160,6 @@ public class TestOpenSSLCipherConfigurationParser {
 
 
     @Test
-    @Ignore("Contrary to the docs, OpenSSL does not recognise EECDHE")
-    public void testEECDHE() throws Exception {
-        testSpecification("EECDHE");
-    }
-
-
-    @Test
     public void testAECDH() throws Exception {
         testSpecification("AECDH");
     }
@@ -235,18 +178,6 @@ public class TestOpenSSLCipherConfigurationParser {
 
 
     @Test
-    public void testaDH() throws Exception {
-        testSpecification("aDH");
-    }
-
-
-    @Test
-    public void testaECDH() throws Exception {
-        testSpecification("aECDH");
-    }
-
-
-    @Test
     public void testaECDSA() throws Exception {
         testSpecification("aECDSA");
     }
@@ -259,30 +190,6 @@ public class TestOpenSSLCipherConfigurationParser {
 
 
     @Test
-    public void testkFZA() throws Exception {
-        testSpecification("kFZA");
-    }
-
-
-    @Test
-    public void testaFZA() throws Exception {
-        testSpecification("aFZA");
-    }
-
-
-    @Test
-    public void testeFZA() throws Exception {
-        testSpecification("eFZA");
-    }
-
-
-    @Test
-    public void testFZA() throws Exception {
-        testSpecification("FZA");
-    }
-
-
-    @Test
     public void testTLSv1_2() throws Exception {
         testSpecification("TLSv1.2");
     }
@@ -290,27 +197,17 @@ public class TestOpenSSLCipherConfigurationParser {
 
     @Test
     public void testTLSv1() throws Exception {
-        // In OpenSSL 1.1.0-dev, TLSv1 refers to those ciphers that require
-        // TLSv1 rather than being an alias for SSLv3
-        if (TesterOpenSSL.VERSION >= 10100) {
-            testSpecification("TLSv1");
-        }
-    }
-
-
-    @Test
-    public void testSSLv2() throws Exception {
-        testSpecification("SSLv2");
+        testSpecification("TLSv1");
     }
 
 
     @Test
     public void testSSLv3() throws Exception {
-        // In OpenSSL 1.1.0-dev, TLSv1 refers to those ciphers that require
-        // TLSv1 rather than being an alias for SSLv3
-        if (TesterOpenSSL.VERSION < 10100) {
-            testSpecification("SSLv3:TLSv1");
+        if (TesterOpenSSL.VERSION < 40000) {
+            return;
         }
+        // As of OpenSSL 4.0.0, support for the SSLv3 alias has been removed
+        testSpecification("SSLv3");
     }
 
 
@@ -453,12 +350,6 @@ public class TestOpenSSLCipherConfigurationParser {
 
 
     @Test
-    public void testKRB5() throws Exception {
-        testSpecification("KRB5");
-    }
-
-
-    @Test
     public void testaGOST() throws Exception {
         testSpecification("aGOST");
     }
@@ -467,12 +358,6 @@ public class TestOpenSSLCipherConfigurationParser {
     @Test
     public void testaGOST01() throws Exception {
         testSpecification("aGOST01");
-    }
-
-
-    @Test
-    public void testaGOST94() throws Exception {
-        testSpecification("aGOST94");
     }
 
 
@@ -537,6 +422,12 @@ public class TestOpenSSLCipherConfigurationParser {
 
 
     @Test
+    public void testARIAGCM() throws Exception {
+        testSpecification("ARIAGCM");
+    }
+
+
+    @Test
     public void testARIA128() throws Exception {
         testSpecification("ARIA128");
     }
@@ -548,30 +439,251 @@ public class TestOpenSSLCipherConfigurationParser {
     }
 
 
-    // TODO: Add tests for the individual operators
+    @Test
+    public void testCBC() throws Exception {
+        testSpecification("CBC");
+    }
+
+
+    @Test
+    public void testOperatorExclude() throws Exception {
+        testSpecification("AES128:!SHA256:SHA256");
+    }
+
+
+    @Test
+    public void testOperatorDelete() throws Exception {
+        testSpecification("AES128:-SHA256:SHA256");
+    }
+
+
+    @Test
+    public void testOperatorMoveToEnd() throws Exception {
+        testSpecification("AES128:AES256:+AES128");
+    }
+
+
+    @Test
+    public void testOperatorIntersection() throws Exception {
+        testSpecification("AES128+SHA256");
+    }
+
+
+    @Test
+    public void testOperatorStrengthSort() throws Exception {
+        testSpecification("AES128:AES256:@STRENGTH");
+    }
+
+
+    @Test
+    public void testSeparators() throws Exception {
+        testSpecification("AES128:AES256");
+        testSpecification("AES128,AES256");
+        testSpecification("AES128 AES256");
+    }
 
     @Test
     public void testSpecification01() throws Exception {
         // Tomcat 8 default as of 2014-08-04
         // This gets an A- from https://www.ssllabs.com/ssltest with no FS for
         // a number of the reference browsers
-        testSpecification("HIGH:!aNULL:!eNULL:!EXPORT:!DES:!RC4:!MD5");
+        if (TesterOpenSSL.VERSION < 30200) {
+            // OpenSSL 3.2.x moved the CCM8 ciphers from high to medium
+            testSpecification("HIGH:!AESCCM8:!aNULL:!eNULL:!DES:!RC4:!MD5");
+        } else {
+            testSpecification("HIGH:!aNULL:!eNULL:!DES:!RC4:!MD5");
+        }
     }
 
 
     @Test
     public void testSpecification02() throws Exception {
-        // Suggestion from dev list (s/ECDHE/kEECDH/, s/DHE/EDH/
-        testSpecification("!aNULL:!eNULL:!EXPORT:!DSS:!DES:!SSLv2:kEECDH:ECDH:EDH:AES256-GCM-SHA384:AES128-GCM-SHA256:+RC4:HIGH:aRSA:kECDHr:MEDIUM");
+        // Suggestion from dev list (s/ECDHE/kEECDH/, s/DHE/EDH/, s/\!SSLv2//, s/\!EXPORT//)
+        testSpecification("!aNULL:!eNULL:!DSS:!DES:kEECDH:ECDH:EDH:AES256-GCM-SHA384:AES128-GCM-SHA256:+RC4:HIGH:aRSA:kECDHr:MEDIUM");
     }
 
 
     @Test
     public void testSpecification03() throws Exception {
         // Reported as failing during 8.0.11 release vote by Ognjen Blagojevic
-        // EDH was introduced in 1.0.0
-        testSpecification("EECDH+aRSA+SHA384:EECDH:EDH+aRSA:RC4:!aNULL:!eNULL:!LOW:!3DES:!MD5:!EXP:!PSK:!SRP:!DSS");
+        // EDH was introduced in 1.0.0 (s/\!EXP//)
+        testSpecification("EECDH+aRSA+SHA384:EECDH:EDH+aRSA:RC4:!aNULL:!eNULL:!LOW:!3DES:!MD5:!PSK:!SRP:!DSS");
     }
+
+
+    /*
+     * Cipher string extracted from https://bz.apache.org/bugzilla/show_bug.cgi?id=67628
+     */
+    @Test
+    public void testSpecification04() throws Exception {
+        if (TesterOpenSSL.VERSION < 30200) {
+            // OpenSSL 3.2.x moved the CCM8 ciphers from high to medium
+            testSpecification("HIGH:!aNULL:!eNULL:!DES:!RC4:!3DES:!MD5:!PSK:!DSS:!SHA1:!SHA256:!SHA384:!AESCCM8");
+        } else {
+            testSpecification("HIGH:!aNULL:!eNULL:!DES:!RC4:!3DES:!MD5:!PSK:!DSS:!SHA1:!SHA256:!SHA384:");
+        }
+    }
+
+
+    @Test
+    public void testSpecification05() throws Exception {
+        if (TesterOpenSSL.VERSION < 30200) {
+            // OpenSSL 3.2.x moved the CCM8 ciphers from high to medium
+            testSpecification("HIGH:!AESCCM8:@STRENGTH:!aNULL:!eNULL");
+        } else {
+            testSpecification("HIGH:@STRENGTH:!aNULL:!eNULL");
+        }
+    }
+
+
+    @Test
+    public void testSpecificationIsEmptyNonsense() throws Exception {
+        testSpecificationIsEmpty("Nonsense");
+    }
+
+
+    @Test
+    public void testIntersectionWithUnknownTermIsEmpty() throws Exception {
+        // OpenSSL treats an AND element that contains an unknown term as
+        // matching no ciphers, regardless of the position of the unknown term
+        testSpecificationIsEmpty("SHA1+Nonsense");
+        Assert.assertEquals(0, OpenSSLCipherConfigurationParser.parse("SHA1+Nonsense").size());
+        Assert.assertEquals(0, OpenSSLCipherConfigurationParser.parse("Nonsense+SHA1").size());
+    }
+
+
+    @Test
+    public void testIntersectionWithUnknownTermIsDiscarded() throws Exception {
+        // OpenSSL discards the whole AND element if any term is unknown, wherever the unknown term is. The other
+        // elements are not affected.
+        testSpecification("AES128:SHA1+Nonsense");
+        testSpecification("AES128:Nonsense+SHA1");
+        testSpecification("AES128:SHA1+Nonsense+AES128");
+
+        List<String> expected = OpenSSLCipherConfigurationParser.parseExpression("AES128");
+        Assert.assertEquals(expected, OpenSSLCipherConfigurationParser.parseExpression("AES128:SHA1+Nonsense"));
+        Assert.assertEquals(expected, OpenSSLCipherConfigurationParser.parseExpression("AES128:Nonsense+SHA1"));
+        Assert.assertEquals(expected,
+                OpenSSLCipherConfigurationParser.parseExpression("AES128:SHA1+Nonsense+AES128"));
+    }
+
+
+    @Test
+    public void testUnknownElementsAreIgnored() throws Exception {
+        // OpenSSL ignores unknown elements, whatever the operator
+        testSpecification("AES128:Nonsense");
+        testSpecification("AES128:!Nonsense");
+
+        List<String> expected = OpenSSLCipherConfigurationParser.parseExpression("AES128");
+        for (String unknown : new String[] { "Nonsense", "!Nonsense", "-Nonsense", "+Nonsense" }) {
+            Assert.assertEquals(unknown, expected,
+                    OpenSSLCipherConfigurationParser.parseExpression("AES128:" + unknown));
+        }
+    }
+
+
+    @Test
+    public void testUnknownElementsAreLogged() {
+        String[] specifications = { "AES128:Nonsense", "AES128:!Nonsense", "AES128:-Nonsense", "AES128:+Nonsense",
+                "AES128:SHA1+Nonsense", "AES128:Nonsense+SHA1" };
+
+        for (String specification : specifications) {
+            List<String> warnings = parseAndCaptureWarnings(specification);
+            Assert.assertEquals(specification + " logged " + warnings, 1, warnings.size());
+            Assert.assertTrue(specification + " logged " + warnings, warnings.get(0).contains("Nonsense"));
+        }
+    }
+
+
+    @Test
+    public void testKnownAndOtherValidElementsAreNotLogged() {
+        // Known elements, an empty element and the valid OpenSSL @SECLEVEL element must not trigger a warning
+        String[] specifications = { "AES128:SHA1+AES128", "AES128:!aNULL:-AES256:+SHA1:@STRENGTH", "AES128::SHA1",
+                "AES128:@SECLEVEL=1" };
+
+        for (String specification : specifications) {
+            List<String> warnings = parseAndCaptureWarnings(specification);
+            Assert.assertTrue(specification + " logged " + warnings, warnings.isEmpty());
+        }
+    }
+
+
+    private List<String> parseAndCaptureWarnings(String specification) {
+        List<String> warnings = new ArrayList<>();
+        Logger logger = Logger.getLogger(OpenSSLCipherConfigurationParser.class.getName());
+        Handler handler = new Handler() {
+            @Override
+            public void publish(LogRecord record) {
+                if (record.getLevel().intValue() >= Level.WARNING.intValue()) {
+                    warnings.add(record.getMessage() + " " + String.join(" ",
+                            record.getParameters() == null ? new String[0] :
+                                    java.util.Arrays.stream(record.getParameters()).map(String::valueOf)
+                                            .toArray(String[]::new)));
+                }
+            }
+
+            @Override
+            public void flush() {
+                // NO-OP
+            }
+
+            @Override
+            public void close() {
+                // NO-OP
+            }
+        };
+        logger.addHandler(handler);
+        try {
+            OpenSSLCipherConfigurationParser.parseExpression(specification);
+        } finally {
+            logger.removeHandler(handler);
+        }
+        return warnings;
+    }
+
+
+    private void testSpecificationIsEmpty(String specification) throws Exception {
+        String openSSLCipherList = TesterOpenSSL.getOpenSSLCiphersAsExpression(specification);
+        Assert.assertEquals(TesterOpenSSL.VERSION_STRING + " with specification [" + specification + "] returned [" +
+                openSSLCipherList + "] rather than the expected empty list", "", openSSLCipherList);
+    }
+
+
+    @Test
+    public void testReAddAfterRemove() throws Exception {
+        testSpecification("AES256:AES128:-AES256:AES");
+    }
+
+
+    @Test
+    public void testReAddMultipleRemovalsOrder() throws Exception {
+        testSpecification("AES128:AES256:-AES256:-AES128:AES");
+    }
+
+
+    @Test
+    public void testExcludeBeatsReAdd() throws Exception {
+        testSpecification("AES:-AES256:!AES256:AES");
+    }
+
+
+    @Test
+    public void testReAddViaIntersection() throws Exception {
+        testSpecification("AES256:AES128:-AES256:AES+AESGCM");
+    }
+
+
+    @Test
+    public void testReAddAfterMoveToEnd01() throws Exception {
+        testSpecification("AES128-SHA:AES256-SHA:+AES128-SHA:-AES:AES");
+    }
+
+
+    @Test
+    public void testReAddAfterMoveToEnd02() throws Exception {
+        testSpecification("AES128-SHA:AES256-SHA:-AES128-SHA:+AES128-SHA:AES");
+    }
+
 
     private void testSpecification(String specification) throws Exception {
         // Filter out cipher suites that OpenSSL does not implement
@@ -586,21 +698,25 @@ public class TestOpenSSLCipherConfigurationParser {
         // First check the lists have the same entries
         // Order is NOT important at this point. It is checked below.
         Assert.assertEquals(
-                "Expected " + jsseCipherListFromParser.size() + " ciphers but got "
-                        + jsseCipherListFromOpenSSL.size() + " for the specification '"
-                        + specification + "'",
-                new TreeSet<>(jsseCipherListFromParser), new TreeSet<>(jsseCipherListFromOpenSSL));
+                TesterOpenSSL.VERSION_STRING + " with specification [" + specification + "] expected " +
+                        jsseCipherListFromOpenSSL.size() + " ciphers but got " + jsseCipherListFromParser.size(),
+                new TreeSet<>(jsseCipherListFromOpenSSL), new TreeSet<>(jsseCipherListFromParser));
 
-        // OpenSSL treats many ciphers as having equal preference. The order
-        // returned depends on the order they are requested. The following code
-        // checks that the Parser produces a cipher list that is consistent with
-        // OpenSSL's preference order by confirming that running through OpenSSL
-        // does not change the order.
-        String parserOrderedExpression = listToString(jsseCipherListFromParser, ',');
-        Assert.assertEquals(
-                listToString(OpenSSLCipherConfigurationParser.parseExpression(
-                        parserOrderedExpression), ','),
-                parserOrderedExpression);
+        /*
+         * The parser generated cipher list is checked for an exact match with the list generated by OpenSSL.
+         *
+         * This check tests for the exact order as generated by OpenSSL master running on Linux.
+         *
+         * There was a change in the default ordering between 3.2.x and 3.3.x. Skip the exact order check if testing
+         * against OpenSSL 3.0.x (the only currently supported version before 3.3.x).
+         *
+         * It is assumed that the cipher order does not vary by operating system. If that assumption is wrong, it should
+         * be caught by CI and the test can be adjusted.
+         */
+        if (TesterOpenSSL.VERSION > 30299) {
+            Assert.assertEquals(TesterOpenSSL.VERSION_STRING + " with specification [" + specification + "]",
+                    listToString(jsseCipherListFromOpenSSL, ','), listToString(jsseCipherListFromParser, ','));
+        }
     }
 
 

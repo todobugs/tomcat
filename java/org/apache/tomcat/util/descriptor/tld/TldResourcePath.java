@@ -22,25 +22,27 @@ import java.net.URL;
 import java.util.Objects;
 
 import org.apache.tomcat.Jar;
+import org.apache.tomcat.util.res.StringManager;
 import org.apache.tomcat.util.scan.JarFactory;
 import org.apache.tomcat.util.scan.ReferenceCountedJar;
 
 /**
  * A TLD Resource Path as defined in JSP 7.3.2.
  * <p>
- * This encapsulates references to Tag Library Descriptors that can be located
- * in different places:
+ * This encapsulates references to Tag Library Descriptors that can be located in different places:
  * <ul>
  * <li>As resources within an application</li>
  * <li>As entries in JAR files included in the application</li>
  * <li>As resources provided by the container</li>
  * </ul>
- * When configuring a mapping from a well-known URI to a TLD, a user is allowed
- * to specify just the name of a JAR file that implicitly contains a TLD in
- * <code>META-INF/taglib.tld</code>. Such a mapping must be explicitly converted
- * to a URL and entryName when using this implementation.
+ * When configuring a mapping from a well-known URI to a TLD, a user is allowed to specify just the name of a JAR file
+ * that implicitly contains a TLD in <code>META-INF/taglib.tld</code>. Such a mapping must be explicitly converted to a
+ * URL and entryName when using this implementation.
  */
 public class TldResourcePath {
+
+    private static final StringManager sm = StringManager.getManager(TldResourcePath.class);
+
     private final URL url;
     private final String webappPath;
     private final String entryName;
@@ -50,6 +52,8 @@ public class TldResourcePath {
      *
      * @param url        the location of the TLD
      * @param webappPath the web application path, if any, of the TLD
+     *
+     * @throws IllegalArgumentException if the provided URL is null
      */
     public TldResourcePath(URL url, String webappPath) {
         this(url, webappPath, null);
@@ -61,8 +65,13 @@ public class TldResourcePath {
      * @param url        the location of the JAR
      * @param webappPath the web application path, if any, of the JAR
      * @param entryName  the name of the entry in the JAR
+     *
+     * @throws IllegalArgumentException if the provided URL is null
      */
     public TldResourcePath(URL url, String webappPath, String entryName) {
+        if (url == null) {
+            throw new IllegalArgumentException(sm.getString("tldResourcePath.nullUrl"));
+        }
         this.url = url;
         this.webappPath = webappPath;
         this.entryName = entryName;
@@ -78,19 +87,18 @@ public class TldResourcePath {
     }
 
     /**
-     * Returns the path within the web application, if any, that the resource
-     * returned by {@link #getUrl()} was obtained from.
+     * Returns the path within the web application, if any, that the resource returned by {@link #getUrl()} was obtained
+     * from.
      *
-     * @return the web application path or @null if the the resource is not
-     *         located within a web application
+     * @return the web application path or {@code null} if the resource is not located within a web application
      */
     public String getWebappPath() {
         return webappPath;
     }
 
     /**
-     * Returns the name of the JAR entry that contains the TLD.
-     * May be null to indicate the URL refers directly to the TLD itself.
+     * Returns the name of the JAR entry that contains the TLD. May be null to indicate the URL refers directly to the
+     * TLD itself.
      *
      * @return the name of the JAR entry that contains the TLD
      */
@@ -99,9 +107,8 @@ public class TldResourcePath {
     }
 
     /**
-     * Return the external form of the URL representing this TLD.
-     * This can be used as a canonical location for the TLD itself, for example,
-     * as the systemId to use when parsing its XML.
+     * Return the external form of the URL representing this TLD. This can be used as a canonical location for the TLD
+     * itself, for example, as the systemId to use when parsing its XML.
      *
      * @return the external form of the URL representing this TLD
      */
@@ -117,6 +124,7 @@ public class TldResourcePath {
      * Opens a stream to access the TLD.
      *
      * @return a stream containing the TLD content
+     *
      * @throws IOException if there was a problem opening the stream
      */
     public InputStream openStream() throws IOException {
@@ -128,6 +136,12 @@ public class TldResourcePath {
         }
     }
 
+    /**
+     * Opens the JAR file that contains this resource, if any.
+     *
+     * @return the JAR, or null if this is not a JAR entry
+     * @throws IOException if an I/O error occurs
+     */
     public Jar openJar() throws IOException {
         if (entryName == null) {
             return null;
@@ -156,8 +170,7 @@ public class TldResourcePath {
 
         TldResourcePath other = (TldResourcePath) o;
 
-        return url.equals(other.url) &&
-                Objects.equals(webappPath, other.webappPath) &&
+        return url.equals(other.url) && Objects.equals(webappPath, other.webappPath) &&
                 Objects.equals(entryName, other.entryName);
     }
 

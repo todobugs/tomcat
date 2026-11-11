@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.catalina.tribes.group.interceptors;
 
 import java.io.ByteArrayInputStream;
@@ -34,16 +33,25 @@ import org.apache.catalina.tribes.util.StringManager;
 import org.apache.juli.logging.Log;
 import org.apache.juli.logging.LogFactory;
 
-
 /**
- * @version 1.0
+ * Channel interceptor that compresses messages using GZIP before transmission and decompresses
+ * received messages. This reduces bandwidth usage for cluster communication.
  */
 public class GzipInterceptor extends ChannelInterceptorBase implements GzipInterceptorMBean {
 
     private static final Log log = LogFactory.getLog(GzipInterceptor.class);
+    /**
+     * StringManager for this class.
+     */
     protected static final StringManager sm = StringManager.getManager(GzipInterceptor.class);
 
+    /**
+     * Default buffer size for compression/decompression operations.
+     */
     public static final int DEFAULT_BUFFER_SIZE = 2048;
+    /**
+     * Default option flag to enable compression.
+     */
     public static final int DEFAULT_OPTION_COMPRESSION_ENABLE = 0x0100;
 
     private int compressionMinSize = 0;
@@ -64,6 +72,9 @@ public class GzipInterceptor extends ChannelInterceptorBase implements GzipInter
     private final AtomicLong uncompressedSizeRX = new AtomicLong();
 
 
+    /**
+     * Default constructor for GzipInterceptor.
+     */
     public GzipInterceptor() {
         setOptionFlag(DEFAULT_OPTION_COMPRESSION_ENABLE);
     }
@@ -86,22 +97,22 @@ public class GzipInterceptor extends ChannelInterceptorBase implements GzipInter
                     countCompressedTX.incrementAndGet();
                     compressedSizeTX.addAndGet(data.length);
                 }
-            } else if (statsEnabled){
+            } else if (statsEnabled) {
                 countUncompressedTX.incrementAndGet();
                 uncompressedSizeTX.addAndGet(data.length);
             }
 
             msg.getMessage().trim(msg.getMessage().getLength());
-            msg.getMessage().append(data,0,data.length);
+            msg.getMessage().append(data, 0, data.length);
             super.sendMessage(destination, msg, payload);
 
             int currentCount = count.incrementAndGet();
             if (statsEnabled && interval > 0 && currentCount % interval == 0) {
                 report();
             }
-        } catch ( IOException x ) {
+        } catch (IOException ioe) {
             log.error(sm.getString("gzipInterceptor.compress.failed"));
-            throw new ChannelException(x);
+            throw new ChannelException(ioe);
         }
     }
 
@@ -127,44 +138,53 @@ public class GzipInterceptor extends ChannelInterceptorBase implements GzipInter
             }
 
             msg.getMessage().trim(msg.getMessage().getLength());
-            msg.getMessage().append(data,0,data.length);
+            msg.getMessage().append(data, 0, data.length);
             super.messageReceived(msg);
 
             int currentCount = count.incrementAndGet();
             if (statsEnabled && interval > 0 && currentCount % interval == 0) {
                 report();
             }
-        } catch ( IOException x ) {
-            log.error(sm.getString("gzipInterceptor.decompress.failed"),x);
+        } catch (IOException ioe) {
+            log.error(sm.getString("gzipInterceptor.decompress.failed"), ioe);
         }
     }
 
 
+    /**
+     * Compresses the given data using GZIP compression.
+     *
+     * @param data The data to compress
+     * @return The compressed data
+     * @throws IOException If a compression error occurs
+     */
     public static byte[] compress(byte[] data) throws IOException {
         ByteArrayOutputStream bout = new ByteArrayOutputStream();
-        GZIPOutputStream gout = new GZIPOutputStream(bout);
-        gout.write(data);
-        gout.flush();
-        gout.close();
+        try (GZIPOutputStream gout = new GZIPOutputStream(bout)) {
+            gout.write(data);
+            gout.finish();
+        }
         return bout.toByteArray();
     }
 
 
     /**
-     * @param data  Data to decompress
-     * @return      Decompressed data
-     * @throws IOException Compression error
+     * Decompresses the given data using GZIP decompression.
+     *
+     * @param data The compressed data to decompress
+     * @return The decompressed data
+     * @throws IOException If a decompression error occurs
      */
     public static byte[] decompress(byte[] data) throws IOException {
-        ByteArrayOutputStream bout =
-            new ByteArrayOutputStream(DEFAULT_BUFFER_SIZE);
-        ByteArrayInputStream bin = new ByteArrayInputStream(data);
-        GZIPInputStream gin = new GZIPInputStream(bin);
-        byte[] tmp = new byte[DEFAULT_BUFFER_SIZE];
-        int length = gin.read(tmp);
-        while (length > -1) {
-            bout.write(tmp, 0, length);
-            length = gin.read(tmp);
+        ByteArrayOutputStream bout = new ByteArrayOutputStream(DEFAULT_BUFFER_SIZE);
+        try (ByteArrayInputStream bin = new ByteArrayInputStream(data);
+                GZIPInputStream gin = new GZIPInputStream(bin)) {
+            byte[] tmp = new byte[DEFAULT_BUFFER_SIZE];
+            int length = gin.read(tmp);
+            while (length > -1) {
+                bout.write(tmp, 0, length);
+                length = gin.read(tmp);
+            }
         }
         return bout.toByteArray();
     }
@@ -175,10 +195,8 @@ public class GzipInterceptor extends ChannelInterceptorBase implements GzipInter
         log.info(sm.getString("gzipInterceptor.report", Integer.valueOf(getCount()),
                 Integer.valueOf(getCountCompressedTX()), Integer.valueOf(getCountUncompressedTX()),
                 Integer.valueOf(getCountCompressedRX()), Integer.valueOf(getCountUncompressedRX()),
-                Long.valueOf(getSizeTX()), Long.valueOf(getCompressedSizeTX()),
-                Long.valueOf(getUncompressedSizeTX()),
-                Long.valueOf(getSizeRX()), Long.valueOf(getCompressedSizeRX()),
-                Long.valueOf(getUncompressedSizeRX())));
+                Long.valueOf(getSizeTX()), Long.valueOf(getCompressedSizeTX()), Long.valueOf(getUncompressedSizeTX()),
+                Long.valueOf(getSizeRX()), Long.valueOf(getCompressedSizeRX()), Long.valueOf(getUncompressedSizeRX())));
     }
 
 

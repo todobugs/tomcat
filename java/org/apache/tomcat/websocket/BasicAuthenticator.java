@@ -21,36 +21,52 @@ import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 import java.util.Map;
 
+import org.apache.tomcat.util.res.StringManager;
+
 /**
- * Authenticator supporting the BASIC auth method.
+ * Authenticator supporting the BASIC authentication method.
  */
 public class BasicAuthenticator extends Authenticator {
 
+    private static final StringManager sm = StringManager.getManager(BasicAuthenticator.class);
+
+    /** Default constructor. */
+    public BasicAuthenticator() { }
+
+    /** The name of the Basic authentication scheme. */
     public static final String schemeName = "basic";
+    /** The charset parameter name in the authenticate header. */
     public static final String charsetparam = "charset";
 
     @Override
-    public String getAuthorization(String requestUri, String WWWAuthenticate,
-            Map<String, Object> userProperties) throws AuthenticationException {
+    public String getAuthorization(String method, String requestUri, String authenticateHeader, String userName,
+            String userPassword, String userRealm) throws AuthenticationException {
 
-        String userName = (String) userProperties.get(Constants.WS_AUTHENTICATION_USER_NAME);
-        String password = (String) userProperties.get(Constants.WS_AUTHENTICATION_PASSWORD);
+        validateUsername(userName);
+        validatePassword(userPassword);
 
-        if (userName == null || password == null) {
-            throw new AuthenticationException(
-                    "Failed to perform Basic authentication due to  missing user/password");
-        }
+        Map<String,String> parameterMap = parseAuthenticateHeader(authenticateHeader);
+        String realm = parameterMap.get("realm");
 
-        Map<String, String> wwwAuthenticate = parseWWWAuthenticateHeader(WWWAuthenticate);
+        validateRealm(userRealm, realm);
 
-        String userPass = userName + ":" + password;
-        Charset charset;
+        String userPass = userName + ":" + userPassword;
 
-        if (wwwAuthenticate.get(charsetparam) != null
-                && wwwAuthenticate.get(charsetparam).equalsIgnoreCase("UTF-8")) {
-            charset = StandardCharsets.UTF_8;
-        } else {
-            charset = StandardCharsets.ISO_8859_1;
+        /*
+         * RFC 7617 section 2.1 leaves the default character encoding undefined. Use ISO-8859-1, the default used by
+         * Tomcat servers of this branch, when the challenge does not specify a charset. UTF-8 is the only value the
+         * RFC allows for the charset parameter, reserving any other value for future use, so use UTF-8 when the
+         * challenge asks for it and reject challenges that ask for any other encoding rather than silently guessing
+         * one.
+         */
+        String charsetParam = parameterMap.get(charsetparam);
+        Charset charset = StandardCharsets.ISO_8859_1;
+        if (charsetParam != null) {
+            if (charsetParam.equalsIgnoreCase("UTF-8")) {
+                charset = StandardCharsets.UTF_8;
+            } else {
+                throw new AuthenticationException(sm.getString("basicAuthenticator.invalidCharset", charsetParam));
+            }
         }
 
         String base64 = Base64.getEncoder().encodeToString(userPass.getBytes(charset));

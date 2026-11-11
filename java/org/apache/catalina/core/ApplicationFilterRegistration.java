@@ -14,9 +14,9 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.catalina.core;
 
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.EnumSet;
 import java.util.HashSet;
@@ -32,28 +32,33 @@ import org.apache.tomcat.util.descriptor.web.FilterDef;
 import org.apache.tomcat.util.descriptor.web.FilterMap;
 import org.apache.tomcat.util.res.StringManager;
 
-public class ApplicationFilterRegistration
-        implements FilterRegistration.Dynamic {
+/**
+ * Dynamic filter registration implementation.
+ */
+public class ApplicationFilterRegistration implements FilterRegistration.Dynamic {
 
     /**
      * The string manager for this package.
      */
-    private static final StringManager sm =
-      StringManager.getManager(Constants.Package);
+    private static final StringManager sm = StringManager.getManager(ApplicationFilterRegistration.class);
 
     private final FilterDef filterDef;
     private final Context context;
 
-    public ApplicationFilterRegistration(FilterDef filterDef,
-            Context context) {
+    /**
+     * Constructs a new ApplicationFilterRegistration.
+     *
+     * @param filterDef the filter definition
+     * @param context the context
+     */
+    public ApplicationFilterRegistration(FilterDef filterDef, Context context) {
         this.filterDef = filterDef;
         this.context = context;
 
     }
 
     @Override
-    public void addMappingForServletNames(
-            EnumSet<DispatcherType> dispatcherTypes, boolean isMatchAfter,
+    public void addMappingForServletNames(EnumSet<DispatcherType> dispatcherTypes, boolean isMatchAfter,
             String... servletNames) {
 
         FilterMap filterMap = new FilterMap();
@@ -66,8 +71,11 @@ public class ApplicationFilterRegistration
             }
         }
 
-        if (servletNames != null) {
+        if (servletNames != null && servletNames.length > 0) {
             for (String servletName : servletNames) {
+                if (servletName == null) {
+                    throw new IllegalArgumentException(sm.getString("applicationFilterRegistration.nullServletName"));
+                }
                 filterMap.addServletName(servletName);
             }
 
@@ -76,13 +84,14 @@ public class ApplicationFilterRegistration
             } else {
                 context.addFilterMapBefore(filterMap);
             }
+        } else {
+            throw new IllegalArgumentException(sm.getString("applicationFilterRegistration.nullServletName"));
         }
-        // else error?
     }
 
+    @SuppressWarnings("deprecation")
     @Override
-    public void addMappingForUrlPatterns(
-            EnumSet<DispatcherType> dispatcherTypes, boolean isMatchAfter,
+    public void addMappingForUrlPatterns(EnumSet<DispatcherType> dispatcherTypes, boolean isMatchAfter,
             String... urlPatterns) {
 
         FilterMap filterMap = new FilterMap();
@@ -95,10 +104,17 @@ public class ApplicationFilterRegistration
             }
         }
 
-        if (urlPatterns != null) {
-            // % decoded (if necessary) using UTF-8
+        if (urlPatterns != null && urlPatterns.length > 0) {
             for (String urlPattern : urlPatterns) {
-                filterMap.addURLPattern(urlPattern);
+                if (urlPattern == null) {
+                    throw new IllegalArgumentException(sm.getString("applicationFilterRegistration.nullUrlPattern"));
+                }
+                if (context.getUrlPatternsProvidedInDecodedForm()) {
+                    filterMap.addURLPatternDecoded(urlPattern);
+                } else {
+                    // % decoded (if required) using UTF-8
+                    filterMap.addURLPattern(urlPattern);
+                }
             }
 
             if (isMatchAfter) {
@@ -106,8 +122,9 @@ public class ApplicationFilterRegistration
             } else {
                 context.addFilterMapBefore(filterMap);
             }
+        } else {
+            throw new IllegalArgumentException(sm.getString("applicationFilterRegistration.nullUrlPattern"));
         }
-        // else error?
 
     }
 
@@ -119,9 +136,7 @@ public class ApplicationFilterRegistration
 
         for (FilterMap filterMap : filterMaps) {
             if (filterMap.getFilterName().equals(filterDef.getFilterName())) {
-                for (String servletName : filterMap.getServletNames()) {
-                    result.add(servletName);
-                }
+                result.addAll(Arrays.asList(filterMap.getServletNames()));
             }
         }
         return result;
@@ -135,9 +150,7 @@ public class ApplicationFilterRegistration
 
         for (FilterMap filterMap : filterMaps) {
             if (filterMap.getFilterName().equals(filterDef.getFilterName())) {
-                for (String urlPattern : filterMap.getURLPatterns()) {
-                    result.add(urlPattern);
-                }
+                result.addAll(Arrays.asList(filterMap.getURLPatterns()));
             }
         }
         return result;
@@ -146,7 +159,7 @@ public class ApplicationFilterRegistration
     @Override
     public String getClassName() {
         return filterDef.getFilterClass();
-   }
+    }
 
     @Override
     public String getInitParameter(String name) {
@@ -154,7 +167,7 @@ public class ApplicationFilterRegistration
     }
 
     @Override
-    public Map<String, String> getInitParameters() {
+    public Map<String,String> getInitParameters() {
         ParameterMap<String,String> result = new ParameterMap<>();
         result.putAll(filterDef.getParameterMap());
         result.setLocked(true);
@@ -170,8 +183,7 @@ public class ApplicationFilterRegistration
     public boolean setInitParameter(String name, String value) {
         if (name == null || value == null) {
             throw new IllegalArgumentException(
-                    sm.getString("applicationFilterRegistration.nullInitParam",
-                            name, value));
+                    sm.getString("applicationFilterRegistration.nullInitParam", name, value));
         }
         if (getInitParameter(name) != null) {
             return false;
@@ -183,15 +195,14 @@ public class ApplicationFilterRegistration
     }
 
     @Override
-    public Set<String> setInitParameters(Map<String, String> initParameters) {
+    public Set<String> setInitParameters(Map<String,String> initParameters) {
 
         Set<String> conflicts = new HashSet<>();
 
-        for (Map.Entry<String, String> entry : initParameters.entrySet()) {
+        for (Map.Entry<String,String> entry : initParameters.entrySet()) {
             if (entry.getKey() == null || entry.getValue() == null) {
-                throw new IllegalArgumentException(sm.getString(
-                        "applicationFilterRegistration.nullInitParams",
-                                entry.getKey(), entry.getValue()));
+                throw new IllegalArgumentException(
+                        sm.getString("applicationFilterRegistration.nullInitParams", entry.getKey(), entry.getValue()));
             }
             if (getInitParameter(entry.getKey()) != null) {
                 conflicts.add(entry.getKey());
@@ -200,8 +211,10 @@ public class ApplicationFilterRegistration
 
         // Have to add in a separate loop since spec requires no updates at all
         // if there is an issue
-        for (Map.Entry<String, String> entry : initParameters.entrySet()) {
-            setInitParameter(entry.getKey(), entry.getValue());
+        if (conflicts.isEmpty()) {
+            for (Map.Entry<String,String> entry : initParameters.entrySet()) {
+                setInitParameter(entry.getKey(), entry.getValue());
+            }
         }
 
         return conflicts;

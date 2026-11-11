@@ -25,11 +25,27 @@ import java.security.Permission;
 import org.apache.tomcat.util.buf.UriUtil;
 
 
+/**
+ * URL connection for WAR resources that internally wraps a JAR URL connection.
+ */
 public class WarURLConnection extends URLConnection {
 
+    /**
+     * The wrapped JAR URL connection.
+     */
     private final URLConnection wrappedJarUrlConnection;
+    /**
+     * Whether this connection has been established.
+     */
     private boolean connected;
 
+    /**
+     * Constructs a new WarURLConnection.
+     *
+     * @param url The URL to connect to, which must use the "war:" protocol
+     *
+     * @throws IOException If an I/O error occurs
+     */
     protected WarURLConnection(URL url) throws IOException {
         super(url);
         URL innerJarUrl = UriUtil.warToJar(url);
@@ -76,4 +92,27 @@ public class WarURLConnection extends URLConnection {
         return wrappedJarUrlConnection.getContentLengthLong();
     }
 
+
+    @Override
+    public void setUseCaches(boolean usecaches) {
+        wrappedJarUrlConnection.setUseCaches(usecaches);
+    }
+
+
+    @Override
+    public boolean getUseCaches() {
+        return wrappedJarUrlConnection.getUseCaches();
+    }
+
+
+    @Override
+    public void setDefaultUseCaches(boolean defaultusecaches) {
+        wrappedJarUrlConnection.setDefaultUseCaches(defaultusecaches);
+    }
+
+
+    @Override
+    public boolean getDefaultUseCaches() {
+        return wrappedJarUrlConnection.getDefaultUseCaches();
+    }
 }

@@ -21,34 +21,32 @@ import java.io.Serializable;
 import java.util.Enumeration;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Function;
 import java.util.regex.Pattern;
 
 import javax.servlet.ServletException;
-import javax.servlet.http.HttpSession;
 import javax.servlet.http.HttpSessionBindingEvent;
 import javax.servlet.http.HttpSessionBindingListener;
 
 import org.apache.catalina.Context;
 import org.apache.catalina.Host;
 import org.apache.catalina.LifecycleException;
+import org.apache.catalina.Session;
 import org.apache.catalina.connector.Request;
 import org.apache.catalina.connector.Response;
 import org.apache.juli.logging.Log;
 import org.apache.juli.logging.LogFactory;
 
 /**
- * Web crawlers can trigger the creation of many thousands of sessions as they
- * crawl a site which may result in significant memory consumption. This Valve
- * ensures that crawlers are associated with a single session - just like normal
- * users - regardless of whether or not they provide a session token with their
- * requests.
+ * Web crawlers can trigger the creation of many thousands of sessions as they crawl a site which may result in
+ * significant memory consumption. This Valve ensures that crawlers are associated with a single session - just like
+ * normal users - regardless of whether or not they provide a session token with their requests.
  */
 public class CrawlerSessionManagerValve extends ValveBase {
 
     private static final Log log = LogFactory.getLog(CrawlerSessionManagerValve.class);
 
-    private final Map<String, String> clientIdSessionId = new ConcurrentHashMap<>();
-    private final Map<String, String> sessionIdClientId = new ConcurrentHashMap<>();
+    private final Map<String,String> clientIdSessionId = new ConcurrentHashMap<>();
 
     private String crawlerUserAgents = ".*[bB]ot.*|.*Yahoo! Slurp.*|.*Feedfetcher-Google.*";
     private Pattern uaPattern = null;
@@ -62,6 +60,8 @@ public class CrawlerSessionManagerValve extends ValveBase {
 
     private boolean isContextAware = true;
 
+    private Function<Request,String> clientIdentifierFunction = this::getClientIdentifier;
+
 
     /**
      * Specifies a default constructor so async support can be configured.
@@ -72,15 +72,14 @@ public class CrawlerSessionManagerValve extends ValveBase {
 
 
     /**
-     * Specify the regular expression (using {@link Pattern}) that will be used
-     * to identify crawlers based in the User-Agent header provided. The default
-     * is ".*GoogleBot.*|.*bingbot.*|.*Yahoo! Slurp.*"
+     * Specify the regular expression (using {@link Pattern}) that will be used to identify crawlers based in the
+     * User-Agent header provided. The default is ".*[bB]ot.*|.*Yahoo! Slurp.*|.*Feedfetcher-Google.*"
      *
      * @param crawlerUserAgents The regular expression using {@link Pattern}
      */
     public void setCrawlerUserAgents(String crawlerUserAgents) {
         this.crawlerUserAgents = crawlerUserAgents;
-        if (crawlerUserAgents == null || crawlerUserAgents.length() == 0) {
+        if (crawlerUserAgents == null || crawlerUserAgents.isEmpty()) {
             uaPattern = null;
         } else {
             uaPattern = Pattern.compile(crawlerUserAgents);
@@ -88,8 +87,11 @@ public class CrawlerSessionManagerValve extends ValveBase {
     }
 
     /**
+     * Get the regular expression used to identify crawlers based on the User-Agent header.
+     *
      * @see #setCrawlerUserAgents(String)
-     * @return  The current regular expression being used to match user agents.
+     *
+     * @return The current regular expression being used to match user agents
      */
     public String getCrawlerUserAgents() {
         return crawlerUserAgents;
@@ -97,15 +99,14 @@ public class CrawlerSessionManagerValve extends ValveBase {
 
 
     /**
-     * Specify the regular expression (using {@link Pattern}) that will be used
-     * to identify crawlers based on their IP address. The default is no crawler
-     * IPs.
+     * Specify the regular expression (using {@link Pattern}) that will be used to identify crawlers based on their IP
+     * address. The default is no crawler IPs.
      *
      * @param crawlerIps The regular expression using {@link Pattern}
      */
     public void setCrawlerIps(String crawlerIps) {
         this.crawlerIps = crawlerIps;
-        if (crawlerIps == null || crawlerIps.length() == 0) {
+        if (crawlerIps == null || crawlerIps.isEmpty()) {
             ipPattern = null;
         } else {
             ipPattern = Pattern.compile(crawlerIps);
@@ -113,8 +114,11 @@ public class CrawlerSessionManagerValve extends ValveBase {
     }
 
     /**
+     * Get the regular expression used to identify crawlers based on their IP address.
+     *
      * @see #setCrawlerIps(String)
-     * @return The current regular expression being used to match IP addresses.
+     *
+     * @return The current regular expression being used to match IP addresses
      */
     public String getCrawlerIps() {
         return crawlerIps;
@@ -122,68 +126,112 @@ public class CrawlerSessionManagerValve extends ValveBase {
 
 
     /**
-     * Specify the session timeout (in seconds) for a crawler's session. This is
-     * typically lower than that for a user session. The default is 60 seconds.
+     * Specify the session timeout (in seconds) for a crawler's session. This is typically lower than that for a user
+     * session. The default is 60 seconds.
      *
-     * @param sessionInactiveInterval   The new timeout for crawler sessions
+     * @param sessionInactiveInterval The new timeout for crawler sessions
      */
     public void setSessionInactiveInterval(int sessionInactiveInterval) {
         this.sessionInactiveInterval = sessionInactiveInterval;
     }
 
     /**
+     * Get the session timeout for a crawler's session.
+     *
      * @see #setSessionInactiveInterval(int)
-     * @return  The current timeout in seconds
+     *
+     * @return The current timeout in seconds
      */
     public int getSessionInactiveInterval() {
         return sessionInactiveInterval;
     }
 
 
-    public Map<String, String> getClientIpSessionId() {
+    /**
+     * Get the map of client identifiers to session IDs.
+     *
+     * @return The map of client identifiers to session IDs
+     */
+    public Map<String,String> getClientIpSessionId() {
         return clientIdSessionId;
     }
 
 
+    /**
+     * Determine whether the client identifier includes the host name.
+     *
+     * @return {@code true} if the client identifier includes the host name
+     */
     public boolean isHostAware() {
         return isHostAware;
     }
 
 
+    /**
+     * Set whether the client identifier should include the host name.
+     *
+     * @param isHostAware {@code true} if the client identifier should include the host name
+     */
     public void setHostAware(boolean isHostAware) {
         this.isHostAware = isHostAware;
     }
 
 
+    /**
+     * Determine whether the client identifier includes the context name.
+     *
+     * @return {@code true} if the client identifier includes the context name
+     */
     public boolean isContextAware() {
         return isContextAware;
     }
 
 
+    /**
+     * Set whether the client identifier should include the context name.
+     *
+     * @param isContextAware {@code true} if the client identifier should include the context name
+     */
     public void setContextAware(boolean isContextAware) {
         this.isContextAware = isContextAware;
     }
 
+    /**
+     * Specify the clientIdentifier function that will be used to identify unique clients. The default is to use the
+     * client IP address, optionally combined with the host name and context name.
+     *
+     * @param clientIdentifierFunction The new function used to build identifiers for clients.
+     */
+    public void setClientIdentifierFunction(Function<Request,String> clientIdentifierFunction) {
+        this.clientIdentifierFunction = clientIdentifierFunction;
+    }
 
     @Override
     protected void initInternal() throws LifecycleException {
         super.initInternal();
 
-        uaPattern = Pattern.compile(crawlerUserAgents);
+        setCrawlerUserAgents(crawlerUserAgents);
     }
 
 
     @Override
     public void invoke(Request request, Response response) throws IOException, ServletException {
 
+        Host host = request.getHost();
+        if (host == null) {
+            // Request will have no session
+            getNext().invoke(request, response);
+            return;
+        }
+
         boolean isBot = false;
         String sessionId = null;
         String clientIp = request.getRemoteAddr();
-        String clientIdentifier = getClientIdentifier(request.getHost(), request.getContext(), clientIp);
+        String clientIdentifier = clientIdentifierFunction.apply(request);
 
-        if (log.isDebugEnabled()) {
-            log.debug(request.hashCode() + ": ClientIdentifier=" + clientIdentifier + ", RequestedSessionId="
-                    + request.getRequestedSessionId());
+        if (log.isTraceEnabled()) {
+            log.trace(request.hashCode() + ": ClientIdentifier=" + clientIdentifier + ", RequestedSessionId=" +
+                    request.getRequestedSessionId());
         }
 
         // If the incoming request has a valid session ID, no action is required
@@ -199,15 +247,15 @@ public class CrawlerSessionManagerValve extends ValveBase {
             // If more than one UA header - assume not a bot
             if (uaHeader != null && !uaHeaders.hasMoreElements()) {
 
-                if (log.isDebugEnabled()) {
-                    log.debug(request.hashCode() + ": UserAgent=" + uaHeader);
+                if (log.isTraceEnabled()) {
+                    log.trace(request.hashCode() + ": UserAgent=" + uaHeader);
                 }
 
-                if (uaPattern.matcher(uaHeader).matches()) {
+                if (uaPattern != null && uaPattern.matcher(uaHeader).matches()) {
                     isBot = true;
 
-                    if (log.isDebugEnabled()) {
-                        log.debug(request.hashCode() + ": Bot found. UserAgent=" + uaHeader);
+                    if (log.isTraceEnabled()) {
+                        log.trace(request.hashCode() + ": Bot found. UserAgent=" + uaHeader);
                     }
                 }
             }
@@ -215,8 +263,8 @@ public class CrawlerSessionManagerValve extends ValveBase {
             if (ipPattern != null && ipPattern.matcher(clientIp).matches()) {
                 isBot = true;
 
-                if (log.isDebugEnabled()) {
-                    log.debug(request.hashCode() + ": Bot found. IP=" + clientIp);
+                if (log.isTraceEnabled()) {
+                    log.trace(request.hashCode() + ": Bot found. IP=" + clientIp);
                 }
             }
 
@@ -225,8 +273,8 @@ public class CrawlerSessionManagerValve extends ValveBase {
                 sessionId = clientIdSessionId.get(clientIdentifier);
                 if (sessionId != null) {
                     request.setRequestedSessionId(sessionId);
-                    if (log.isDebugEnabled()) {
-                        log.debug(request.hashCode() + ": SessionID=" + sessionId);
+                    if (log.isTraceEnabled()) {
+                        log.trace(request.hashCode() + ": SessionID=" + sessionId);
                     }
                 }
             }
@@ -235,36 +283,46 @@ public class CrawlerSessionManagerValve extends ValveBase {
         getNext().invoke(request, response);
 
         if (isBot) {
-            if (sessionId == null) {
-                // Has bot just created a session, if so make a note of it
-                HttpSession s = request.getSession(false);
-                if (s != null) {
-                    clientIdSessionId.put(clientIdentifier, s.getId());
-                    sessionIdClientId.put(s.getId(), clientIdentifier);
-                    // #valueUnbound() will be called on session expiration
-                    s.setAttribute(this.getClass().getName(),
-                            new CrawlerHttpSessionBindingListener(clientIdSessionId, clientIdentifier));
-                    s.setMaxInactiveInterval(sessionInactiveInterval);
+            Session s = request.getSessionInternal(false);
+            if (s == null || s.getPrincipal() == null) {
+                if (sessionId == null) {
+                    // Has bot just created a session, if so make a note of it
+                    if (s != null) {
+                        clientIdSessionId.put(clientIdentifier, s.getId());
+                        // #valueUnbound() will be called on session expiration
+                        s.getSession().setAttribute(this.getClass().getName(),
+                                new CrawlerHttpSessionBindingListener(clientIdSessionId, clientIdentifier));
+                        s.setMaxInactiveInterval(sessionInactiveInterval);
 
-                    if (log.isDebugEnabled()) {
-                        log.debug(request.hashCode() + ": New bot session. SessionID=" + s.getId());
+                        if (log.isTraceEnabled()) {
+                            log.trace(request.hashCode() + ": New bot session. SessionID=" + s.getId());
+                        }
+                    }
+                } else {
+                    if (log.isTraceEnabled()) {
+                        log.trace(request.hashCode() + ": Bot session accessed. SessionID=" + sessionId);
                     }
                 }
             } else {
-                if (log.isDebugEnabled()) {
-                    log.debug(
-                            request.hashCode() + ": Bot session accessed. SessionID=" + sessionId);
-                }
+                /*
+                 * The session is authenticated. That shouldn't happen and indicates some form of mis-configuration.
+                 * Make a best efforts (i.e. this is hardening against mis-configuration, NOT vulnerability mitigation)
+                 * attempt to protect against the authenticated session being shared.
+                 */
+                s.expire();
+                clientIdSessionId.remove(clientIdentifier, s.getIdInternal());
+                log.warn(sm.getString("crawlerSessionManagerValve.principal", clientIdentifier,
+                        request.getHeader("User-Agent"), s.getPrincipal()));
             }
         }
     }
 
-
-    private String getClientIdentifier(Host host, Context context, String clientIp) {
-        StringBuilder result = new StringBuilder(clientIp);
+    private String getClientIdentifier(Request request) {
+        StringBuilder result = new StringBuilder(request.getRemoteAddr());
         if (isHostAware) {
-            result.append('-').append(host.getName());
+            result.append('-').append(request.getHost().getName());
         }
+        Context context = request.getContext();
         if (isContextAware && context != null) {
             result.append(context.getName());
         }
@@ -274,10 +332,10 @@ public class CrawlerSessionManagerValve extends ValveBase {
     private static class CrawlerHttpSessionBindingListener implements HttpSessionBindingListener, Serializable {
         private static final long serialVersionUID = 1L;
 
-        private final transient Map<String, String> clientIdSessionId;
+        private final transient Map<String,String> clientIdSessionId;
         private final transient String clientIdentifier;
 
-        private CrawlerHttpSessionBindingListener(Map<String, String> clientIdSessionId, String clientIdentifier) {
+        private CrawlerHttpSessionBindingListener(Map<String,String> clientIdSessionId, String clientIdentifier) {
             this.clientIdSessionId = clientIdSessionId;
             this.clientIdentifier = clientIdentifier;
         }

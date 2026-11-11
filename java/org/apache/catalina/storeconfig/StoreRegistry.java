@@ -14,10 +14,11 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.catalina.storeconfig;
 
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 import javax.naming.directory.DirContext;
@@ -29,17 +30,6 @@ import org.apache.catalina.Realm;
 import org.apache.catalina.Valve;
 import org.apache.catalina.WebResourceRoot;
 import org.apache.catalina.WebResourceSet;
-import org.apache.catalina.ha.CatalinaCluster;
-import org.apache.catalina.ha.ClusterDeployer;
-import org.apache.catalina.ha.ClusterListener;
-import org.apache.catalina.tribes.Channel;
-import org.apache.catalina.tribes.ChannelInterceptor;
-import org.apache.catalina.tribes.ChannelReceiver;
-import org.apache.catalina.tribes.ChannelSender;
-import org.apache.catalina.tribes.Member;
-import org.apache.catalina.tribes.MembershipService;
-import org.apache.catalina.tribes.MessageListener;
-import org.apache.catalina.tribes.transport.DataSender;
 import org.apache.coyote.UpgradeProtocol;
 import org.apache.juli.logging.Log;
 import org.apache.juli.logging.LogFactory;
@@ -50,10 +40,16 @@ import org.apache.tomcat.util.res.StringManager;
  * Central StoreRegistry for all server.xml elements
  */
 public class StoreRegistry {
-    private static Log log = LogFactory.getLog(StoreRegistry.class);
-    private static StringManager sm = StringManager.getManager(StoreRegistry.class);
+    /**
+     * Constructs a new StoreRegistry with default settings.
+     */
+    public StoreRegistry() {
+    }
 
-    private Map<String, StoreDescription> descriptors = new HashMap<>();
+    private static final Log log = LogFactory.getLog(StoreRegistry.class);
+    private static final StringManager sm = StringManager.getManager(StoreRegistry.class);
+
+    private final Map<String,StoreDescription> descriptors = new HashMap<>();
 
     private String encoding = "UTF-8";
 
@@ -62,54 +58,121 @@ public class StoreRegistry {
     private String version;
 
     // Access Information
-    private static Class<?> interfaces[] = { CatalinaCluster.class,
-            ChannelSender.class, ChannelReceiver.class, Channel.class,
-            MembershipService.class, ClusterDeployer.class, Realm.class,
-            Manager.class, DirContext.class, LifecycleListener.class,
-            Valve.class, ClusterListener.class, MessageListener.class,
-            DataSender.class, ChannelInterceptor.class, Member.class,
-            WebResourceRoot.class, WebResourceSet.class,
-            CredentialHandler.class, UpgradeProtocol.class,
-            CookieProcessor.class };
+    // Lazily initialized to gracefully handle optional features like clustering
+    private static volatile Class<?>[] interfaces = null;
 
     /**
-     * @return the name
+     * Initialize the interfaces array with all available classes.
+     * Uses dynamic loading for optional classes (e.g., clustering) to avoid
+     * ClassNotFoundException when those JARs are not present. This approach
+     * is consistent with how Catalina.addClusterRuleSet() handles clustering.
+     */
+    private static Class<?>[] getInterfaces() {
+        if (interfaces == null) {
+            synchronized (StoreRegistry.class) {
+                if (interfaces == null) {
+                    // Required interfaces - always present
+                    List<Class<?>> list = new ArrayList<>();
+                    list.add(Realm.class);
+                    list.add(Manager.class);
+                    list.add(DirContext.class);
+                    list.add(LifecycleListener.class);
+                    list.add(Valve.class);
+                    list.add(WebResourceRoot.class);
+                    list.add(WebResourceSet.class);
+                    list.add(CredentialHandler.class);
+                    list.add(UpgradeProtocol.class);
+                    list.add(CookieProcessor.class);
+
+                    // Optional clustering interfaces - load dynamically to support
+                    // deployments where clustering JARs may not be present
+                    tryAddClass(list, "org.apache.catalina.ha.CatalinaCluster");
+                    tryAddClass(list, "org.apache.catalina.tribes.ChannelSender");
+                    tryAddClass(list, "org.apache.catalina.tribes.ChannelReceiver");
+                    tryAddClass(list, "org.apache.catalina.tribes.Channel");
+                    tryAddClass(list, "org.apache.catalina.tribes.MembershipService");
+                    tryAddClass(list, "org.apache.catalina.ha.ClusterDeployer");
+                    tryAddClass(list, "org.apache.catalina.ha.ClusterListener");
+                    tryAddClass(list, "org.apache.catalina.tribes.MessageListener");
+                    tryAddClass(list, "org.apache.catalina.tribes.transport.DataSender");
+                    tryAddClass(list, "org.apache.catalina.tribes.ChannelInterceptor");
+                    tryAddClass(list, "org.apache.catalina.tribes.Member");
+
+                    interfaces = list.toArray(new Class<?>[0]);
+
+                    if (log.isDebugEnabled()) {
+                        log.debug(sm.getString("registry.interfacesLoaded", Integer.valueOf(interfaces.length)));
+                    }
+                }
+            }
+        }
+        return interfaces;
+    }
+
+    /**
+     * Try to load a class by name and add it to the list if successful.
+     * Logs at TRACE level if the class is not available.
+     */
+    private static void tryAddClass(List<Class<?>> list, String className) {
+        try {
+            Class<?> clazz = Class.forName(className, false, StoreRegistry.class.getClassLoader());
+            list.add(clazz);
+            if (log.isTraceEnabled()) {
+                log.trace(sm.getString("registry.optionalClassLoaded", className));
+            }
+        } catch (ClassNotFoundException | NoClassDefFoundError e) {
+            if (log.isTraceEnabled()) {
+                log.trace(sm.getString("registry.optionalClassNotFound", className));
+            }
+        }
+    }
+
+    /**
+     * Returns the name of this registry.
+     *
+     * @return the registry name
      */
     public String getName() {
         return name;
     }
 
     /**
-     * @param name The name to set.
+     * Sets the name of this registry.
+     *
+     * @param name the registry name
      */
     public void setName(String name) {
         this.name = name;
     }
 
     /**
-     * @return the version
+     * Returns the version of this registry.
+     *
+     * @return the registry version
      */
     public String getVersion() {
         return version;
     }
 
     /**
-     * @param version The version to set
+     * Sets the version of this registry.
+     *
+     * @param version the registry version
      */
     public void setVersion(String version) {
         this.version = version;
     }
 
     /**
-     * Find a description for id. Handle interface search when no direct match
-     * found.
+     * Find a description for id. Handle interface search when no direct match found.
      *
      * @param id The class name
+     *
      * @return the description
      */
     public StoreDescription findDescription(String id) {
-        if (log.isDebugEnabled()) {
-            log.debug("search descriptor " + id);
+        if (log.isTraceEnabled()) {
+            log.trace("search descriptor " + id);
         }
         StoreDescription desc = descriptors.get(id);
         if (desc == null) {
@@ -121,19 +184,19 @@ public class StoreRegistry {
             }
             if (aClass != null) {
                 desc = descriptors.get(aClass.getName());
-                for (int i = 0; desc == null && i < interfaces.length; i++) {
-                    if (interfaces[i].isAssignableFrom(aClass)) {
-                        desc = descriptors.get(interfaces[i].getName());
+                Class<?>[] availableInterfaces = getInterfaces();
+                for (int i = 0; desc == null && i < availableInterfaces.length; i++) {
+                    if (availableInterfaces[i].isAssignableFrom(aClass)) {
+                        desc = descriptors.get(availableInterfaces[i].getName());
                     }
                 }
             }
         }
         if (log.isDebugEnabled()) {
             if (desc != null) {
-                log.debug("find descriptor " + id + "#" + desc.getTag() + "#"
-                        + desc.getStoreFactoryClass());
+                log.trace("find descriptor " + id + "#" + desc.getTag() + "#" + desc.getStoreFactoryClass());
             } else {
-                log.debug(("Can't find descriptor for key " + id));
+                log.debug(sm.getString("registry.noDescriptor", id));
             }
         }
         return desc;
@@ -143,6 +206,7 @@ public class StoreRegistry {
      * Find Description by class.
      *
      * @param aClass The class
+     *
      * @return the description
      */
     public StoreDescription findDescription(Class<?> aClass) {
@@ -153,6 +217,7 @@ public class StoreRegistry {
      * Find factory from class name.
      *
      * @param aClassName The class name
+     *
      * @return the factory
      */
     public IStoreFactory findStoreFactory(String aClassName) {
@@ -169,6 +234,7 @@ public class StoreRegistry {
      * Find factory from class.
      *
      * @param aClass The class
+     *
      * @return the factory
      */
     public IStoreFactory findStoreFactory(Class<?> aClass) {
@@ -182,13 +248,12 @@ public class StoreRegistry {
      */
     public void registerDescription(StoreDescription desc) {
         String key = desc.getId();
-        if (key == null || "".equals(key)) {
+        if (key == null || key.isEmpty()) {
             key = desc.getTagClass();
         }
         descriptors.put(key, desc);
-        if (log.isDebugEnabled()) {
-            log.debug("register store descriptor " + key + "#" + desc.getTag()
-                    + "#" + desc.getTagClass());
+        if (log.isTraceEnabled()) {
+            log.trace("register store descriptor " + key + "#" + desc.getTag() + "#" + desc.getTagClass());
         }
     }
 
@@ -196,11 +261,12 @@ public class StoreRegistry {
      * Unregister a description.
      *
      * @param desc The description
+     *
      * @return the description, or <code>null</code> if it was not registered
      */
     public StoreDescription unregisterDescription(StoreDescription desc) {
         String key = desc.getId();
-        if (key == null || "".equals(key)) {
+        if (key == null || key.isEmpty()) {
             key = desc.getTagClass();
         }
         return descriptors.remove(key);
@@ -209,7 +275,9 @@ public class StoreRegistry {
     // Attributes
 
     /**
-     * @return the encoding
+     * Returns the character encoding used when writing configuration files.
+     *
+     * @return the character encoding
      */
     public String getEncoding() {
         return encoding;
@@ -217,6 +285,7 @@ public class StoreRegistry {
 
     /**
      * Set the encoding to use when writing the configuration files.
+     *
      * @param string The encoding
      */
     public void setEncoding(String string) {

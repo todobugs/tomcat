@@ -22,26 +22,30 @@ import java.util.concurrent.locks.AbstractQueuedSynchronizer;
 
 import org.apache.juli.logging.Log;
 import org.apache.juli.logging.LogFactory;
+import org.apache.tomcat.util.res.StringManager;
 
 /**
- * Shared latch that allows the latch to be acquired a limited number of times
- * after which all subsequent requests to acquire the latch will be placed in a
- * FIFO queue until one of the shares is returned.
+ * Shared latch that allows the latch to be acquired a limited number of times after which all subsequent requests to
+ * acquire the latch will be placed in a FIFO queue until one of the shares is returned.
  */
 public class LimitLatch {
 
     private static final Log log = LogFactory.getLog(LimitLatch.class);
+    private static final StringManager sm = StringManager.getManager(LimitLatch.class);
 
     private class Sync extends AbstractQueuedSynchronizer {
         private static final long serialVersionUID = 1L;
 
-        public Sync() {
+        Sync() {
         }
 
         @Override
         protected int tryAcquireShared(int ignored) {
             long newCount = count.incrementAndGet();
             if (!released && newCount > limit) {
+                if (log.isDebugEnabled()) {
+                    log.debug(sm.getString("limitLatch.exceeded", Long.valueOf(limit)));
+                }
                 // Limit exceeded
                 count.decrementAndGet();
                 return -1;
@@ -52,7 +56,10 @@ public class LimitLatch {
 
         @Override
         protected boolean tryReleaseShared(int arg) {
-            count.decrementAndGet();
+            // An argument of zero is used for releaseAll() which must not change the acquisition count.
+            if (arg != 0) {
+                count.decrementAndGet();
+            }
             return true;
         }
     }
@@ -64,9 +71,13 @@ public class LimitLatch {
 
     /**
      * Instantiates a LimitLatch object with an initial limit.
+     *
      * @param limit - maximum number of concurrent acquisitions of this latch
      */
     public LimitLatch(long limit) {
+        if (limit < 0) {
+            throw new IllegalArgumentException(sm.getString("limitLatch.badLimit", String.valueOf(limit)));
+        }
         this.limit = limit;
         this.count = new AtomicLong(0);
         this.sync = new Sync();
@@ -74,6 +85,7 @@ public class LimitLatch {
 
     /**
      * Returns the current count for the latch
+     *
      * @return the current count for latch
      */
     public long getCount() {
@@ -82,6 +94,7 @@ public class LimitLatch {
 
     /**
      * Obtain the current limit.
+     *
      * @return the limit
      */
     public long getLimit() {
@@ -90,49 +103,53 @@ public class LimitLatch {
 
 
     /**
-     * Sets a new limit. If the limit is decreased there may be a period where
-     * more shares of the latch are acquired than the limit. In this case no
-     * more shares of the latch will be issued until sufficient shares have been
-     * returned to reduce the number of acquired shares of the latch to below
-     * the new limit. If the limit is increased, threads currently in the queue
-     * may not be issued one of the newly available shares until the next
-     * request is made for a latch.
+     * Sets a new limit. If the limit is decreased there may be a period where more shares of the latch are acquired
+     * than the limit. In this case no more shares of the latch will be issued until sufficient shares have been
+     * returned to reduce the number of acquired shares of the latch to below the new limit. If the limit is increased,
+     * threads currently in the queue may not be issued one of the newly available shares until the next request is made
+     * for a latch.
      *
      * @param limit The new limit
      */
     public void setLimit(long limit) {
+        if (limit < 0) {
+            throw new IllegalArgumentException(sm.getString("limitLatch.badLimit", String.valueOf(limit)));
+        }
         this.limit = limit;
     }
 
 
     /**
-     * Acquires a shared latch if one is available or waits for one if no shared
-     * latch is current available.
+     * Acquires a shared latch if one is available or waits for one if no shared latch is currently available.
+     *
      * @throws InterruptedException If the current thread is interrupted
      */
     public void countUpOrAwait() throws InterruptedException {
-        if (log.isDebugEnabled()) {
-            log.debug("Counting up["+Thread.currentThread().getName()+"] latch="+getCount());
+        if (log.isTraceEnabled()) {
+            log.trace("Counting up[" + Thread.currentThread().getName() + "] latch=" + getCount());
         }
         sync.acquireSharedInterruptibly(1);
     }
 
     /**
      * Releases a shared latch, making it available for another thread to use.
-     * @return the previous counter value
+     *
+     * @return the counter value after the decrement
      */
     public long countDown() {
-        sync.releaseShared(0);
+        sync.releaseShared(1);
         long result = getCount();
-        if (log.isDebugEnabled()) {
-            log.debug("Counting down["+Thread.currentThread().getName()+"] latch="+result);
+        if (log.isTraceEnabled()) {
+            log.trace("Counting down[" + Thread.currentThread().getName() + "] latch=" + result);
         }
         return result;
     }
 
     /**
-     * Releases all waiting threads and causes the {@link #limit} to be ignored
-     * until {@link #reset()} is called.
+     * Releases all waiting threads and causes the {@link #limit} to be ignored until {@link #reset()} is called. This
+     * method does not change the acquisition counter. Threads that this method releases are counted as holding a share
+     * and each must still call {@link #countDown()} once it has finished, as with any other acquisition.
+     *
      * @return <code>true</code> if release was done
      */
     public boolean releaseAll() {
@@ -141,7 +158,12 @@ public class LimitLatch {
     }
 
     /**
-     * Resets the latch and initializes the shared acquisition counter to zero.
+     * Resets the latch and initializes the shared acquisition counter to zero. Any shares currently held are not
+     * accounted for. When the holders of those shares later call {@link #countDown()}, the counter goes negative which
+     * effectively allows that many additional acquisitions before the limit is reached again. Reset the latch only when
+     * no shares are held (for example, after using a dedicated latch for a period during which the limit is ignored),
+     * or accept that the limit is not reliably enforced until the counter has returned to zero.
+     *
      * @see #releaseAll()
      */
     public void reset() {
@@ -150,8 +172,9 @@ public class LimitLatch {
     }
 
     /**
-     * Returns <code>true</code> if there is at least one thread waiting to
-     * acquire the shared lock, otherwise returns <code>false</code>.
+     * Returns <code>true</code> if there is at least one thread waiting to acquire the shared lock, otherwise returns
+     * <code>false</code>.
+     *
      * @return <code>true</code> if threads are waiting
      */
     public boolean hasQueuedThreads() {
@@ -159,8 +182,8 @@ public class LimitLatch {
     }
 
     /**
-     * Provide access to the list of threads waiting to acquire this limited
-     * shared latch.
+     * Provide access to the list of threads waiting to acquire this limited shared latch.
+     *
      * @return a collection of threads
      */
     public Collection<Thread> getQueuedThreads() {

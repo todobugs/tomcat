@@ -18,15 +18,23 @@ package org.apache.tomcat.util.compat;
 
 import java.util.Locale;
 
+/**
+ * Provides flags for detecting the JVM vendor.
+ */
 public class JreVendor {
 
+    /**
+     * Constructs a new JreVendor instance. The vendor flags are static;
+     * instances carry no state.
+     */
+    public JreVendor() {
+    }
+
     static {
-        /**
-         * There are a few places where Tomcat either accesses JVM internals
-         * (e.g. the memory leak protection) or where feature support varies
-         * between JVMs (e.g. SPNEGO). These flags exist to enable Tomcat to
-         * adjust its behaviour based on the vendor of the JVM. In an ideal
-         * world this code would not exist.
+        /*
+         * There are a few places where Tomcat either accesses JVM internals (e.g. the memory leak protection) or where
+         * feature support varies between JVMs (e.g. SPNEGO). These flags exist to enable Tomcat to adjust its behaviour
+         * based on the vendor of the JVM. In an ideal world this code would not exist.
          */
         String vendor = System.getProperty("java.vendor", "");
         vendor = vendor.toLowerCase(Locale.ENGLISH);
@@ -43,7 +51,13 @@ public class JreVendor {
         }
     }
 
+    /**
+     * {@code true} if the current JVM is an Oracle or Sun JVM.
+     */
     public static final boolean IS_ORACLE_JVM;
 
+    /**
+     * {@code true} if the current JVM is an IBM JVM.
+     */
     public static final boolean IS_IBM_JVM;
 }

@@ -22,26 +22,31 @@ import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
- * ThreadFactory implementation that creates threads with the thread context
- * class loader set to the class loader that loaded this factory. It is intended
- * to be used when tasks may be passed to executors when the web application
- * class loader is set as the thread context class loader, such as in async
- * session replication.
+ * ThreadFactory implementation that creates threads with the thread context class loader set to the class loader that
+ * loaded this factory. It is intended to be used when tasks may be passed to executors when the web application class
+ * loader is set as the thread context class loader, such as in async session replication.
  */
 public class TcclThreadFactory implements ThreadFactory {
 
     private static final AtomicInteger poolNumber = new AtomicInteger(1);
-    private static final boolean IS_SECURITY_ENABLED =
-        (System.getSecurityManager() != null);
+    private static final boolean IS_SECURITY_ENABLED = (System.getSecurityManager() != null);
 
     private final ThreadGroup group;
     private final AtomicInteger threadNumber = new AtomicInteger(1);
     private final String namePrefix;
 
+    /**
+     * Creates a new TcclThreadFactory with an auto-generated name prefix.
+     */
     public TcclThreadFactory() {
         this("pool-" + poolNumber.getAndIncrement() + "-thread-");
     }
 
+    /**
+     * Creates a new TcclThreadFactory with the specified name prefix.
+     *
+     * @param namePrefix the prefix for thread names
+     */
     public TcclThreadFactory(String namePrefix) {
         SecurityManager s = System.getSecurityManager();
         group = (s != null) ? s.getThreadGroup() : Thread.currentThread().getThreadGroup();
@@ -66,5 +71,4 @@ public class TcclThreadFactory implements ThreadFactory {
         t.setDaemon(true);
         return t;
     }
-
 }

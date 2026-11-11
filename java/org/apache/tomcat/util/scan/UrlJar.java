@@ -22,11 +22,15 @@ import java.net.URL;
 import java.net.URLConnection;
 
 /**
- * Implementation of {@link org.apache.tomcat.Jar} that is optimised for
- * non-file based JAR URLs.
+ * Implementation of {@link org.apache.tomcat.Jar} that is optimised for non-file based JAR URLs.
  */
 public class UrlJar extends AbstractInputStreamJar {
 
+    /**
+     * Constructs a new UrlJar for the given JAR URL.
+     *
+     * @param jarFileURL the JAR file URL
+     */
     public UrlJar(URL jarFileURL) {
         super(jarFileURL);
     }

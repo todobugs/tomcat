@@ -20,21 +20,26 @@ import java.io.IOException;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.EnumSet;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentSkipListMap;
 
+import javax.naming.NamingException;
 import javax.servlet.DispatcherType;
 import javax.servlet.FilterRegistration;
 import javax.servlet.ServletContext;
 import javax.servlet.ServletException;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
+import javax.servlet.http.HttpSession;
 import javax.websocket.CloseReason;
 import javax.websocket.CloseReason.CloseCodes;
 import javax.websocket.DeploymentException;
 import javax.websocket.Encoder;
+import javax.websocket.Endpoint;
 import javax.websocket.server.ServerContainer;
 import javax.websocket.server.ServerEndpoint;
 import javax.websocket.server.ServerEndpointConfig;
@@ -47,24 +52,19 @@ import org.apache.tomcat.websocket.WsWebSocketContainer;
 import org.apache.tomcat.websocket.pojo.PojoMethodMapping;
 
 /**
- * Provides a per class loader (i.e. per web application) instance of a
- * ServerContainer. Web application wide defaults may be configured by setting
- * the following servlet context initialisation parameters to the desired
- * values.
+ * Provides a per class loader (i.e. per web application) instance of a ServerContainer. Web application wide defaults
+ * may be configured by setting the following servlet context initialisation parameters to the desired values.
  * <ul>
  * <li>{@link Constants#BINARY_BUFFER_SIZE_SERVLET_CONTEXT_INIT_PARAM}</li>
  * <li>{@link Constants#TEXT_BUFFER_SIZE_SERVLET_CONTEXT_INIT_PARAM}</li>
  * </ul>
  */
-public class WsServerContainer extends WsWebSocketContainer
-        implements ServerContainer {
+public class WsServerContainer extends WsWebSocketContainer implements ServerContainer {
 
     private static final StringManager sm = StringManager.getManager(WsServerContainer.class);
 
-    private static final CloseReason AUTHENTICATED_HTTP_SESSION_CLOSED =
-            new CloseReason(CloseCodes.VIOLATED_POLICY,
-                    "This connection was established under an authenticated " +
-                    "HTTP session that has ended.");
+    private static final CloseReason AUTHENTICATED_HTTP_SESSION_CLOSED = new CloseReason(CloseCodes.VIOLATED_POLICY,
+            "This connection was established under an authenticated " + "HTTP session that has ended.");
 
     private final WsWriteTimeout wsWriteTimeout = new WsWriteTimeout();
 
@@ -72,56 +72,55 @@ public class WsServerContainer extends WsWebSocketContainer
     private final Map<String,ExactPathMatch> configExactMatchMap = new ConcurrentHashMap<>();
     private final Map<Integer,ConcurrentSkipListMap<String,TemplatePathMatch>> configTemplateMatchMap =
             new ConcurrentHashMap<>();
-    private volatile boolean enforceNoAddAfterHandshake =
-            org.apache.tomcat.websocket.Constants.STRICT_SPEC_COMPLIANCE;
+    @SuppressWarnings("deprecation")
+    private volatile boolean enforceNoAddAfterHandshake = org.apache.tomcat.websocket.Constants.STRICT_SPEC_COMPLIANCE;
     private volatile boolean addAllowed = true;
-    private final Map<String,Set<WsSession>> authenticatedSessions = new ConcurrentHashMap<>();
+    private final Object authenticatedSessionMapLock = new Object();
+    private final Map<String,Set<WsSession>> httpSessionKeyToWebSocketSession = new HashMap<>();
+    private final Map<WsSession,String> webSocketSessionToHttpSessionKey = new HashMap<>();
     private volatile boolean endpointsRegistered = false;
     private volatile boolean deploymentFailed = false;
 
+    @SuppressWarnings("deprecation")
     WsServerContainer(ServletContext servletContext) {
 
         this.servletContext = servletContext;
         setInstanceManager((InstanceManager) servletContext.getAttribute(InstanceManager.class.getName()));
 
         // Configure servlet context wide defaults
-        String value = servletContext.getInitParameter(
-                Constants.BINARY_BUFFER_SIZE_SERVLET_CONTEXT_INIT_PARAM);
+        String value = servletContext.getInitParameter(Constants.BINARY_BUFFER_SIZE_SERVLET_CONTEXT_INIT_PARAM);
         if (value != null) {
             setDefaultMaxBinaryMessageBufferSize(Integer.parseInt(value));
         }
 
-        value = servletContext.getInitParameter(
-                Constants.TEXT_BUFFER_SIZE_SERVLET_CONTEXT_INIT_PARAM);
+        value = servletContext.getInitParameter(Constants.TEXT_BUFFER_SIZE_SERVLET_CONTEXT_INIT_PARAM);
         if (value != null) {
             setDefaultMaxTextMessageBufferSize(Integer.parseInt(value));
         }
 
-        value = servletContext.getInitParameter(
-                Constants.ENFORCE_NO_ADD_AFTER_HANDSHAKE_CONTEXT_INIT_PARAM);
+        value = servletContext.getInitParameter(Constants.ENFORCE_NO_ADD_AFTER_HANDSHAKE_CONTEXT_INIT_PARAM);
         if (value != null) {
             setEnforceNoAddAfterHandshake(Boolean.parseBoolean(value));
         }
 
-        FilterRegistration.Dynamic fr = servletContext.addFilter(
-                "Tomcat WebSocket (JSR356) Filter", new WsFilter());
-        fr.setAsyncSupported(true);
+        FilterRegistration.Dynamic fr = servletContext.addFilter("Tomcat WebSocket (JSR356) Filter", new WsFilter());
+        if (fr != null) {
+            fr.setAsyncSupported(true);
 
-        EnumSet<DispatcherType> types = EnumSet.of(DispatcherType.REQUEST,
-                DispatcherType.FORWARD);
+            EnumSet<DispatcherType> types = EnumSet.of(DispatcherType.REQUEST, DispatcherType.FORWARD);
 
-        fr.addMappingForUrlPatterns(types, true, "/*");
+            fr.addMappingForUrlPatterns(types, true, "/*");
+        }
     }
 
 
     /**
-     * Published the provided endpoint implementation at the specified path with
-     * the specified configuration. {@link #WsServerContainer(ServletContext)}
-     * must be called before calling this method.
+     * Published the provided endpoint implementation at the specified path with the specified configuration. The
+     * container instance must be fully constructed before calling this method.
      *
-     * @param sec   The configuration to use when creating endpoint instances
-     * @throws DeploymentException if the endpoint cannot be published as
-     *         requested
+     * @param sec The configuration to use when creating endpoint instances
+     *
+     * @throws DeploymentException if the endpoint cannot be published as requested
      */
     @Override
     public void addEndpoint(ServerEndpointConfig sec) throws DeploymentException {
@@ -132,13 +131,11 @@ public class WsServerContainer extends WsWebSocketContainer
     void addEndpoint(ServerEndpointConfig sec, boolean fromAnnotatedPojo) throws DeploymentException {
 
         if (enforceNoAddAfterHandshake && !addAllowed) {
-            throw new DeploymentException(
-                    sm.getString("serverContainer.addNotAllowed"));
+            throw new DeploymentException(sm.getString("serverContainer.addNotAllowed"));
         }
 
         if (servletContext == null) {
-            throw new DeploymentException(
-                    sm.getString("serverContainer.servletContextMissing"));
+            throw new DeploymentException(sm.getString("serverContainer.servletContextMissing"));
         }
 
         if (deploymentFailed) {
@@ -150,10 +147,15 @@ public class WsServerContainer extends WsWebSocketContainer
             String path = sec.getPath();
 
             // Add method mapping to user properties
-            PojoMethodMapping methodMapping = new PojoMethodMapping(sec.getEndpointClass(),
-                    sec.getDecoders(), path);
-            if (methodMapping.getOnClose() != null || methodMapping.getOnOpen() != null
-                    || methodMapping.getOnError() != null || methodMapping.hasMessageHandlers()) {
+            PojoMethodMapping methodMapping = new PojoMethodMapping(sec.getEndpointClass(), sec.getDecoders(), path,
+                    getInstanceManager(Thread.currentThread().getContextClassLoader()));
+            // The mapping is not used for programmatic endpoints (Endpoint subclasses)
+            // so for those classes it is only stored when it has content (bug 58232).
+            // For POJO endpoints it must always be stored, even when empty, since
+            // PojoEndpointServer expects it to be present.
+            if (!Endpoint.class.isAssignableFrom(sec.getEndpointClass()) ||
+                    methodMapping.getOnClose() != null || methodMapping.getOnOpen() != null ||
+                    methodMapping.getOnError() != null || methodMapping.hasMessageHandlers()) {
                 sec.getUserProperties().put(org.apache.tomcat.websocket.pojo.Constants.POJO_METHOD_MAPPING_KEY,
                         methodMapping);
             }
@@ -161,8 +163,7 @@ public class WsServerContainer extends WsWebSocketContainer
             UriTemplate uriTemplate = new UriTemplate(path);
             if (uriTemplate.hasParameters()) {
                 Integer key = Integer.valueOf(uriTemplate.getSegmentCount());
-                ConcurrentSkipListMap<String,TemplatePathMatch> templateMatches =
-                        configTemplateMatchMap.get(key);
+                ConcurrentSkipListMap<String,TemplatePathMatch> templateMatches = configTemplateMatchMap.get(key);
                 if (templateMatches == null) {
                     // Ensure that if concurrent threads execute this block they
                     // all end up using the same ConcurrentSkipListMap instance
@@ -174,17 +175,16 @@ public class WsServerContainer extends WsWebSocketContainer
                 TemplatePathMatch oldMatch = templateMatches.putIfAbsent(uriTemplate.getNormalizedPath(), newMatch);
                 if (oldMatch != null) {
                     // Note: This depends on Endpoint instances being added
-                    //       before POJOs in WsSci#onStartup()
+                    // before POJOs in WsSci#onStartup()
                     if (oldMatch.isFromAnnotatedPojo() && !newMatch.isFromAnnotatedPojo() &&
                             oldMatch.getConfig().getEndpointClass() == newMatch.getConfig().getEndpointClass()) {
-                        // The WebSocket spec says to ignore the new match in this case
-                        templateMatches.put(path, oldMatch);
+                        // The WebSocket spec says to ignore the new match in this case. The old
+                        // match has not been replaced by putIfAbsent() above so, unlike the exact
+                        // match case below, there is no need to restore the old match in the map.
                     } else {
                         // Duplicate uriTemplate;
-                        throw new DeploymentException(
-                                sm.getString("serverContainer.duplicatePaths", path,
-                                             sec.getEndpointClass(),
-                                             sec.getEndpointClass()));
+                        throw new DeploymentException(sm.getString("serverContainer.duplicatePaths", path,
+                                oldMatch.config.getEndpointClass(), sec.getEndpointClass()));
                     }
                 }
             } else {
@@ -193,17 +193,15 @@ public class WsServerContainer extends WsWebSocketContainer
                 ExactPathMatch oldMatch = configExactMatchMap.put(path, newMatch);
                 if (oldMatch != null) {
                     // Note: This depends on Endpoint instances being added
-                    //       before POJOs in WsSci#onStartup()
+                    // before POJOs in WsSci#onStartup()
                     if (oldMatch.isFromAnnotatedPojo() && !newMatch.isFromAnnotatedPojo() &&
                             oldMatch.getConfig().getEndpointClass() == newMatch.getConfig().getEndpointClass()) {
                         // The WebSocket spec says to ignore the new match in this case
                         configExactMatchMap.put(path, oldMatch);
                     } else {
                         // Duplicate path mappings
-                        throw new DeploymentException(
-                                sm.getString("serverContainer.duplicatePaths", path,
-                                             oldMatch.getConfig().getEndpointClass(),
-                                             sec.getEndpointClass()));
+                        throw new DeploymentException(sm.getString("serverContainer.duplicatePaths", path,
+                                oldMatch.getConfig().getEndpointClass(), sec.getEndpointClass()));
                     }
                 }
             }
@@ -217,11 +215,10 @@ public class WsServerContainer extends WsWebSocketContainer
 
 
     /**
-     * Provides the equivalent of {@link #addEndpoint(ServerEndpointConfig)}
-     * for publishing plain old java objects (POJOs) that have been annotated as
-     * WebSocket endpoints.
+     * Provides the equivalent of {@link #addEndpoint(ServerEndpointConfig)} for publishing plain old java objects
+     * (POJOs) that have been annotated as WebSocket endpoints.
      *
-     * @param pojo   The annotated POJO
+     * @param pojo The annotated POJO
      */
     @Override
     public void addEndpoint(Class<?> pojo) throws DeploymentException {
@@ -241,35 +238,27 @@ public class WsServerContainer extends WsWebSocketContainer
         try {
             ServerEndpoint annotation = pojo.getAnnotation(ServerEndpoint.class);
             if (annotation == null) {
-                throw new DeploymentException(
-                        sm.getString("serverContainer.missingAnnotation",
-                                pojo.getName()));
+                throw new DeploymentException(sm.getString("serverContainer.missingAnnotation", pojo.getName()));
             }
             String path = annotation.value();
 
             // Validate encoders
-            validateEncoders(annotation.encoders());
+            validateEncoders(annotation.encoders(), getInstanceManager(Thread.currentThread().getContextClassLoader()));
 
             // ServerEndpointConfig
-            Class<? extends Configurator> configuratorClazz =
-                    annotation.configurator();
+            Class<? extends Configurator> configuratorClazz = annotation.configurator();
             Configurator configurator = null;
             if (!configuratorClazz.equals(Configurator.class)) {
                 try {
                     configurator = annotation.configurator().getConstructor().newInstance();
                 } catch (ReflectiveOperationException e) {
-                    throw new DeploymentException(sm.getString(
-                            "serverContainer.configuratorFail",
-                            annotation.configurator().getName(),
-                            pojo.getClass().getName()), e);
+                    throw new DeploymentException(sm.getString("serverContainer.configuratorFail",
+                            annotation.configurator().getName(), pojo.getName()), e);
                 }
             }
-            sec = ServerEndpointConfig.Builder.create(pojo, path).
-                    decoders(Arrays.asList(annotation.decoders())).
-                    encoders(Arrays.asList(annotation.encoders())).
-                    subprotocols(Arrays.asList(annotation.subprotocols())).
-                    configurator(configurator).
-                    build();
+            sec = ServerEndpointConfig.Builder.create(pojo, path).decoders(Arrays.asList(annotation.decoders()))
+                    .encoders(Arrays.asList(annotation.encoders()))
+                    .subprotocols(Arrays.asList(annotation.subprotocols())).configurator(configurator).build();
         } catch (DeploymentException de) {
             failDeployment();
             throw de;
@@ -295,31 +284,77 @@ public class WsServerContainer extends WsWebSocketContainer
 
 
     /**
-     * Until the WebSocket specification provides such a mechanism, this Tomcat
-     * proprietary method is provided to enable applications to programmatically
-     * determine whether or not to upgrade an individual request to WebSocket.
+     * Until the WebSocket specification provides such a mechanism, this Tomcat proprietary method is provided to enable
+     * applications to programmatically determine whether or not to upgrade an individual request to WebSocket.
      * <p>
-     * Note: This method is not used by Tomcat but is used directly by
-     *       third-party code and must not be removed.
+     * Note: This method is not used by Tomcat but is used directly by third-party code and must not be removed.
      *
-     * @param request The request object to be upgraded
-     * @param response The response object to be populated with the result of
-     *                 the upgrade
-     * @param sec The server endpoint to use to process the upgrade request
+     * @param request    The request object to be upgraded
+     * @param response   The response object to be populated with the result of the upgrade
+     * @param sec        The server endpoint to use to process the upgrade request
      * @param pathParams The path parameters associated with the upgrade request
      *
-     * @throws ServletException If a configuration error prevents the upgrade
-     *         from taking place
-     * @throws IOException If an I/O error occurs during the upgrade process
+     * @throws ServletException If a configuration error prevents the upgrade from taking place
+     * @throws IOException      If an I/O error occurs during the upgrade process
+     *
+     * @deprecated This method will be removed in Apache Tomcat 10.1 onwards. It has been replaced by
+     *                 {@link #upgradeHttpToWebSocket(Object, Object, ServerEndpointConfig, Map)}
      */
-    public void doUpgrade(HttpServletRequest request,
-            HttpServletResponse response, ServerEndpointConfig sec,
-            Map<String,String> pathParams)
-            throws ServletException, IOException {
+    @Deprecated
+    public void doUpgrade(HttpServletRequest request, HttpServletResponse response, ServerEndpointConfig sec,
+            Map<String,String> pathParams) throws ServletException, IOException {
         UpgradeUtil.doUpgrade(this, request, response, sec, pathParams);
     }
 
 
+    /**
+     * Upgrade the HTTP connection represented by the {@code HttpServletRequest} and {@code HttpServletResponse} to the
+     * WebSocket protocol and establish a WebSocket connection as per the provided {@link ServerEndpointConfig}.
+     * <p>
+     * This method is primarily intended to be used by frameworks that implement the front-controller pattern. It does
+     * not deploy the provided endpoint.
+     * <p>
+     * If the WebSocket implementation is not deployed as part of a Jakarta Servlet container, this method will throw an
+     * {@link UnsupportedOperationException}.
+     * <p>
+     * This method will be part of the Jakarta WebSocket API from version 2.1
+     *
+     * @param httpServletRequest  The {@code HttpServletRequest} to be processed as a WebSocket handshake as per section
+     *                                4.0 of RFC 6455.
+     * @param httpServletResponse The {@code HttpServletResponse} to be used when processing the
+     *                                {@code httpServletRequest} as a WebSocket handshake as per section 4.0 of RFC
+     *                                6455.
+     * @param sec                 The server endpoint configuration to use to configure the WebSocket endpoint
+     * @param pathParameters      Provides a mapping of path parameter names and values, if any, to be used for the
+     *                                WebSocket connection established by the call to this method. If no such mapping is
+     *                                defined, an empty Map must be passed.
+     *
+     * @throws IllegalStateException         if the provided request does not meet the requirements of the WebSocket
+     *                                           handshake
+     * @throws UnsupportedOperationException if the WebSocket implementation is not deployed as part of a Jakarta
+     *                                           Servlet container
+     * @throws IOException                   if an I/O error occurs during the establishment of a WebSocket connection
+     * @throws DeploymentException           if a configuration error prevents the establishment of a WebSocket
+     *                                           connection
+     */
+    public void upgradeHttpToWebSocket(Object httpServletRequest, Object httpServletResponse, ServerEndpointConfig sec,
+            Map<String,String> pathParameters) throws IOException, DeploymentException {
+        try {
+            UpgradeUtil.doUpgrade(this, (HttpServletRequest) httpServletRequest,
+                    (HttpServletResponse) httpServletResponse, sec, pathParameters);
+        } catch (ServletException e) {
+            throw new DeploymentException(e.getMessage(), e);
+        }
+    }
+
+
+    /**
+     * Finds the endpoint configuration that matches the given path.
+     *
+     * @param path the URI path to match
+     *
+     * @return the mapping result, or null if no match is found
+     */
     public WsMappingResult findMapping(String path) {
 
         // Prevent registering additional endpoints once the first attempt has
@@ -331,13 +366,13 @@ public class WsServerContainer extends WsWebSocketContainer
         // Check an exact match. Simple case as there are no templates.
         ExactPathMatch match = configExactMatchMap.get(path);
         if (match != null) {
-            return new WsMappingResult(match.getConfig(), Collections.<String, String>emptyMap());
+            return new WsMappingResult(match.getConfig(), Collections.emptyMap());
         }
 
         // No exact match. Need to look for template matches.
-        UriTemplate pathUriTemplate = null;
+        UriTemplate pathUriTemplate;
         try {
-            pathUriTemplate = new UriTemplate(path);
+            pathUriTemplate = new UriTemplate(path, false);
         } catch (DeploymentException e) {
             // Path is not valid so can't be matched to a WebSocketEndpoint
             return null;
@@ -374,108 +409,174 @@ public class WsServerContainer extends WsWebSocketContainer
     }
 
 
-
+    @Deprecated
     public boolean isEnforceNoAddAfterHandshake() {
         return enforceNoAddAfterHandshake;
     }
 
 
-    public void setEnforceNoAddAfterHandshake(
-            boolean enforceNoAddAfterHandshake) {
+    @Deprecated
+    public void setEnforceNoAddAfterHandshake(boolean enforceNoAddAfterHandshake) {
         this.enforceNoAddAfterHandshake = enforceNoAddAfterHandshake;
     }
 
 
+    /**
+     * Returns the write timeout handler.
+     *
+     * @return the write timeout handler
+     */
     protected WsWriteTimeout getTimeout() {
         return wsWriteTimeout;
     }
 
 
     /**
-     * {@inheritDoc}
-     *
-     * Overridden to make it visible to other classes in this package.
+     * {@inheritDoc} Overridden to make it visible to other classes in this package.
      */
     @Override
-    protected void registerSession(Object key, WsSession wsSession) {
+    protected InstanceManager getInstanceManager(ClassLoader classLoader) {
+        return super.getInstanceManager(classLoader);
+    }
+
+
+    /**
+     * Register the link between the HTTP session and WebSocket session if the HTTP session is authenticated.
+     *
+     * @param key         The key to use to identify the HTTP session (session IDs can change)
+     * @param wsSession   The WebSocket session
+     * @param httpSession The HTTP session
+     */
+    protected void registerSession(Object key, WsSession wsSession, Object httpSession) {
         super.registerSession(key, wsSession);
-        if (wsSession.isOpen() &&
-                wsSession.getUserPrincipal() != null &&
-                wsSession.getHttpSessionId() != null) {
-            registerAuthenticatedSession(wsSession,
-                    wsSession.getHttpSessionId());
+        if (wsSession.isOpen() && wsSession.getUserPrincipal() != null && httpSession != null) {
+            registerAuthenticatedSession(wsSession, (HttpSession) httpSession);
         }
     }
 
 
     /**
-     * {@inheritDoc}
-     *
-     * Overridden to make it visible to other classes in this package.
+     * {@inheritDoc} Overridden to make it visible to other classes in this package.
      */
     @Override
     protected void unregisterSession(Object key, WsSession wsSession) {
-        if (wsSession.getUserPrincipal() != null &&
-                wsSession.getHttpSessionId() != null) {
-            unregisterAuthenticatedSession(wsSession,
-                    wsSession.getHttpSessionId());
+        if (wsSession.getUserPrincipalInternal() != null) {
+            unregisterAuthenticatedSession(wsSession);
         }
         super.unregisterSession(key, wsSession);
     }
 
 
-    private void registerAuthenticatedSession(WsSession wsSession,
-            String httpSessionId) {
-        Set<WsSession> wsSessions = authenticatedSessions.get(httpSessionId);
-        if (wsSessions == null) {
-            wsSessions = Collections.newSetFromMap(
-                     new ConcurrentHashMap<WsSession,Boolean>());
-             authenticatedSessions.putIfAbsent(httpSessionId, wsSessions);
-             wsSessions = authenticatedSessions.get(httpSessionId);
+    private void registerAuthenticatedSession(WsSession wsSession, HttpSession httpSession) {
+        boolean mustCloseWsSession = false;
+        String httpSessionKey = null;
+
+        synchronized (authenticatedSessionMapLock) {
+            try {
+                boolean mustAddSessionAttribute = false;
+                WsHttpSessionBindingListener listener = (WsHttpSessionBindingListener) httpSession
+                        .getAttribute(WsHttpSessionBindingListener.class.getCanonicalName());
+                if (listener == null) {
+                    httpSessionKey = httpSession.getId();
+                    mustAddSessionAttribute = true;
+                } else {
+                    httpSessionKey = listener.getKey();
+                }
+                if (mustAddSessionAttribute) {
+                    /*
+                     * It is possible that the session expires concurrently with the attribute being added. Depending on
+                     * the exact timing, one of two things will happen. Either an IllegalStateException will be thrown
+                     * or the attribute will be added and then immediately removed from the session. Handle both of
+                     * these scenarios here.
+                     */
+                    httpSession.setAttribute(WsHttpSessionBindingListener.class.getCanonicalName(),
+                            new WsHttpSessionBindingListener(httpSessionKey));
+                    if (httpSession.getAttribute(WsHttpSessionBindingListener.class.getCanonicalName()) == null) {
+                        mustCloseWsSession = true;
+                    }
+                }
+            } catch (IllegalStateException ise) {
+                // Failing to set the attribute indicates that the session has already expired
+                mustCloseWsSession = true;
+            }
+
+            if (!mustCloseWsSession) {
+                Set<WsSession> wsSessions = httpSessionKeyToWebSocketSession.get(httpSessionKey);
+                if (wsSessions == null) {
+                    wsSessions = new HashSet<>();
+                    httpSessionKeyToWebSocketSession.put(httpSessionKey, wsSessions);
+                }
+                wsSessions.add(wsSession);
+                webSocketSessionToHttpSessionKey.put(wsSession, httpSessionKey);
+            }
         }
-        wsSessions.add(wsSession);
+
+        if (mustCloseWsSession) {
+            closeAuthenticatedWebSocketSession(wsSession);
+        }
     }
 
 
-    private void unregisterAuthenticatedSession(WsSession wsSession,
-            String httpSessionId) {
-        Set<WsSession> wsSessions = authenticatedSessions.get(httpSessionId);
-        // wsSessions will be null if the HTTP session has ended
-        if (wsSessions != null) {
-            wsSessions.remove(wsSession);
-        }
-    }
-
-
-    public void closeAuthenticatedSession(String httpSessionId) {
-        Set<WsSession> wsSessions = authenticatedSessions.remove(httpSessionId);
-
-        if (wsSessions != null && !wsSessions.isEmpty()) {
-            for (WsSession wsSession : wsSessions) {
-                try {
-                    wsSession.close(AUTHENTICATED_HTTP_SESSION_CLOSED);
-                } catch (IOException e) {
-                    // Any IOExceptions during close will have been caught and the
-                    // onError method called.
+    private void unregisterAuthenticatedSession(WsSession wsSession) {
+        synchronized (authenticatedSessionMapLock) {
+            String httpSessionKey = webSocketSessionToHttpSessionKey.remove(wsSession);
+            if (httpSessionKey != null) {
+                Set<WsSession> wsSessions = httpSessionKeyToWebSocketSession.get(httpSessionKey);
+                if (wsSessions != null) {
+                    wsSessions.remove(wsSession);
                 }
             }
         }
     }
 
 
-    private static void validateEncoders(Class<? extends Encoder>[] encoders)
+    /**
+     * Closes all WebSocket sessions associated with the given authenticated HTTP session.
+     *
+     * @param httpSessionKey the HTTP session key
+     */
+    public void handleHttpSessionKeyUnbound(String httpSessionKey) {
+        Set<WsSession> wsSessions;
+
+        synchronized (authenticatedSessionMapLock) {
+            wsSessions = httpSessionKeyToWebSocketSession.remove(httpSessionKey);
+        }
+
+        if (wsSessions != null) {
+            for (WsSession wsSession : wsSessions) {
+                closeAuthenticatedWebSocketSession(wsSession);
+            }
+        }
+    }
+
+
+    private void closeAuthenticatedWebSocketSession(WsSession wsSession) {
+        try {
+            wsSession.close(AUTHENTICATED_HTTP_SESSION_CLOSED);
+        } catch (IOException ignore) {
+            // Any IOExceptions during close will have been caught and the
+            // onError method called.
+        }
+    }
+
+
+    private static void validateEncoders(Class<? extends Encoder>[] encoders, InstanceManager instanceManager)
             throws DeploymentException {
 
         for (Class<? extends Encoder> encoder : encoders) {
-            // Need to instantiate decoder to ensure it is valid and that
-            // deployment can be failed if it is not
-            @SuppressWarnings("unused")
+            // Need to instantiate encoder to ensure it is valid and that
+            // deployment can be failed if it is not. The encoder is then
+            // discarded immediately.
             Encoder instance;
             try {
-                encoder.getConstructor().newInstance();
-            } catch(ReflectiveOperationException e) {
-                throw new DeploymentException(sm.getString(
-                        "serverContainer.encoderFail", encoder.getName()), e);
+                if (instanceManager == null) {
+                    instance = encoder.getConstructor().newInstance();
+                } else {
+                    instance = (Encoder) instanceManager.newInstance(encoder);
+                    instanceManager.destroyInstance(instance);
+                }
+            } catch (ReflectiveOperationException | NamingException e) {
+                throw new DeploymentException(sm.getString("serverContainer.encoderFail", encoder.getName()), e);
             }
         }
     }
@@ -486,8 +587,7 @@ public class WsServerContainer extends WsWebSocketContainer
         private final UriTemplate uriTemplate;
         private final boolean fromAnnotatedPojo;
 
-        public TemplatePathMatch(ServerEndpointConfig config, UriTemplate uriTemplate,
-                boolean fromAnnotatedPojo) {
+        TemplatePathMatch(ServerEndpointConfig config, UriTemplate uriTemplate, boolean fromAnnotatedPojo) {
             this.config = config;
             this.uriTemplate = uriTemplate;
             this.fromAnnotatedPojo = fromAnnotatedPojo;
@@ -514,7 +614,7 @@ public class WsServerContainer extends WsWebSocketContainer
         private final ServerEndpointConfig config;
         private final boolean fromAnnotatedPojo;
 
-        public ExactPathMatch(ServerEndpointConfig config, boolean fromAnnotatedPojo) {
+        ExactPathMatch(ServerEndpointConfig config, boolean fromAnnotatedPojo) {
             this.config = config;
             this.fromAnnotatedPojo = fromAnnotatedPojo;
         }

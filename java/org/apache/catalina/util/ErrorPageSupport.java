@@ -24,18 +24,29 @@ import java.util.concurrent.ConcurrentHashMap;
 import org.apache.tomcat.util.descriptor.web.ErrorPage;
 
 /**
- * Provides support for tracking per exception type and per HTTP status code
- * error pages.
+ * Provides support for tracking per exception type and per HTTP status code error pages.
  */
 public class ErrorPageSupport {
 
+    /**
+     * Default constructor for ErrorPageSupport.
+     */
+    public ErrorPageSupport() {
+        // NO-OP
+    }
+
     // Fully qualified class name to error page
-    private Map<String, ErrorPage> exceptionPages = new ConcurrentHashMap<>();
+    private final Map<String,ErrorPage> exceptionPages = new ConcurrentHashMap<>();
 
     // HTTP status code to error page
-    private Map<Integer, ErrorPage> statusPages = new ConcurrentHashMap<>();
+    private final Map<Integer,ErrorPage> statusPages = new ConcurrentHashMap<>();
 
 
+    /**
+     * Adds an error page to the support.
+     *
+     * @param errorPage The error page to add
+     */
     public void add(ErrorPage errorPage) {
         String exceptionType = errorPage.getExceptionType();
         if (exceptionType == null) {
@@ -46,6 +57,11 @@ public class ErrorPageSupport {
     }
 
 
+    /**
+     * Removes an error page from the support.
+     *
+     * @param errorPage The error page to remove
+     */
     public void remove(ErrorPage errorPage) {
         String exceptionType = errorPage.getExceptionType();
         if (exceptionType == null) {
@@ -56,6 +72,13 @@ public class ErrorPageSupport {
     }
 
 
+    /**
+     * Finds the ErrorPage, if any, for the given HTTP status code.
+     *
+     * @param statusCode The HTTP status code
+     *
+     * @return The ErrorPage for the status code, or {@code null} if none is configured
+     */
     public ErrorPage find(int statusCode) {
         return statusPages.get(Integer.valueOf(statusCode));
     }
@@ -66,19 +89,26 @@ public class ErrorPageSupport {
      *
      * @param exceptionType The fully qualified class name of the exception type
      *
-     * @return The ErrorPage for the named exception type, or {@code null} if
-     *         none is configured
+     * @return The ErrorPage for the named exception type, or {@code null} if none is configured
      */
     public ErrorPage find(String exceptionType) {
         return exceptionPages.get(exceptionType);
     }
 
 
-    public ErrorPage find(Throwable exceptionType) {
-        if (exceptionType == null) {
+    /**
+     * Find the ErrorPage, if any, for the given exception, searching up the
+     * exception's class hierarchy.
+     *
+     * @param exception The exception instance
+     *
+     * @return The ErrorPage for the exception, or {@code null} if none is configured
+     */
+    public ErrorPage find(Throwable exception) {
+        if (exception == null) {
             return null;
         }
-        Class<?> clazz = exceptionType.getClass();
+        Class<?> clazz = exception.getClass();
         String name = clazz.getName();
         while (!Object.class.equals(clazz)) {
             ErrorPage errorPage = exceptionPages.get(name);
@@ -95,10 +125,15 @@ public class ErrorPageSupport {
     }
 
 
+    /**
+     * Returns all configured error pages.
+     *
+     * @return Array of all configured error pages
+     */
     public ErrorPage[] findAll() {
         Set<ErrorPage> errorPages = new HashSet<>();
         errorPages.addAll(exceptionPages.values());
         errorPages.addAll(statusPages.values());
-        return errorPages.toArray(new ErrorPage[errorPages.size()]);
+        return errorPages.toArray(new ErrorPage[0]);
     }
 }

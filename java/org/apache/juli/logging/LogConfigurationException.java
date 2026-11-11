@@ -14,16 +14,14 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.juli.logging;
 
 
 /**
- * <p>An exception that is thrown only if a suitable <code>LogFactory</code>
- * or <code>Log</code> instance cannot be created by the corresponding
- * factory methods.</p>
- *
- * @author Craig R. McClanahan
+ * <p>
+ * An exception that is thrown only if a suitable <code>LogFactory</code> or <code>Log</code> instance cannot be created
+ * by the corresponding factory methods.
+ * </p>
  */
 public class LogConfigurationException extends RuntimeException {
 
@@ -50,8 +48,7 @@ public class LogConfigurationException extends RuntimeException {
 
 
     /**
-     * Construct a new exception with the specified cause and a derived
-     * detail message.
+     * Construct a new exception with the specified cause and a derived detail message.
      *
      * @param cause The underlying cause
      */
@@ -64,7 +61,7 @@ public class LogConfigurationException extends RuntimeException {
      * Construct a new exception with the specified detail message and cause.
      *
      * @param message The detail message
-     * @param cause The underlying cause
+     * @param cause   The underlying cause
      */
     public LogConfigurationException(String message, Throwable cause) {
         super(message, cause);

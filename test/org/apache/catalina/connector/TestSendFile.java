@@ -22,12 +22,16 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileWriter;
 import java.io.IOException;
-import java.util.ArrayList;
+import java.io.InputStream;
+import java.net.Socket;
+import java.net.SocketTimeoutException;
+import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
@@ -60,34 +64,29 @@ public class TestSendFile extends TomcatBaseTest {
         File[] files = new File[ITERATIONS];
         for (int i = 0; i < ITERATIONS; i++) {
             files[i] = generateFile(TEMP_DIR, "-" + i, EXPECTED_CONTENT_LENGTH * (i + 1));
+            addDeleteOnTearDown(files[i]);
         }
-        try {
 
-            for (int i = 0; i < ITERATIONS; i++) {
-                WritingServlet servlet = new WritingServlet(files[i]);
-                Tomcat.addServlet(root, "servlet" + i, servlet);
-                root.addServletMappingDecoded("/servlet" + i, "servlet" + i);
-            }
+        for (int i = 0; i < ITERATIONS; i++) {
+            WritingServlet servlet = new WritingServlet(files[i]);
+            Tomcat.addServlet(root, "servlet" + i, servlet);
+            root.addServletMapping("/servlet" + i, "servlet" + i);
+        }
 
-            tomcat.start();
+        tomcat.start();
 
-            ByteChunk bc = new ByteChunk();
-            Map<String, List<String>> respHeaders = new HashMap<>();
-            for (int i = 0; i < ITERATIONS; i++) {
-                long start = System.currentTimeMillis();
-                int rc = getUrl("http://localhost:" + getPort() + "/servlet" + i, bc, null,
-                        respHeaders);
-                Assert.assertEquals(HttpServletResponse.SC_OK, rc);
-                System.out.println("Client received " + bc.getLength() + " bytes in "
-                        + (System.currentTimeMillis() - start) + " ms.");
-                Assert.assertEquals(EXPECTED_CONTENT_LENGTH * (i + 1L), bc.getLength());
+        ByteChunk bc = new ByteChunk();
+        Map<String,List<String>> respHeaders = new HashMap<>();
+        for (int i = 0; i < ITERATIONS; i++) {
+            long start = System.currentTimeMillis();
+            int rc = getUrl("http://localhost:" + getPort() + "/servlet" + i, bc, null, respHeaders);
+            Assert.assertEquals(HttpServletResponse.SC_OK, rc);
+            System.out.println(
+                    "Client received " + bc.getLength() + " bytes in " + (System.currentTimeMillis() - start) + " ms.");
+            Assert.assertEquals("Expected [" + EXPECTED_CONTENT_LENGTH * (i + 1L) + "], was [" + bc.getLength() + "]",
+                    EXPECTED_CONTENT_LENGTH * (i + 1L), bc.getLength());
 
-                bc.recycle();
-            }
-        } finally {
-            for (File f : files) {
-                Assert.assertTrue("Failed to clean up [" + f + "]", f.delete());
-            }
+            bc.recycle();
         }
     }
 
@@ -105,8 +104,7 @@ public class TestSendFile extends TomcatBaseTest {
             }
             w.flush();
         }
-        System.out.println(
-                "Created file:" + f.getAbsolutePath() + " with " + f.length() + " bytes.");
+        System.out.println("Created file:" + f.getAbsolutePath() + " with " + f.length() + " bytes.");
         return f;
 
     }
@@ -118,13 +116,12 @@ public class TestSendFile extends TomcatBaseTest {
 
         private final File f;
 
-        public WritingServlet(File f) {
+        WritingServlet(File f) {
             this.f = f;
         }
 
         @Override
-        protected void doGet(HttpServletRequest req, HttpServletResponse resp)
-                throws ServletException, IOException {
+        protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
 
             resp.setContentType("'application/octet-stream");
             resp.setCharacterEncoding("ISO-8859-1");
@@ -146,8 +143,8 @@ public class TestSendFile extends TomcatBaseTest {
                             written += len;
                         }
                     } while (len > 0);
-                    System.out.println("Server Wrote " + written + " bytes in "
-                            + (System.currentTimeMillis() - start) + " ms.");
+                    System.out.println(
+                            "Server Wrote " + written + " bytes in " + (System.currentTimeMillis() - start) + " ms.");
                 }
             }
         }
@@ -161,27 +158,27 @@ public class TestSendFile extends TomcatBaseTest {
         Context ctx = tomcat.addContext("", TEMP_DIR);
         File file = generateFile(TEMP_DIR, "", EXPECTED_CONTENT_LENGTH);
         Tomcat.addServlet(ctx, "test", new Bug60409Servlet(file));
-        ctx.addServletMappingDecoded("/", "test");
+        ctx.addServletMapping("/", "test");
 
         tomcat.start();
 
         ByteChunk bc = new ByteChunk();
-        getUrl("http://localhost:" + getPort() + "/test/?" + Globals.SENDFILE_SUPPORTED_ATTR
-                + "=true", bc, null);
+        try {
+            getUrl("http://localhost:" + getPort() + "/test/?" + Globals.SENDFILE_SUPPORTED_ATTR + "=true", bc, null);
+        } catch (IOException ioe) {
+            // Ignore possible IOE due to file delete on the server
+            System.out.println("Ignored: " + ioe.getMessage());
+        }
 
         CountDownLatch latch = new CountDownLatch(2);
-        List<Throwable> exceptions = new ArrayList<>();
-        new Thread(
-                new RequestExecutor("http://localhost:" + getPort() + "/test/", latch, exceptions))
-                        .start();
-        new Thread(
-                new RequestExecutor("http://localhost:" + getPort() + "/test/", latch, exceptions))
-                        .start();
+        List<Throwable> throwables = new CopyOnWriteArrayList<>();
+        new Thread(new RequestExecutor("http://localhost:" + getPort() + "/test/", latch, throwables)).start();
+        new Thread(new RequestExecutor("http://localhost:" + getPort() + "/test/", latch, throwables)).start();
 
         latch.await(3000, TimeUnit.MILLISECONDS);
 
-        if (exceptions.size() > 0) {
-            Assert.fail();
+        if (throwables.size() > 0) {
+            Assert.fail("[" + throwables.size() + "] throwables observed");
         }
     }
 
@@ -194,8 +191,7 @@ public class TestSendFile extends TomcatBaseTest {
         }
 
         @Override
-        protected void doGet(HttpServletRequest req, HttpServletResponse resp)
-                throws ServletException, IOException {
+        protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
             if (Boolean.valueOf(req.getParameter(Globals.SENDFILE_SUPPORTED_ATTR)).booleanValue()) {
                 resp.setContentType("'application/octet-stream");
                 resp.setCharacterEncoding("ISO-8859-1");
@@ -247,5 +243,65 @@ public class TestSendFile extends TomcatBaseTest {
             }
         }
 
+    }
+
+    /*
+     * If sendfile does not complete inline, the idle connection must wait for the next request using
+     * keepAliveTimeout, not connectionTimeout.
+     *
+     * https://bz.apache.org/bugzilla/show_bug.cgi?id=70287
+     */
+    @Test
+    public void testKeepAliveTimeoutAfterPendingSendfile() throws Exception {
+        Tomcat tomcat = getTomcatInstance();
+        tomcat.getConnector().setProperty("connectionTimeout", "3000");
+        tomcat.getConnector().setProperty("keepAliveTimeout", "20000");
+
+        Context ctx = tomcat.addContext("", TEMP_DIR);
+        // Large enough that sendfile can't complete while the client isn't reading
+        File file = generateFile(TEMP_DIR, "-keepalive", 64 * 1024 * 1024);
+        addDeleteOnTearDown(file);
+        Tomcat.addServlet(ctx, "test", new WritingServlet(file));
+        ctx.addServletMapping("/", "test");
+
+        tomcat.start();
+
+        try (Socket s = new Socket("localhost", getPort())) {
+            long requestTime = System.nanoTime();
+            s.getOutputStream().write(("GET /test HTTP/1.1\r\nHost: localhost\r\n\r\n").getBytes(
+                    StandardCharsets.ISO_8859_1));
+            s.getOutputStream().flush();
+
+            // Let the server block on a pending sendfile, then drain the response
+            Thread.sleep(1000);
+            InputStream is = s.getInputStream();
+            s.setSoTimeout(10000);
+            byte[] buf = new byte[65536];
+            long total = 0;
+            long expected = file.length();
+            StringBuilder hdr = new StringBuilder();
+            // Read headers
+            int b;
+            while (!hdr.toString().endsWith("\r\n\r\n") && (b = is.read()) != -1) {
+                hdr.append((char) b);
+            }
+            while (total < expected) {
+                int n = is.read(buf);
+                Assert.assertTrue("Premature EOF after [" + total + "] bytes", n > 0);
+                total += n;
+            }
+
+            // Response complete. Connection is idle. connectionTimeout (3s) has been exceeded (measured from the
+            // request) after 4s but keepAliveTimeout (20s) has not. The connection must still be open.
+            long remaining = 5000 - TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - requestTime);
+            Thread.sleep(Math.max(remaining, 0));
+            s.setSoTimeout(500);
+            try {
+                int r = is.read();
+                Assert.fail("Unexpected data/close: server closed idle connection early (read returned " + r + ")");
+            } catch (SocketTimeoutException expectedTimeout) {
+                // Connection still open - expected
+            }
+        }
     }
 }

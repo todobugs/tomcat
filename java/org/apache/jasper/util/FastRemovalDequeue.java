@@ -16,33 +16,29 @@
  */
 package org.apache.jasper.util;
 
+import org.apache.jasper.compiler.Localizer;
+
 /**
- *
- * The FastRemovalDequeue is a Dequeue that supports constant time removal of
- * entries. This is achieved by using a doubly linked list and wrapping any object
- * added to the collection with an Entry type, that is returned to the consumer.
- * When removing an object from the list, the consumer provides this Entry object.
- *
- * The Entry type is nearly opaque to the consumer of the queue. The only public
- * member is the getter for any object displaced when adding a new object to the
- * queue. This can be used to destroy that object.
- *
- * The Entry object contains the links pointing to the neighbours in the doubly
- * linked list, so that removal of an Entry does not need to search for it but
- * instead can be done in constant time.
- *
+ * The FastRemovalDequeue is a Dequeue that supports constant time removal of entries. This is achieved by using a
+ * doubly linked list and wrapping any object added to the collection with an Entry type, that is returned to the
+ * consumer. When removing an object from the list, the consumer provides this Entry object.
+ * <p>
+ * The Entry type is nearly opaque to the consumer of the queue. The only public member is the getter for any object
+ * displaced when adding a new object to the queue. This can be used to destroy that object.
+ * <p>
+ * The Entry object contains the links pointing to the neighbours in the doubly linked list, so that removal of an Entry
+ * does not need to search for it but instead can be done in constant time.
+ * <p>
  * The implementation is fully thread-safe.
- *
- * Invalidation of Entry objects during removal from the list is done
- * by setting their "valid" field to false. All public methods which take Entry
- * objects as arguments are NOP if the entry is no longer valid.
- *
- * A typical use of the FastRemovalDequeue is a list of entries in sorted order,
- * where the sort position of an object will only switch to first or last.
- *
- * Whenever the sort position needs to change, the consumer can remove the object
- * and reinsert it in front or at the end in constant time.
- * So keeping the list sorted is very cheap.
+ * <p>
+ * Invalidation of Entry objects during removal from the list is done by setting their "valid" field to false. All
+ * public methods which take Entry objects as arguments are NOP if the entry is no longer valid.
+ * <p>
+ * A typical use of the FastRemovalDequeue is a list of entries in sorted order, where the sort position of an object
+ * will only switch to first or last.
+ * <p>
+ * Whenever the sort position needs to change, the consumer can remove the object and reinsert it in front or at the end
+ * in constant time. So keeping the list sorted is very cheap.
  *
  * @param <T> The type of elements in the queue
  */
@@ -60,12 +56,14 @@ public class FastRemovalDequeue<T> {
     /**
      * Initialize empty queue.
      *
-     * @param maxSize The maximum size to which the queue will be allowed to
-     *                grow
+     * @param maxSize The maximum size to which the queue will be allowed to grow
+     *
+     * @throws IllegalArgumentException if the maximum size is less than one
      */
     public FastRemovalDequeue(int maxSize) {
-        if (maxSize <=1 ) {
-            maxSize = 2;
+        if (maxSize < 1) {
+            throw new IllegalArgumentException(
+                    Localizer.getMessage("jsp.error.fastremovaldequeue.maxSize", Integer.valueOf(maxSize)));
         }
         this.maxSize = maxSize;
         first = null;
@@ -75,22 +73,21 @@ public class FastRemovalDequeue<T> {
 
     /**
      * Retrieve the size of the list.
-     * This method also needs to be externally synchronized to
-     * ensure correct publication of changes.
      *
      * @return the size of the list.
-     * */
+     */
     public synchronized int getSize() {
         return size;
     }
 
     /**
-     * Adds an object to the start of the list and returns the entry created for
-     * said object. The entry can later be reused for moving the entry.
+     * Adds an object to the start of the list and returns the entry created for said object. The entry can later be
+     * reused for moving the entry.
      *
      * @param object the object to prepend to the start of the list.
+     *
      * @return an entry for use when the object should be moved.
-     * */
+     */
     public synchronized Entry push(final T object) {
         Entry entry = new Entry(object);
         if (size >= maxSize) {
@@ -109,12 +106,13 @@ public class FastRemovalDequeue<T> {
     }
 
     /**
-     * Adds an object to the end of the list and returns the entry created for
-     * said object. The entry can later be reused for moving the entry.
+     * Adds an object to the end of the list and returns the entry created for said object. The entry can later be
+     * reused for moving the entry.
      *
      * @param object the object to append to the end of the list.
+     *
      * @return an entry for use when the object should be moved.
-     * */
+     */
     public synchronized Entry unpop(final T object) {
         Entry entry = new Entry(object);
         if (size >= maxSize) {
@@ -144,7 +142,7 @@ public class FastRemovalDequeue<T> {
             first = first.getNext();
             content = element.getContent();
             if (first == null) {
-                last =null;
+                last = null;
             } else {
                 first.setPrevious(null);
             }
@@ -202,16 +200,13 @@ public class FastRemovalDequeue<T> {
     }
 
     /**
-     * Moves the element in front.
-     *
-     * Could also be implemented as remove() and
-     * push(), but explicitly coding might be a bit faster.
+     * Moves the element in front. Could also be implemented as remove() and push(), but explicitly coding might be a
+     * bit faster.
      *
      * @param element the entry to move in front.
-     * */
+     */
     public synchronized void moveFirst(final Entry element) {
-        if (element.getValid() &&
-            element.getPrevious() != null) {
+        if (element.getValid() && element.getPrevious() != null) {
             Entry prev = element.getPrevious();
             Entry next = element.getNext();
             prev.setNext(next);
@@ -228,16 +223,13 @@ public class FastRemovalDequeue<T> {
     }
 
     /**
-     * Moves the element to the back.
-     *
-     * Could also be implemented as remove() and
-     * unpop(), but explicitly coding might be a bit faster.
+     * Moves the element to the back. Could also be implemented as remove() and unpop(), but explicitly coding might be
+     * a bit faster.
      *
      * @param element the entry to move to the back.
-     * */
+     */
     public synchronized void moveLast(final Entry element) {
-        if (element.getValid() &&
-            element.getNext() != null) {
+        if (element.getValid() && element.getNext() != null) {
             Entry next = element.getNext();
             Entry prev = element.getPrevious();
             next.setPrevious(prev);
@@ -254,10 +246,8 @@ public class FastRemovalDequeue<T> {
     }
 
     /**
-     * Implementation of a doubly linked list entry.
-     * All implementation details are private.
-     * For the consumer of the above collection, this
-     * is simply garbage in, garbage out.
+     * Implementation of a doubly linked list entry. All implementation details are private. For the consumer of the
+     * above collection, this is simply garbage in, garbage out.
      */
     public class Entry {
 
@@ -276,51 +266,64 @@ public class FastRemovalDequeue<T> {
             content = object;
         }
 
-        private final boolean getValid() {
+        private boolean getValid() {
             return valid;
         }
 
-        private final void invalidate() {
+        private void invalidate() {
             this.valid = false;
             this.previous = null;
             this.next = null;
         }
 
+        /**
+         * Returns the content stored in this entry.
+         *
+         * @return the content object
+         */
         public final T getContent() {
             return content;
         }
 
+        /**
+         * Returns the content that was displaced when this entry was added to a full queue.
+         *
+         * @return the displaced content, or {@code null} if no content was displaced
+         */
         public final T getReplaced() {
             return replaced;
         }
 
-        private final void setReplaced(final T replaced) {
+        private void setReplaced(final T replaced) {
             this.replaced = replaced;
         }
 
+        /**
+         * Clears the displaced content reference.
+         */
         public final void clearReplaced() {
             this.replaced = null;
         }
 
-        private final Entry getNext() {
+        private Entry getNext() {
             return next;
         }
 
-        private final void setNext(final Entry next) {
+        private void setNext(final Entry next) {
             this.next = next;
         }
 
-        private final Entry getPrevious() {
+        private Entry getPrevious() {
             return previous;
         }
 
-        private final void setPrevious(final Entry previous) {
+        private void setPrevious(final Entry previous) {
             this.previous = previous;
         }
 
         @Override
         public String toString() {
-            return "Entry-" + content.toString();
+            return "Entry-" + String.valueOf(content);
         }
     }
 

@@ -21,48 +21,64 @@ import java.lang.reflect.InvocationTargetException;
 import javax.naming.NamingException;
 
 /**
- * SimpleInstanceManager
- *
- * Implement the org.apache.tomcat.InstanceManager interface.
+ * SimpleInstanceManager implements the org.apache.tomcat.InstanceManager interface. Instances are created using their
+ * public no-argument constructor. No dependency injection is performed and no pre-destroy callbacks are invoked.
  */
 public class SimpleInstanceManager implements InstanceManager {
 
+    /**
+     * Creates a new SimpleInstanceManager.
+     */
     public SimpleInstanceManager() {
     }
 
-    @Override
-    public Object newInstance(Class<?> clazz) throws IllegalAccessException,
-            InvocationTargetException, NamingException, InstantiationException, NoSuchMethodException {
-        return prepareInstance(clazz.getConstructor().newInstance());
-    }
 
     @Override
-    public Object newInstance(String className) throws IllegalAccessException,
-            InvocationTargetException, NamingException, InstantiationException,
-            ClassNotFoundException, NoSuchMethodException  {
-        Class<?> clazz = Thread.currentThread().getContextClassLoader().loadClass(className);
-        return prepareInstance(clazz.getConstructor().newInstance());
+    public Object newInstance(Class<?> clazz) throws IllegalAccessException, InvocationTargetException, NamingException,
+            InstantiationException, NoSuchMethodException {
+        return clazz.getConstructor().newInstance();
     }
 
+
     @Override
-    public Object newInstance(String fqcn, ClassLoader classLoader) throws IllegalAccessException,
-            InvocationTargetException, NamingException, InstantiationException,
-            ClassNotFoundException, NoSuchMethodException  {
+    public Object newInstance(String className) throws IllegalAccessException, InvocationTargetException,
+            NamingException, InstantiationException, ClassNotFoundException, NoSuchMethodException {
+        ClassLoader classLoader = Thread.currentThread().getContextClassLoader();
+        if (classLoader == null) {
+            classLoader = SimpleInstanceManager.class.getClassLoader();
+        }
+        Class<?> clazz = classLoader.loadClass(className);
+        return clazz.getConstructor().newInstance();
+    }
+
+
+    @Override
+    public Object newInstance(String fqcn, ClassLoader classLoader)
+            throws IllegalAccessException, InvocationTargetException, NamingException, InstantiationException,
+            ClassNotFoundException, NoSuchMethodException {
         Class<?> clazz = classLoader.loadClass(fqcn);
-        return prepareInstance(clazz.getConstructor().newInstance());
+        return clazz.getConstructor().newInstance();
     }
 
+
+    /**
+     * {@inheritDoc}
+     * <p>
+     * This method is a NO-OP in this implementation.
+     */
     @Override
-    public void newInstance(Object o) throws IllegalAccessException, InvocationTargetException,
-            NamingException  {
+    public void newInstance(Object o) throws IllegalAccessException, InvocationTargetException, NamingException {
         // NO-OP
     }
 
+
+    /**
+     * {@inheritDoc}
+     * <p>
+     * This method is a NO-OP in this implementation.
+     */
     @Override
     public void destroyInstance(Object o) throws IllegalAccessException, InvocationTargetException {
-    }
-
-    private Object prepareInstance(Object o) {
-        return o;
+        // NO-OP
     }
 }

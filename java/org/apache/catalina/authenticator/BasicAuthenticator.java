@@ -20,6 +20,7 @@ import java.io.IOException;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.security.Principal;
+import java.util.Base64;
 
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
@@ -29,31 +30,46 @@ import org.apache.juli.logging.Log;
 import org.apache.juli.logging.LogFactory;
 import org.apache.tomcat.util.buf.ByteChunk;
 import org.apache.tomcat.util.buf.MessageBytes;
-import org.apache.tomcat.util.codec.binary.Base64;
 
 /**
- * An <b>Authenticator</b> and <b>Valve</b> implementation of HTTP BASIC
- * Authentication, as outlined in RFC 2617:  "HTTP Authentication: Basic
- * and Digest Access Authentication."
- *
- * @author Craig R. McClanahan
+ * An <b>Authenticator</b> and <b>Valve</b> implementation of HTTP BASIC Authentication, as outlined in RFC 7617: "The
+ * 'Basic' HTTP Authentication Scheme"
  */
 public class BasicAuthenticator extends AuthenticatorBase {
+
+    /**
+     * Default constructor.
+     */
+    public BasicAuthenticator() {
+    }
 
     private final Log log = LogFactory.getLog(BasicAuthenticator.class); // must not be static
 
     private Charset charset = StandardCharsets.ISO_8859_1;
     private String charsetString = null;
-    private boolean trimCredentials = true;
+    private boolean trimCredentials = false;
 
 
+    /**
+     * Returns the character set name used for encoding credentials, as set by the user.
+     *
+     * @return the character set name, the default value is "UTF-8". May be <code>null</code> or empty, in which case
+     *             the credentials are encoded using ISO-8859-1.
+     */
     public String getCharset() {
         return charsetString;
     }
 
 
+    /**
+     * Sets the character set used for encoding credentials. Empty charsets will set ISO-8859-1.
+     *
+     * @param charsetString the character set name
+     *
+     * @throws IllegalArgumentException if the charset is not supported
+     */
     public void setCharset(String charsetString) {
-        // Only acceptable options are null, "" or "UTF-8" (case insensitive)
+        // Only acceptable options are null, "" or "UTF-8" (case-insensitive)
         if (charsetString == null || charsetString.isEmpty()) {
             charset = StandardCharsets.ISO_8859_1;
         } else if ("UTF-8".equalsIgnoreCase(charsetString)) {
@@ -65,34 +81,46 @@ public class BasicAuthenticator extends AuthenticatorBase {
     }
 
 
-
+    /**
+     * Obtain the current setting for the removal of whitespace around the decoded user name and password.
+     *
+     * @return {@code true} if white space will be removed around the decoded user name and password
+     *
+     * @deprecated Will be removed in Tomcat 11 onwards.
+     */
+    @Deprecated
     public boolean getTrimCredentials() {
         return trimCredentials;
     }
 
 
+    /**
+     * Configures trimming of whitespace around the decoded user name and password.
+     *
+     * @param trimCredentials {@code true} to remove white space around the decoded user name and password
+     *
+     * @deprecated Will be removed in Tomcat 11 onwards.
+     */
+    @Deprecated
     public void setTrimCredentials(boolean trimCredentials) {
         this.trimCredentials = trimCredentials;
     }
 
 
     @Override
-    protected boolean doAuthenticate(Request request, HttpServletResponse response)
-            throws IOException {
+    protected boolean doAuthenticate(Request request, HttpServletResponse response) throws IOException {
 
         if (checkForCachedAuthentication(request, response, true)) {
             return true;
         }
 
         // Validate any credentials already included with this request
-        MessageBytes authorization =
-            request.getCoyoteRequest().getMimeHeaders()
-            .getValue("authorization");
+        MessageBytes authorization = request.getCoyoteRequest().getMimeHeaders().getValue("authorization");
 
         if (authorization != null) {
             authorization.toBytes();
             ByteChunk authorizationBC = authorization.getByteChunk();
-            BasicCredentials credentials = null;
+            BasicCredentials credentials;
             try {
                 credentials = new BasicCredentials(authorizationBC, charset, getTrimCredentials());
                 String username = credentials.getUsername();
@@ -100,14 +128,12 @@ public class BasicAuthenticator extends AuthenticatorBase {
 
                 Principal principal = context.getRealm().authenticate(username, password);
                 if (principal != null) {
-                    register(request, response, principal,
-                        HttpServletRequest.BASIC_AUTH, username, password);
+                    register(request, response, principal, HttpServletRequest.BASIC_AUTH, username, password);
                     return true;
                 }
-            }
-            catch (IllegalArgumentException iae) {
+            } catch (IllegalArgumentException iae) {
                 if (log.isDebugEnabled()) {
-                    log.debug("Invalid Authorization" + iae.getMessage());
+                    log.debug(sm.getString("basicAuthenticator.invalidAuthorization"), iae);
                 }
             }
         }
@@ -127,16 +153,23 @@ public class BasicAuthenticator extends AuthenticatorBase {
 
     }
 
+
     @Override
     protected String getAuthMethod() {
         return HttpServletRequest.BASIC_AUTH;
     }
 
 
+    @Override
+    protected boolean isPreemptiveAuthPossible(Request request) {
+        MessageBytes authorizationHeader = request.getCoyoteRequest().getMimeHeaders().getValue("authorization");
+        return authorizationHeader != null && authorizationHeader.startsWithIgnoreCase("basic ", 0);
+    }
+
+
     /**
-     * Parser for an HTTP Authorization header for BASIC authentication
-     * as per RFC 2617 section 2, and the Base64 encoded credentials as
-     * per RFC 2045 section 6.8.
+     * Parser for an HTTP Authorization header for BASIC authentication as per RFC 7617, and the Base64
+     * encoded credentials as per RFC 2045 section 6.8.
      */
     public static class BasicCredentials {
 
@@ -155,41 +188,33 @@ public class BasicAuthenticator extends AuthenticatorBase {
         private String password = null;
 
         /**
-         * Parse the HTTP Authorization header for BASIC authentication
-         * as per RFC 2617 section 2, and the Base64 encoded credentials
-         * as per RFC 2045 section 6.8.
+         * Parse the HTTP Authorization header for BASIC authentication as per RFC 7617.
          *
          * @param input   The header value to parse in-place
-         * @param charset The character set to use to convert the bytes to a
-         *                string
+         * @param charset The character set to use to convert the bytes to a string
          *
-         * @throws IllegalArgumentException If the header does not conform
-         *                                  to RFC 2617
-         * @deprecated Unused. Will be removed in Tomcat 10. Use 3-arg constructor
+         * @throws IllegalArgumentException If the header does not conform to RFC 7617
          */
-        @Deprecated
         public BasicCredentials(ByteChunk input, Charset charset) throws IllegalArgumentException {
-            this(input, charset, true);
+            this(input, charset, false);
         }
 
         /**
-         * Parse the HTTP Authorization header for BASIC authentication
-         * as per RFC 2617 section 2, and the Base64 encoded credentials
-         * as per RFC 2045 section 6.8.
+         * Parse the HTTP Authorization header for BASIC authentication as per RFC 7617.
          *
          * @param input           The header value to parse in-place
-         * @param charset         The character set to use to convert the bytes
-         *                        to a string
-         * @param trimCredentials Should leading and trailing whitespace be
-         *                        removed from the parsed credentials
+         * @param charset         The character set to use to convert the bytes to a string
+         * @param trimCredentials Should leading and trailing whitespace be removed from the parsed credentials
          *
-         * @throws IllegalArgumentException If the header does not conform
-         *                                  to RFC 2617
+         * @throws IllegalArgumentException If the header does not conform to RFC 7617
+         *
+         * @deprecated Will be removed in Tomcat 11 onwards
          */
+        @Deprecated
         public BasicCredentials(ByteChunk input, Charset charset, boolean trimCredentials)
                 throws IllegalArgumentException {
             authorization = input;
-            initialOffset = input.getOffset();
+            initialOffset = input.getStart();
             this.charset = charset;
             this.trimCredentials = trimCredentials;
 
@@ -201,8 +226,7 @@ public class BasicAuthenticator extends AuthenticatorBase {
         /**
          * Trivial accessor.
          *
-         * @return  the decoded username token as a String, which is
-         *          never be <code>null</code>, but can be empty.
+         * @return the decoded username token as a String, which is never <code>null</code>, but can be empty.
          */
         public String getUsername() {
             return username;
@@ -211,54 +235,50 @@ public class BasicAuthenticator extends AuthenticatorBase {
         /**
          * Trivial accessor.
          *
-         * @return  the decoded password token as a String, or <code>null</code>
-         *          if no password was found in the credentials.
+         * @return the decoded password token as a String, or <code>null</code> if no password was found in the
+         *             credentials.
          */
         public String getPassword() {
             return password;
         }
 
         /*
-         * The authorization method string is case-insensitive and must
-         * hae at least one space character as a delimiter.
+         * The authorization method string is case-insensitive and must have exactly one space character as a delimiter.
          */
         private void parseMethod() throws IllegalArgumentException {
             if (authorization.startsWithIgnoreCase(METHOD, 0)) {
                 // step past the auth method name
                 base64blobOffset = initialOffset + METHOD.length();
                 base64blobLength = authorization.getLength() - METHOD.length();
-            }
-            else {
+            } else {
                 // is this possible, or permitted?
-                throw new IllegalArgumentException(
-                        "Authorization header method is not \"Basic\"");
+                throw new IllegalArgumentException(sm.getString("basicAuthenticator.notBasic"));
             }
-        }
-        /*
-         * Decode the base64-user-pass token, which RFC 2617 states
-         * can be longer than the 76 characters per line limit defined
-         * in RFC 2045. The base64 decoder will ignore embedded line
-         * break characters as well as surplus surrounding white space.
-         */
-        private byte[] parseBase64() throws IllegalArgumentException {
-            byte[] decoded = Base64.decodeBase64(
-                        authorization.getBuffer(),
-                        base64blobOffset, base64blobLength);
-            //  restore original offset
-            authorization.setOffset(initialOffset);
-            if (decoded == null) {
-                throw new IllegalArgumentException(
-                        "Basic Authorization credentials are not Base64");
-            }
-            return decoded;
         }
 
         /*
-         * Extract the mandatory username token and separate it from the
-         * optional password token. Tolerate surplus surrounding white space.
+         * Decode the base64-user-pass token, which RFC 7617 states can be longer than the 76 characters per line limit
+         * defined in RFC 2045. The base64 decoder is a strict decoder that rejects any embedded line break characters
+         * as well as surplus surrounding white space.
          */
-        private void parseCredentials(byte[] decoded)
-                throws IllegalArgumentException {
+        private byte[] parseBase64() throws IllegalArgumentException {
+            byte[] encoded = new byte[base64blobLength];
+            System.arraycopy(authorization.getBuffer(), base64blobOffset, encoded, 0, base64blobLength);
+            try {
+                byte[] decoded = Base64.getDecoder().decode(encoded);
+                // restore original offset
+                authorization.setStart(initialOffset);
+                return decoded;
+            } catch (IllegalArgumentException e) {
+                throw new IllegalArgumentException(sm.getString("basicAuthenticator.notBase64"), e);
+            }
+        }
+
+        /*
+         * Extract the mandatory username token and separate it from the optional password token. Tolerate surplus
+         * surrounding white space.
+         */
+        private void parseCredentials(byte[] decoded) throws IllegalArgumentException {
 
             int colon = -1;
             for (int i = 0; i < decoded.length; i++) {
@@ -268,11 +288,11 @@ public class BasicAuthenticator extends AuthenticatorBase {
                 }
             }
 
+            // Tomcat allows a null password
             if (colon < 0) {
                 username = new String(decoded, charset);
                 // password will remain null!
-            }
-            else {
+            } else {
                 username = new String(decoded, 0, colon, charset);
                 password = new String(decoded, colon + 1, decoded.length - colon - 1, charset);
                 // tolerate surplus white space around credentials

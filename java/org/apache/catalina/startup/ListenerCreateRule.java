@@ -14,8 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
-
 package org.apache.catalina.startup;
 
 
@@ -36,70 +34,115 @@ import org.xml.sax.Attributes;
  */
 public class ListenerCreateRule extends ObjectCreateRule {
 
+    /**
+     * The log instance for this class.
+     */
     private static final Log log = LogFactory.getLog(ListenerCreateRule.class);
+    /**
+     * The string manager for this class.
+     */
     protected static final StringManager sm = StringManager.getManager(ListenerCreateRule.class);
 
+    /**
+     * Constructor.
+     *
+     * @param className The class name for the listener
+     * @param attributeName The attribute name
+     */
     public ListenerCreateRule(String className, String attributeName) {
         super(className, attributeName);
     }
 
     @Override
-    public void begin(String namespace, String name, Attributes attributes)
-            throws Exception {
+    public void begin(String namespace, String name, Attributes attributes) throws Exception {
         if ("true".equals(attributes.getValue("optional"))) {
             try {
                 super.begin(namespace, name, attributes);
             } catch (Exception e) {
                 String className = getRealClassName(attributes);
                 if (log.isDebugEnabled()) {
-                    log.info(sm.getString("listener.createFailed", className), e);
+                    log.debug(sm.getString("listener.createFailed", className), e);
                 } else {
                     log.info(sm.getString("listener.createFailed", className));
                 }
-                digester.push(new OptionalListener(className));
+                Object instance = new OptionalListener(className);
+                digester.push(instance);
+                StringBuilder code = digester.getGeneratedCode();
+                if (code != null) {
+                    code.append(OptionalListener.class.getName().replace('$', '.')).append(' ');
+                    code.append(digester.toVariableName(instance)).append(" = new ");
+                    code.append(OptionalListener.class.getName().replace('$', '.')).append("(\"").append(className)
+                            .append("\");");
+                    code.append(System.lineSeparator());
+                }
             }
         } else {
             super.begin(namespace, name, attributes);
         }
     }
 
-    public class OptionalListener implements LifecycleListener {
+    /**
+     * A listener that is optional and may not be available at runtime.
+     */
+    public static class OptionalListener implements LifecycleListener {
+        /**
+         * The class name of the listener.
+         */
         protected final String className;
-        protected final HashMap<String, String> properties = new HashMap<>();
+        /**
+         * The properties of the listener.
+         */
+        protected final HashMap<String,String> properties = new HashMap<>();
+
+        /**
+         * Constructor.
+         *
+         * @param className The class name of the listener
+         */
         public OptionalListener(String className) {
             this.className = className;
         }
+
         /**
+         * Return the class name of the listener.
+         *
          * @return the className
          */
         public String getClassName() {
             return className;
         }
+
         @Override
         public void lifecycleEvent(LifecycleEvent event) {
             // Do nothing
         }
+
         /**
          * Return a set of the property keys.
+         *
          * @return the set
          */
         public Set<String> getProperties() {
             return properties.keySet();
         }
+
         /**
-         * Return a property from the protocol handler.
+         * Return a property from the listener.
          *
          * @param name the property name
+         *
          * @return the property value
          */
         public Object getProperty(String name) {
             return properties.get(name);
         }
+
         /**
          * Set the given property.
          *
-         * @param name the property name
+         * @param name  the property name
          * @param value the property value
+         *
          * @return <code>true</code>
          */
         public boolean setProperty(String name, String value) {

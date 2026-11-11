@@ -15,6 +15,9 @@
   See the License for the specific language governing permissions and
   limitations under the License.
 -->
+<!DOCTYPE mbeans-descriptors PUBLIC
+   "-//Apache Software Foundation//DTD Model MBeans Configuration File"
+   "http://jakarta.apache.org/commons/dtds/mbeans-descriptors.dtd">
 <mbeans-descriptors>
 
   <mbean name="ContextEnvironment"
@@ -72,7 +75,7 @@
                type="java.lang.String"/>
 
     <attribute   name="scope"
-               description="The sharing scope of this resource factory"
+               description="The sharing scope of this resource"
                type="java.lang.String"/>
 
     <attribute   name="type"

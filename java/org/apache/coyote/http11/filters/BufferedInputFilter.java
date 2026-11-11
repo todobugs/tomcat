@@ -14,7 +14,6 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  */
-
 package org.apache.coyote.http11.filters;
 
 import java.io.IOException;
@@ -27,48 +26,58 @@ import org.apache.coyote.Request;
 import org.apache.coyote.http11.InputFilter;
 import org.apache.tomcat.util.buf.ByteChunk;
 import org.apache.tomcat.util.net.ApplicationBufferHandler;
+import org.apache.tomcat.util.res.StringManager;
 
 /**
- * Input filter responsible for reading and buffering the request body, so that
- * it does not interfere with client SSL handshake messages.
+ * Input filter responsible for reading and buffering the request body, so that it does not interfere with client SSL
+ * handshake messages.
  */
 public class BufferedInputFilter implements InputFilter, ApplicationBufferHandler {
 
-    // -------------------------------------------------------------- Constants
+    private static final StringManager sm = StringManager.getManager(BufferedInputFilter.class);
 
     private static final String ENCODING_NAME = "buffered";
     private static final ByteChunk ENCODING = new ByteChunk();
 
 
-    // ----------------------------------------------------- Instance Variables
+    static {
+        ENCODING.setBytes(ENCODING_NAME.getBytes(StandardCharsets.ISO_8859_1), 0, ENCODING_NAME.length());
+    }
 
-    private ByteBuffer buffered;
+
+    // Use ByteChunk since it correctly handles the special buffer size of -1
+    // for maxSavePostSize.
+    private ByteChunk buffered;
     private ByteBuffer tempRead;
     private InputBuffer buffer;
     private boolean hasRead = false;
 
+    private final int maxSwallowSize;
 
-    // ----------------------------------------------------- Static Initializer
 
-    static {
-        ENCODING.setBytes(ENCODING_NAME.getBytes(StandardCharsets.ISO_8859_1),
-                0, ENCODING_NAME.length());
+    /**
+     * Creates a buffered input filter.
+     *
+     * @param maxSwallowSize maximum bytes to swallow
+     */
+    public BufferedInputFilter(int maxSwallowSize) {
+        this.maxSwallowSize = maxSwallowSize;
     }
-
 
     // --------------------------------------------------------- Public Methods
 
 
     /**
-     * Set the buffering limit. This should be reset every time the buffer is
-     * used.
+     * Set the buffering limit. This should be reset every time the buffer is used.
      *
      * @param limit The maximum number of bytes that will be buffered
      */
     public void setLimit(int limit) {
         if (buffered == null) {
-            buffered = ByteBuffer.allocate(limit);
-            buffered.flip();
+            buffered = new ByteChunk();
+            buffered.setLimit(limit);
+        } else {
+            buffered.setLimit(limit);
         }
     }
 
@@ -83,16 +92,26 @@ public class BufferedInputFilter implements InputFilter, ApplicationBufferHandle
     public void setRequest(Request request) {
         // save off the Request body
         try {
-            while (buffer.doRead(this) >= 0) {
-                buffered.mark().position(buffered.limit()).limit(buffered.capacity());
-                buffered.put(tempRead);
-                buffered.limit(buffered.position()).reset();
-                tempRead = null;
+            if (buffered.getLimit() == 0) {
+                // Special case - ignore (swallow) body. Do so within a limit.
+                long swallowed = 0;
+                int read;
+                while ((read = buffer.doRead(this)) >= 0) {
+                    swallowed += read;
+                    if (maxSwallowSize > -1 && swallowed > maxSwallowSize) {
+                        // No need for i18n - this isn't going to get logged
+                        throw new IOException(sm.getString("bufferedInputFilter.maxSwallowSize"));
+                    }
+                }
+            } else {
+                while (buffer.doRead(this) >= 0) {
+                    buffered.append(tempRead);
+                    tempRead = null;
+                }
             }
-        } catch(IOException | BufferOverflowException ioe) {
+        } catch (IOException | BufferOverflowException ioe) {
             // No need for i18n - this isn't going to get logged anywhere
-            throw new IllegalStateException(
-                    "Request body too large for buffer");
+            throw new IllegalStateException(sm.getString("bufferedInputFilter.bodySize", ioe.getMessage()));
         }
     }
 
@@ -105,9 +124,9 @@ public class BufferedInputFilter implements InputFilter, ApplicationBufferHandle
             return -1;
         }
 
-        handler.setByteBuffer(buffered);
+        handler.setByteBuffer(ByteBuffer.wrap(buffered.getBuffer(), buffered.getStart(), buffered.getLength()));
         hasRead = true;
-        return buffered.remaining();
+        return buffered.getLength();
     }
 
     @Override
@@ -118,10 +137,10 @@ public class BufferedInputFilter implements InputFilter, ApplicationBufferHandle
     @Override
     public void recycle() {
         if (buffered != null) {
-            if (buffered.capacity() > 65536) {
+            if (buffered.getBuffer() != null && buffered.getBuffer().length > 65536) {
                 buffered = null;
             } else {
-                buffered.position(0).limit(0);
+                buffered.recycle();
             }
         }
         hasRead = false;
@@ -140,13 +159,22 @@ public class BufferedInputFilter implements InputFilter, ApplicationBufferHandle
 
     @Override
     public int available() {
-        return buffered.remaining();
+        if (isFinished()) {
+            // The whole body has been delivered to the caller or there was no
+            // body. Nothing is available from this filter and the next filter
+            // in the chain must not be consulted since any data there does not
+            // belong to the body.
+            return 0;
+        }
+        // The whole body is buffered at this point, so its length is the
+        // number of bytes that remain to be delivered.
+        return buffered.getLength();
     }
 
 
     @Override
     public boolean isFinished() {
-        return hasRead || buffered.remaining() <= 0;
+        return hasRead || buffered.getLength() <= 0;
     }
 
 

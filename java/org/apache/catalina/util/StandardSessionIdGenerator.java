@@ -16,12 +16,23 @@
  */
 package org.apache.catalina.util;
 
+/**
+ * Standard implementation of {@link org.apache.catalina.SessionIdGenerator} that generates session
+ * identifiers using a pool of {@link java.security.SecureRandom} instances.
+ */
 public class StandardSessionIdGenerator extends SessionIdGeneratorBase {
+
+    /**
+     * Construct a new instance with default configuration.
+     */
+    public StandardSessionIdGenerator() {
+        super();
+    }
 
     @Override
     public String generateSessionId(String route) {
 
-        byte random[] = new byte[16];
+        byte[] random = new byte[16];
         int sessionIdLength = getSessionIdLength();
 
         // Render the result as a String of hexadecimal digits
@@ -32,28 +43,28 @@ public class StandardSessionIdGenerator extends SessionIdGeneratorBase {
 
         while (resultLenBytes < sessionIdLength) {
             getRandomBytes(random);
-            for (int j = 0;
-            j < random.length && resultLenBytes < sessionIdLength;
-            j++) {
+            for (int j = 0; j < random.length && resultLenBytes < sessionIdLength; j++) {
                 byte b1 = (byte) ((random[j] & 0xf0) >> 4);
                 byte b2 = (byte) (random[j] & 0x0f);
-                if (b1 < 10)
+                if (b1 < 10) {
                     buffer.append((char) ('0' + b1));
-                else
+                } else {
                     buffer.append((char) ('A' + (b1 - 10)));
-                if (b2 < 10)
+                }
+                if (b2 < 10) {
                     buffer.append((char) ('0' + b2));
-                else
+                } else {
                     buffer.append((char) ('A' + (b2 - 10)));
+                }
                 resultLenBytes++;
             }
         }
 
-        if (route != null && route.length() > 0) {
+        if (route != null && !route.isEmpty()) {
             buffer.append('.').append(route);
         } else {
             String jvmRoute = getJvmRoute();
-            if (jvmRoute != null && jvmRoute.length() > 0) {
+            if (jvmRoute != null && !jvmRoute.isEmpty()) {
                 buffer.append('.').append(jvmRoute);
             }
         }

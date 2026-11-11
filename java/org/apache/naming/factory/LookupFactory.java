@@ -25,7 +25,6 @@ import javax.naming.InitialContext;
 import javax.naming.Name;
 import javax.naming.NamingException;
 import javax.naming.RefAddr;
-import javax.naming.Reference;
 import javax.naming.spi.ObjectFactory;
 
 import org.apache.juli.logging.Log;
@@ -38,31 +37,38 @@ import org.apache.naming.StringManager;
  */
 public class LookupFactory implements ObjectFactory {
 
+    /**
+     * Default constructor.
+     */
+    public LookupFactory() {
+    }
+
     private static final Log log = LogFactory.getLog(LookupFactory.class);
     private static final StringManager sm = StringManager.getManager(LookupFactory.class);
 
-    private static final ThreadLocal<Set<String>> names = new ThreadLocal<Set<String>>() {
-
-        @Override
-        protected Set<String> initialValue() {
-            return new HashSet<>();
-        }
-    };
+    private static final ThreadLocal<Set<String>> names = ThreadLocal.withInitial(HashSet::new);
 
     /**
      * Create a new Resource env instance.
      *
-     * @param obj The reference object describing the DataSource
+     * @param obj         The reference object describing the LookupRef
+     * @param name        the bound name
+     * @param nameCtx     unused
+     * @param environment unused
+     *
+     * @return the object instance
+     *
+     * @throws Exception if an error occur creating the instance
      */
     @Override
-    public Object getObjectInstance(Object obj, Name name, Context nameCtx,
-            Hashtable<?, ?> environment) throws Exception {
+    public Object getObjectInstance(Object obj, Name name, Context nameCtx, Hashtable<?,?> environment)
+            throws Exception {
 
         String lookupName = null;
         Object result = null;
 
         if (obj instanceof LookupRef) {
-            Reference ref = (Reference) obj;
+            LookupRef ref = (LookupRef) obj;
             ObjectFactory factory = null;
             RefAddr lookupNameRefAddr = ref.get(LookupRef.LOOKUP_NAME);
             if (lookupNameRefAddr != null) {
@@ -84,13 +90,12 @@ public class LookupFactory implements ObjectFactory {
                     String factoryClassName = factoryRefAddr.getContent().toString();
                     // Loading factory
                     ClassLoader tcl = Thread.currentThread().getContextClassLoader();
-                    Class<?> factoryClass = null;
+                    Class<?> factoryClass;
                     if (tcl != null) {
                         try {
                             factoryClass = tcl.loadClass(factoryClassName);
                         } catch (ClassNotFoundException e) {
-                            NamingException ex = new NamingException(
-                                    sm.getString("lookupFactory.loadFailed"));
+                            NamingException ex = new NamingException(sm.getString("lookupFactory.loadFailed"));
                             ex.initCause(e);
                             throw ex;
                         }
@@ -98,8 +103,7 @@ public class LookupFactory implements ObjectFactory {
                         try {
                             factoryClass = Class.forName(factoryClassName);
                         } catch (ClassNotFoundException e) {
-                            NamingException ex = new NamingException(
-                                    sm.getString("lookupFactory.loadFailed"));
+                            NamingException ex = new NamingException(sm.getString("lookupFactory.loadFailed"));
                             ex.initCause(e);
                             throw ex;
                         }
@@ -108,10 +112,7 @@ public class LookupFactory implements ObjectFactory {
                         try {
                             factory = (ObjectFactory) factoryClass.getConstructor().newInstance();
                         } catch (Throwable t) {
-                            if (t instanceof NamingException)
-                                throw (NamingException) t;
-                            NamingException ex = new NamingException(
-                                    sm.getString("lookupFactory.createFailed"));
+                            NamingException ex = new NamingException(sm.getString("lookupFactory.createFailed"));
                             ex.initCause(t);
                             throw ex;
                         }
@@ -128,21 +129,42 @@ public class LookupFactory implements ObjectFactory {
                     }
                 }
 
-                Class<?> clazz = Class.forName(ref.getClassName());
-                if (result != null && !clazz.isAssignableFrom(result.getClass())) {
-                    String msg = sm.getString("lookupFactory.typeMismatch",
-                            name, ref.getClassName(), lookupName, result.getClass().getName());
-                    NamingException ne = new NamingException(msg);
-                    log.warn(msg, ne);
-                    // Close the resource we no longer need if we know how to do so
-                    if (result instanceof AutoCloseable) {
-                        try {
-                            ((AutoCloseable) result).close();
-                        } catch (Exception e) {
-                            // Ignore
+                String className = ref.getClassName();
+                if (className != null && !className.isEmpty()) {
+                    // The type is the type of the object the application
+                    // expects, so it is loaded with the class loader of the
+                    // application rather than with the one which loaded this
+                    // factory.
+                    Class<?> clazz;
+                    ClassLoader tcl = Thread.currentThread().getContextClassLoader();
+                    try {
+                        if (tcl != null) {
+                            // Class.forName also accepts array class names, unlike ClassLoader.loadClass.
+                            clazz = Class.forName(className, false, tcl);
+                        } else {
+                            clazz = Class.forName(className);
                         }
+                    } catch (ClassNotFoundException e) {
+                        NamingException ex = new NamingException(
+                                sm.getString("lookupFactory.classNotFound", className, name));
+                        ex.initCause(e);
+                        throw ex;
                     }
-                    throw ne;
+                    if (result != null && !clazz.isAssignableFrom(result.getClass())) {
+                        String msg = sm.getString("lookupFactory.typeMismatch", name, className, lookupName,
+                                result.getClass().getName());
+                        NamingException ne = new NamingException(msg);
+                        log.warn(msg, ne);
+                        // Close the resource we no longer need if we know how to do so
+                        if (result instanceof AutoCloseable) {
+                            try {
+                                ((AutoCloseable) result).close();
+                            } catch (Exception e) {
+                                // Ignore
+                            }
+                        }
+                        throw ne;
+                    }
                 }
             } finally {
                 names.get().remove(lookupName);

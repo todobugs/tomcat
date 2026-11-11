@@ -17,6 +17,7 @@
 package org.apache.catalina.tribes.group.interceptors;
 
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
@@ -29,6 +30,7 @@ import org.apache.catalina.tribes.Member;
 import org.apache.catalina.tribes.UniqueId;
 import org.apache.catalina.tribes.group.ChannelInterceptorBase;
 import org.apache.catalina.tribes.group.InterceptorPayload;
+import org.apache.catalina.tribes.io.ChannelData;
 import org.apache.catalina.tribes.util.ExecutorFactory;
 import org.apache.catalina.tribes.util.StringManager;
 import org.apache.catalina.tribes.util.TcclThreadFactory;
@@ -36,30 +38,61 @@ import org.apache.juli.logging.Log;
 import org.apache.juli.logging.LogFactory;
 
 /**
- * The message dispatcher is a way to enable asynchronous communication
- * through a channel. The dispatcher will look for the
- * <code>Channel.SEND_OPTIONS_ASYNCHRONOUS</code> flag to be set, if it is, it
- * will queue the message for delivery and immediately return to the sender.
+ * The message dispatcher is a way to enable asynchronous communication through a channel. The dispatcher will look for
+ * the <code>Channel.SEND_OPTIONS_ASYNCHRONOUS</code> flag to be set, if it is, it will queue the message for delivery
+ * and immediately return to the sender.
  */
-public class MessageDispatchInterceptor extends ChannelInterceptorBase
-        implements MessageDispatchInterceptorMBean {
+public class MessageDispatchInterceptor extends ChannelInterceptorBase implements MessageDispatchInterceptorMBean {
 
     private static final Log log = LogFactory.getLog(MessageDispatchInterceptor.class);
-    protected static final StringManager sm =
-            StringManager.getManager(MessageDispatchInterceptor.class);
+    /**
+     * The string manager for this class.
+     */
+    protected static final StringManager sm = StringManager.getManager(MessageDispatchInterceptor.class);
 
-    protected long maxQueueSize = 1024*1024*64; //64MB
+    /**
+     * Maximum queue size.
+     */
+    protected long maxQueueSize = 1024 * 1024 * 64; // 64 MiB
+    /**
+     * Whether the queue is running.
+     */
     protected volatile boolean run = false;
+    /**
+     * Whether to use deep clone. When false, the message is still detached from the caller's buffer by a shallow
+     * clone before it is queued, but the unique id and address are shared rather than re-serialized.
+     */
     protected boolean useDeepClone = true;
+    /**
+     * Whether to always send.
+     */
     protected boolean alwaysSend = true;
 
+    /**
+     * Current queue size.
+     */
     protected final AtomicLong currentSize = new AtomicLong(0);
+    /**
+     * The executor service.
+     */
     protected ExecutorService executor = null;
+    /**
+     * Maximum number of threads.
+     */
     protected int maxThreads = 10;
+    /**
+     * Maximum number of spare threads.
+     */
     protected int maxSpareThreads = 2;
+    /**
+     * Keep alive time.
+     */
     protected long keepAliveTime = 5000;
 
 
+    /**
+     * Default constructor.
+     */
     public MessageDispatchInterceptor() {
         setOptionFlag(Channel.SEND_OPTIONS_ASYNCHRONOUS);
     }
@@ -68,59 +101,119 @@ public class MessageDispatchInterceptor extends ChannelInterceptorBase
     @Override
     public void sendMessage(Member[] destination, ChannelMessage msg, InterceptorPayload payload)
             throws ChannelException {
-        boolean async = (msg.getOptions() &
-                Channel.SEND_OPTIONS_ASYNCHRONOUS) == Channel.SEND_OPTIONS_ASYNCHRONOUS;
+        boolean async = (msg.getOptions() & Channel.SEND_OPTIONS_ASYNCHRONOUS) == Channel.SEND_OPTIONS_ASYNCHRONOUS;
         if (async && run) {
-            if ((getCurrentSize()+msg.getMessage().getLength()) > maxQueueSize) {
-                if (alwaysSend) {
-                    super.sendMessage(destination,msg,payload);
-                    return;
-                } else {
-                    throw new ChannelException(sm.getString("messageDispatchInterceptor.queue.full",
-                            Long.toString(maxQueueSize), Long.toString(getCurrentSize())));
-                }
+            ChannelMessage original = msg;
+            // Reject a message that cannot fit before paying for the clone. This check is only an optimization, the
+            // atomic reservation below enforces the limit when senders race.
+            if (getCurrentSize() + msg.getMessage().getLength() > maxQueueSize) {
+                rejectOrSend(destination, original, payload);
+                return;
             }
-            //add to queue
+            // add to queue
             if (useDeepClone) {
-                msg = (ChannelMessage)msg.deepclone();
+                msg = (ChannelMessage) msg.deepclone();
+            } else if (msg instanceof ChannelData) {
+                // The caller of sendMessage() may reuse the buffer that backs the
+                // message as soon as this method returns, e.g. GroupChannel.send()
+                // returns it to the BufferPool. Clone, which copies the message
+                // data, so the queued message is independent of that buffer.
+                msg = ((ChannelData) msg).clone();
             }
-            if (!addToQueue(msg, destination, payload)) {
-                throw new ChannelException(
-                        sm.getString("messageDispatchInterceptor.unableAdd.queue"));
+            // Record the queue size before the send task is submitted. Downstream
+            // interceptors may replace or extend the message payload while the message
+            // is being sent, so the accounting must use a single snapshot of the length.
+            long queuedLength = msg.getMessage().getLength();
+            if (!reserveQueueSize(queuedLength)) {
+                rejectOrSend(destination, original, payload);
+                return;
             }
-            addAndGetCurrentSize(msg.getMessage().getLength());
+            if (!addToQueue(msg, destination, payload, queuedLength)) {
+                addAndGetCurrentSize(-queuedLength);
+                throw new ChannelException(sm.getString("messageDispatchInterceptor.unableAdd.queue"));
+            }
         } else {
             super.sendMessage(destination, msg, payload);
         }
     }
 
+    private void rejectOrSend(Member[] destination, ChannelMessage msg, InterceptorPayload payload)
+            throws ChannelException {
+        if (alwaysSend) {
+            super.sendMessage(destination, msg, payload);
+        } else {
+            throw new ChannelException(sm.getString("messageDispatchInterceptor.queue.full",
+                    Long.toString(maxQueueSize), Long.toString(getCurrentSize())));
+        }
+    }
 
-    public boolean addToQueue(final ChannelMessage msg, final Member[] destination,
-            final InterceptorPayload payload) {
-        Runnable r = new Runnable() {
-            @Override
-            public void run() {
-                sendAsyncData(msg, destination, payload);
+    private boolean reserveQueueSize(long length) {
+        long current;
+        long updated;
+        do {
+            current = currentSize.get();
+            updated = current + length;
+            if (updated < current || updated > maxQueueSize) {
+                return false;
             }
-        };
-        executor.execute(r);
+        } while (!currentSize.compareAndSet(current, updated));
         return true;
     }
 
 
+    /**
+     * Add a message to the queue. The length of the message is recorded in the queue size until the message has been
+     * sent. The queue size limit is not applied.
+     * @param msg the message
+     * @param destination the destination
+     * @param payload the payload
+     * @return true if added
+     */
+    public boolean addToQueue(final ChannelMessage msg, final Member[] destination, final InterceptorPayload payload) {
+        long queuedLength = msg.getMessage().getLength();
+        addAndGetCurrentSize(queuedLength);
+        if (addToQueue(msg, destination, payload, queuedLength)) {
+            return true;
+        }
+        addAndGetCurrentSize(-queuedLength);
+        return false;
+    }
+
+
+    private boolean addToQueue(final ChannelMessage msg, final Member[] destination,
+            final InterceptorPayload payload, final long queuedLength) {
+        try {
+            executor.execute(() -> sendAsyncData(msg, destination, payload, queuedLength));
+            return true;
+        } catch (RejectedExecutionException ree) {
+            return false;
+        }
+    }
+
+
+    /**
+     * Start the dispatch queue.
+     */
     public void startQueue() {
         if (run) {
             return;
         }
         String channelName = "";
-        if (getChannel().getName() != null) channelName = "[" + getChannel().getName() + "]";
-        executor = ExecutorFactory.newThreadPool(maxSpareThreads, maxThreads, keepAliveTime,
-                TimeUnit.MILLISECONDS,
+        if (getChannel().getName() != null) {
+            channelName = "[" + getChannel().getName() + "]";
+        }
+        executor = ExecutorFactory.newThreadPool(maxSpareThreads, maxThreads, keepAliveTime, TimeUnit.MILLISECONDS,
                 new TcclThreadFactory("MessageDispatchInterceptor.MessageDispatchThread" + channelName));
+        // Tasks that were still in flight when a previous queue run was stopped may have
+        // adjusted the recorded size after stopQueue() reset it. Start from a clean state.
+        setAndGetCurrentSize(0);
         run = true;
     }
 
 
+    /**
+     * Stop the dispatch queue.
+     */
     public void stopQueue() {
         run = false;
         executor.shutdownNow();
@@ -130,18 +223,27 @@ public class MessageDispatchInterceptor extends ChannelInterceptorBase
 
     @Override
     public void setOptionFlag(int flag) {
-        if ( flag != Channel.SEND_OPTIONS_ASYNCHRONOUS ) {
+        if (flag != Channel.SEND_OPTIONS_ASYNCHRONOUS) {
             log.warn(sm.getString("messageDispatchInterceptor.warning.optionflag"));
         }
         super.setOptionFlag(flag);
     }
 
 
+    /**
+     * Set the maximum queue size.
+     * @param maxQueueSize the maximum queue size
+     */
     public void setMaxQueueSize(long maxQueueSize) {
         this.maxQueueSize = maxQueueSize;
     }
 
 
+    /**
+     * Set whether to use deep clone. When false, the queued message is a shallow clone of the original with the
+     * message bytes copied to a new buffer rather than a fully re-serialized deep clone.
+     * @param useDeepClone whether to use deep clone
+     */
     public void setUseDeepClone(boolean useDeepClone) {
         this.useDeepClone = useDeepClone;
     }
@@ -152,6 +254,10 @@ public class MessageDispatchInterceptor extends ChannelInterceptorBase
     }
 
 
+    /**
+     * Get whether deep clone is used.
+     * @return whether deep clone is used
+     */
     public boolean getUseDeepClone() {
         return useDeepClone;
     }
@@ -162,11 +268,21 @@ public class MessageDispatchInterceptor extends ChannelInterceptorBase
     }
 
 
+    /**
+     * Add to the current size and return the new value.
+     * @param inc the increment
+     * @return the new size
+     */
     public long addAndGetCurrentSize(long inc) {
         return currentSize.addAndGet(inc);
     }
 
 
+    /**
+     * Set the current size and return the value.
+     * @param value the value
+     * @return the value
+     */
     public long setAndGetCurrentSize(long value) {
         currentSize.set(value);
         return value;
@@ -188,16 +304,28 @@ public class MessageDispatchInterceptor extends ChannelInterceptorBase
     }
 
 
+    /**
+     * Set the keep alive time.
+     * @param keepAliveTime the keep alive time
+     */
     public void setKeepAliveTime(long keepAliveTime) {
         this.keepAliveTime = keepAliveTime;
     }
 
 
+    /**
+     * Set the maximum spare threads.
+     * @param maxSpareThreads the maximum spare threads
+     */
     public void setMaxSpareThreads(int maxSpareThreads) {
         this.maxSpareThreads = maxSpareThreads;
     }
 
 
+    /**
+     * Set the maximum threads.
+     * @param maxThreads the maximum threads
+     */
     public void setMaxThreads(int maxThreads) {
         this.maxThreads = maxThreads;
     }
@@ -216,11 +344,11 @@ public class MessageDispatchInterceptor extends ChannelInterceptorBase
 
     @Override
     public void start(int svc) throws ChannelException {
-        //start the thread
-        if (!run ) {
+        // start the thread
+        if (!run) {
             synchronized (this) {
                 // only start with the sender
-                if ( !run && ((svc & Channel.SND_TX_SEQ)==Channel.SND_TX_SEQ) ) {
+                if (!run && ((svc & Channel.SND_TX_SEQ) == Channel.SND_TX_SEQ)) {
                     startQueue();
                 }
             }
@@ -231,10 +359,10 @@ public class MessageDispatchInterceptor extends ChannelInterceptorBase
 
     @Override
     public void stop(int svc) throws ChannelException {
-        //stop the thread
+        // stop the thread
         if (run) {
             synchronized (this) {
-                if ( run && ((svc & Channel.SND_TX_SEQ)==Channel.SND_TX_SEQ)) {
+                if (run && ((svc & Channel.SND_TX_SEQ) == Channel.SND_TX_SEQ)) {
                     stopQueue();
                 }
             }
@@ -244,8 +372,15 @@ public class MessageDispatchInterceptor extends ChannelInterceptorBase
     }
 
 
-    protected void sendAsyncData(ChannelMessage msg, Member[] destination,
-            InterceptorPayload payload) {
+    /**
+     * Send async data.
+     * @param msg the message
+     * @param destination the destination
+     * @param payload the payload
+     * @param queuedLength the message length as recorded when the message was enqueued
+     */
+    protected void sendAsyncData(ChannelMessage msg, Member[] destination, InterceptorPayload payload,
+            long queuedLength) {
         ErrorHandler handler = null;
         if (payload != null) {
             handler = payload.getErrorHandler();
@@ -256,34 +391,35 @@ public class MessageDispatchInterceptor extends ChannelInterceptorBase
                 if (handler != null) {
                     handler.handleCompletion(new UniqueId(msg.getUniqueId()));
                 }
-            } catch ( Exception ex ) {
-                log.error(sm.getString("messageDispatchInterceptor.completeMessage.failed"),ex);
+            } catch (Exception e) {
+                log.error(sm.getString("messageDispatchInterceptor.completeMessage.failed"), e);
             }
-        } catch ( Exception x ) {
-            ChannelException cx = null;
-            if (x instanceof ChannelException) {
-                cx = (ChannelException) x;
+        } catch (Exception e) {
+            ChannelException cx;
+            if (e instanceof ChannelException) {
+                cx = (ChannelException) e;
             } else {
-                cx = new ChannelException(x);
+                cx = new ChannelException(e);
             }
             if (log.isDebugEnabled()) {
-                log.debug(sm.getString("messageDispatchInterceptor.AsyncMessage.failed"),x);
+                log.debug(sm.getString("messageDispatchInterceptor.AsyncMessage.failed"), e);
             }
             try {
                 if (handler != null) {
                     handler.handleError(cx, new UniqueId(msg.getUniqueId()));
                 }
-            } catch ( Exception ex ) {
-                log.error(sm.getString("messageDispatchInterceptor.errorMessage.failed"),ex);
+            } catch (Exception ex) {
+                log.error(sm.getString("messageDispatchInterceptor.errorMessage.failed"), ex);
             }
         } finally {
-            addAndGetCurrentSize(-msg.getMessage().getLength());
+            addAndGetCurrentSize(-queuedLength);
         }
     }
 
     // ---------------------------------------------- stats of the thread pool
     /**
      * Return the current number of threads that are managed by the pool.
+     *
      * @return the current number of threads that are managed by the pool
      */
     @Override
@@ -297,6 +433,7 @@ public class MessageDispatchInterceptor extends ChannelInterceptorBase
 
     /**
      * Return the current number of threads that are in use.
+     *
      * @return the current number of threads that are in use
      */
     @Override
@@ -310,6 +447,7 @@ public class MessageDispatchInterceptor extends ChannelInterceptorBase
 
     /**
      * Return the total number of tasks that have ever been scheduled for execution by the pool.
+     *
      * @return the total number of tasks that have ever been scheduled for execution by the pool
      */
     @Override
@@ -323,6 +461,7 @@ public class MessageDispatchInterceptor extends ChannelInterceptorBase
 
     /**
      * Return the total number of tasks that have completed execution by the pool.
+     *
      * @return the total number of tasks that have completed execution by the pool
      */
     @Override

@@ -36,8 +36,7 @@ public class TesterBeanNameResolver extends BeanNameResolver {
     }
 
     @Override
-    public void setBeanValue(String beanName, Object value)
-            throws PropertyNotWritableException {
+    public void setBeanValue(String beanName, Object value) throws PropertyNotWritableException {
         checkTriggers(beanName);
         if (allowCreate || beans.containsKey(beanName)) {
             beans.put(beanName, value);

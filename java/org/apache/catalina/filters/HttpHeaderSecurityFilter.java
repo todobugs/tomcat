@@ -31,10 +31,18 @@ import org.apache.juli.logging.Log;
 import org.apache.juli.logging.LogFactory;
 
 /**
- * Provides a single configuration point for security measures that required the
- * addition of one or more HTTP headers to the response.
+ * Provides a single configuration point for security measures that required the addition of one or more HTTP headers to
+ * the response.
  */
 public class HttpHeaderSecurityFilter extends FilterBase {
+
+    /**
+     * Creates a new instance of the filter.
+     */
+    public HttpHeaderSecurityFilter() {
+        super();
+    }
+
 
     // Log must be non-static as loggers are created per class-loader and this
     // Filter may be used in multiple class loaders
@@ -61,9 +69,12 @@ public class HttpHeaderSecurityFilter extends FilterBase {
     private boolean blockContentTypeSniffingEnabled = true;
 
     // Cross-site scripting filter protection
+    @Deprecated
     private static final String XSS_PROTECTION_HEADER_NAME = "X-XSS-Protection";
+    @Deprecated
     private static final String XSS_PROTECTION_HEADER_VALUE = "1; mode=block";
-    private boolean xssProtectionEnabled = true;
+    @Deprecated
+    private boolean xssProtectionEnabled = false;
 
     @Override
     public void init(FilterConfig filterConfig) throws ServletException {
@@ -83,6 +94,9 @@ public class HttpHeaderSecurityFilter extends FilterBase {
         // Anti click-jacking
         StringBuilder cjValue = new StringBuilder(antiClickJackingOption.headerValue);
         if (antiClickJackingOption == XFrameOption.ALLOW_FROM) {
+            if (antiClickJackingUri == null) {
+                throw new IllegalArgumentException(sm.getString("httpHeaderSecurityFilter.nullAntiClickJackingUri"));
+            }
             cjValue.append(' ');
             cjValue.append(antiClickJackingUri);
         }
@@ -91,8 +105,8 @@ public class HttpHeaderSecurityFilter extends FilterBase {
 
 
     @Override
-    public void doFilter(ServletRequest request, ServletResponse response,
-            FilterChain chain) throws IOException, ServletException {
+    public void doFilter(ServletRequest request, ServletResponse response, FilterChain chain)
+            throws IOException, ServletException {
 
         if (response instanceof HttpServletResponse) {
             HttpServletResponse httpResponse = (HttpServletResponse) response;
@@ -141,65 +155,121 @@ public class HttpHeaderSecurityFilter extends FilterBase {
     }
 
 
+    /**
+     * Returns whether HSTS is enabled.
+     *
+     * @return {@code true} if HSTS is enabled
+     */
     public boolean isHstsEnabled() {
         return hstsEnabled;
     }
 
 
+    /**
+     * Enables or disables HSTS.
+     *
+     * @param hstsEnabled {@code true} to enable HSTS
+     */
     public void setHstsEnabled(boolean hstsEnabled) {
         this.hstsEnabled = hstsEnabled;
     }
 
 
+    /**
+     * Returns the maximum age in seconds for the HSTS header.
+     *
+     * @return the maximum age in seconds
+     */
     public int getHstsMaxAgeSeconds() {
         return hstsMaxAgeSeconds;
     }
 
 
+    /**
+     * Sets the maximum age in seconds for the HSTS header.
+     *
+     * @param hstsMaxAgeSeconds the maximum age in seconds
+     */
     public void setHstsMaxAgeSeconds(int hstsMaxAgeSeconds) {
-        if (hstsMaxAgeSeconds < 0) {
-            this.hstsMaxAgeSeconds = 0;
-        } else {
-            this.hstsMaxAgeSeconds = hstsMaxAgeSeconds;
-        }
+        this.hstsMaxAgeSeconds = Math.max(hstsMaxAgeSeconds, 0);
     }
 
 
+    /**
+     * Returns whether subdomains are included in the HSTS header.
+     *
+     * @return {@code true} if subdomains are included
+     */
     public boolean isHstsIncludeSubDomains() {
         return hstsIncludeSubDomains;
     }
 
 
+    /**
+     * Sets whether subdomains should be included in the HSTS header.
+     *
+     * @param hstsIncludeSubDomains {@code true} to include subdomains
+     */
     public void setHstsIncludeSubDomains(boolean hstsIncludeSubDomains) {
         this.hstsIncludeSubDomains = hstsIncludeSubDomains;
     }
 
 
+    /**
+     * Returns whether the preload directive is included in the HSTS header.
+     *
+     * @return {@code true} if preload is enabled
+     */
     public boolean isHstsPreload() {
         return hstsPreload;
     }
 
 
+    /**
+     * Sets whether the preload directive should be included in the HSTS header.
+     *
+     * @param hstsPreload {@code true} to include preload
+     */
     public void setHstsPreload(boolean hstsPreload) {
         this.hstsPreload = hstsPreload;
     }
 
 
+    /**
+     * Returns whether anti-click-jacking protection is enabled.
+     *
+     * @return {@code true} if anti-click-jacking is enabled
+     */
     public boolean isAntiClickJackingEnabled() {
         return antiClickJackingEnabled;
     }
 
 
+    /**
+     * Enables or disables anti-click-jacking protection.
+     *
+     * @param antiClickJackingEnabled {@code true} to enable anti-click-jacking
+     */
     public void setAntiClickJackingEnabled(boolean antiClickJackingEnabled) {
         this.antiClickJackingEnabled = antiClickJackingEnabled;
     }
 
 
+    /**
+     * Returns the X-Frame-Options value.
+     *
+     * @return the X-Frame-Options value
+     */
     public String getAntiClickJackingOption() {
         return antiClickJackingOption.toString();
     }
 
 
+    /**
+     * Sets the X-Frame-Options value for click-jacking protection.
+     *
+     * @param antiClickJackingOption the X-Frame-Options value (DENY, SAMEORIGIN, or ALLOW-FROM)
+     */
     public void setAntiClickJackingOption(String antiClickJackingOption) {
         for (XFrameOption option : XFrameOption.values()) {
             if (option.getHeaderValue().equalsIgnoreCase(antiClickJackingOption)) {
@@ -212,22 +282,41 @@ public class HttpHeaderSecurityFilter extends FilterBase {
     }
 
 
+    /**
+     * Returns the URI used with the ALLOW_FROM X-Frame-Options directive.
+     *
+     * @return the ALLOW_FROM URI
+     */
     public String getAntiClickJackingUri() {
-        return antiClickJackingUri.toString();
+        return antiClickJackingUri != null ? antiClickJackingUri.toString() : null;
     }
 
 
+    /**
+     * Returns whether content type sniffing protection is enabled.
+     *
+     * @return {@code true} if content type sniffing protection is enabled
+     */
     public boolean isBlockContentTypeSniffingEnabled() {
         return blockContentTypeSniffingEnabled;
     }
 
 
-    public void setBlockContentTypeSniffingEnabled(
-            boolean blockContentTypeSniffingEnabled) {
+    /**
+     * Enables or disables content type sniffing protection.
+     *
+     * @param blockContentTypeSniffingEnabled {@code true} to enable protection
+     */
+    public void setBlockContentTypeSniffingEnabled(boolean blockContentTypeSniffingEnabled) {
         this.blockContentTypeSniffingEnabled = blockContentTypeSniffingEnabled;
     }
 
 
+    /**
+     * Sets the URI used with the ALLOW_FROM X-Frame-Options directive.
+     *
+     * @param antiClickJackingUri the URI for ALLOW_FROM
+     */
     public void setAntiClickJackingUri(String antiClickJackingUri) {
         URI uri;
         try {
@@ -239,11 +328,13 @@ public class HttpHeaderSecurityFilter extends FilterBase {
     }
 
 
+    @Deprecated
     public boolean isXssProtectionEnabled() {
         return xssProtectionEnabled;
     }
 
 
+    @Deprecated
     public void setXssProtectionEnabled(boolean xssProtectionEnabled) {
         this.xssProtectionEnabled = xssProtectionEnabled;
     }
@@ -257,7 +348,7 @@ public class HttpHeaderSecurityFilter extends FilterBase {
 
         private final String headerValue;
 
-        private XFrameOption(String headerValue) {
+        XFrameOption(String headerValue) {
             this.headerValue = headerValue;
         }
 

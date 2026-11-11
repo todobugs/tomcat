@@ -23,10 +23,13 @@ import org.apache.naming.ResourceEnvRef;
 
 /**
  * Object factory for Resources env.
- *
- * @author Remy Maucherat
  */
 public class ResourceEnvFactory extends FactoryBase {
+    /**
+     * Default constructor.
+     */
+    public ResourceEnvFactory() {
+    }
 
     @Override
     protected boolean isReferenceTypeSupported(Object obj) {

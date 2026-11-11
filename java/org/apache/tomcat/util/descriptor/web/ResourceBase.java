@@ -25,11 +25,15 @@ import java.util.Map;
 
 
 /**
- * Representation of an Context element
- *
- * @author Peter Rossbach (pero@apache.org)
+ * Common base class for the JNDI resource entries (e.g. <code>&lt;resource-ref&gt;</code>,
+ * <code>&lt;message-destination-ref&gt;</code>) of a web deployment descriptor.
  */
 public class ResourceBase implements Serializable, Injectable {
+    /**
+     * Default constructor.
+     */
+    public ResourceBase() {
+    }
 
     private static final long serialVersionUID = 1L;
 
@@ -41,14 +45,23 @@ public class ResourceBase implements Serializable, Injectable {
      */
     private String description = null;
 
+    /**
+     * Return the description of this resource.
+     *
+     * @return The description of this resource
+     */
     public String getDescription() {
         return this.description;
     }
 
+    /**
+     * Set the description of this resource.
+     *
+     * @param description The description of this resource
+     */
     public void setDescription(String description) {
         this.description = description;
     }
-
 
 
     /**
@@ -61,6 +74,11 @@ public class ResourceBase implements Serializable, Injectable {
         return this.name;
     }
 
+    /**
+     * Set the name of this resource.
+     *
+     * @param name The name of this resource
+     */
     public void setName(String name) {
         this.name = name;
     }
@@ -71,23 +89,46 @@ public class ResourceBase implements Serializable, Injectable {
      */
     private String type = null;
 
+    /**
+     * Return the name of the resource implementation class.
+     *
+     * @return The name of the resource implementation class
+     */
     public String getType() {
         return this.type;
     }
 
+    /**
+     * Set the name of the resource implementation class.
+     *
+     * @param type The name of the resource implementation class
+     */
     public void setType(String type) {
         this.type = type;
     }
 
 
+    /**
+     * The JNDI lookup name for this resource.
+     */
     private String lookupName = null;
 
+    /**
+     * Return the JNDI lookup name for this resource.
+     *
+     * @return The JNDI lookup name
+     */
     public String getLookupName() {
         return lookupName;
     }
 
+    /**
+     * Set the JNDI lookup name for this resource.
+     *
+     * @param lookupName The JNDI lookup name
+     */
     public void setLookupName(String lookupName) {
-        if (lookupName == null || lookupName.length() == 0) {
+        if (lookupName == null || lookupName.isEmpty()) {
             this.lookupName = null;
             return;
         }
@@ -98,11 +139,13 @@ public class ResourceBase implements Serializable, Injectable {
     /**
      * Holder for our configured properties.
      */
-    private final Map<String, Object> properties = new HashMap<>();
+    private final Map<String,Object> properties = new HashMap<>();
 
     /**
+     * Returns the value of the specified property.
+     *
      * @param name The property name
-     * @return a configured property.
+     * @return the configured property value
      */
     public Object getProperty(String name) {
         return properties.get(name);
@@ -110,7 +153,8 @@ public class ResourceBase implements Serializable, Injectable {
 
     /**
      * Set a configured property.
-     * @param name The property name
+     *
+     * @param name  The property name
      * @param value The property value
      */
     public void setProperty(String name, Object value) {
@@ -119,6 +163,7 @@ public class ResourceBase implements Serializable, Injectable {
 
     /**
      * Remove a configured property.
+     *
      * @param name The property name
      */
     public void removeProperty(String name) {
@@ -127,12 +172,16 @@ public class ResourceBase implements Serializable, Injectable {
 
     /**
      * List properties.
+     *
      * @return the property names iterator
      */
     public Iterator<String> listProperties() {
         return properties.keySet().iterator();
     }
 
+    /**
+     * The list of injection targets for this resource.
+     */
     private final List<InjectionTarget> injectionTargets = new ArrayList<>();
 
     @Override
@@ -152,9 +201,9 @@ public class ResourceBase implements Serializable, Injectable {
         final int prime = 31;
         int result = 1;
         result = prime * result + ((description == null) ? 0 : description.hashCode());
-        result = prime * result + ((injectionTargets == null) ? 0 : injectionTargets.hashCode());
+        result = prime * result + injectionTargets.hashCode();
         result = prime * result + ((name == null) ? 0 : name.hashCode());
-        result = prime * result + ((properties == null) ? 0 : properties.hashCode());
+        result = prime * result + properties.hashCode();
         result = prime * result + ((type == null) ? 0 : type.hashCode());
         result = prime * result + ((lookupName == null) ? 0 : lookupName.hashCode());
         return result;
@@ -180,11 +229,7 @@ public class ResourceBase implements Serializable, Injectable {
         } else if (!description.equals(other.description)) {
             return false;
         }
-        if (injectionTargets == null) {
-            if (other.injectionTargets != null) {
-                return false;
-            }
-        } else if (!injectionTargets.equals(other.injectionTargets)) {
+        if (!injectionTargets.equals(other.injectionTargets)) {
             return false;
         }
         if (name == null) {
@@ -194,11 +239,7 @@ public class ResourceBase implements Serializable, Injectable {
         } else if (!name.equals(other.name)) {
             return false;
         }
-        if (properties == null) {
-            if (other.properties != null) {
-                return false;
-            }
-        } else if (!properties.equals(other.properties)) {
+        if (!properties.equals(other.properties)) {
             return false;
         }
         if (type == null) {
@@ -209,13 +250,10 @@ public class ResourceBase implements Serializable, Injectable {
             return false;
         }
         if (lookupName == null) {
-            if (other.lookupName != null) {
-                return false;
-            }
-        } else if (!lookupName.equals(other.lookupName)) {
-            return false;
+            return other.lookupName == null;
+        } else {
+            return lookupName.equals(other.lookupName);
         }
-        return true;
     }
 
 
@@ -224,10 +262,20 @@ public class ResourceBase implements Serializable, Injectable {
      */
     private NamingResources resources = null;
 
+    /**
+     * Return the NamingResources with which this resource is associated.
+     *
+     * @return The NamingResources with which this resource is associated
+     */
     public NamingResources getNamingResources() {
         return this.resources;
     }
 
+    /**
+     * Set the NamingResources with which this resource is associated.
+     *
+     * @param resources The NamingResources with which this resource is associated
+     */
     public void setNamingResources(NamingResources resources) {
         this.resources = resources;
     }

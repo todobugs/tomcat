@@ -23,11 +23,13 @@ import java.nio.charset.CoderResult;
 import java.nio.charset.StandardCharsets;
 
 /**
- * Encodes characters as bytes using UTF-8. Extracted from Apache Harmony with
- * some minor bug fixes applied.
+ * Encodes characters as bytes using UTF-8. Extracted from Apache Harmony with some minor bug fixes applied.
  */
 public class Utf8Encoder extends CharsetEncoder {
 
+    /**
+     * Constructs a new UTF-8 CharsetEncoder.
+     */
     public Utf8Encoder() {
         super(StandardCharsets.UTF_8, 1.1f, 4.0f);
     }
@@ -46,11 +48,11 @@ public class Utf8Encoder extends CharsetEncoder {
         int limit = in.limit();
         byte[] bArr;
         char[] cArr;
-        int x = pos;
         bArr = out.array();
         cArr = in.array();
         int outPos = out.position();
         int rem = in.remaining();
+        int x;
         for (x = pos; x < pos + rem; x++) {
             int jchar = (cArr[x] & 0xFFFF);
 

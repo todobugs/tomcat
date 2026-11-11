@@ -23,8 +23,6 @@
   &project;
 
   <properties>
-    <author email="yoavs@apache.org">Yoav Shapira</author>
-    <author email="arjaquith@mindspring.com">Andrew R. Jaquith</author>
     <title>The AJP Connector</title>
   </properties>
 
@@ -81,27 +79,28 @@
 
   <attributes>
 
-    <attribute name="ajpFlush" required="false">
-      <p>A boolean value which can be used to enable or disable sending
-      AJP flush messages to the fronting proxy whenever an explicit
-      flush happens. The default value is <code>true</code>.<br/>
-      An AJP flush message is a SEND_BODY_CHUNK packet with no body content.
-      Proxy implementations like mod_jk or mod_proxy_ajp will flush the
-      data buffered in the web server to the client when they receive
-      such a packet. Setting this to <code>false</code> can reduce
-      AJP packet traffic but might delay sending packets to the client.
-      At the end of the response, AJP does always flush to the client.</p>
-    </attribute>
-
     <attribute name="allowTrace" required="false">
       <p>A boolean value which can be used to enable or disable the TRACE
-      HTTP method. If not specified, this attribute is set to false.</p>
+      HTTP method. If not specified, this attribute is set to false. As per RFC
+      7231 section 4.3.8, cookie and authorization headers will be excluded from
+      the response to the TRACE request. If you wish to include these, you can
+      implement the <code>doTrace()</code> method for the target Servlet and
+      gain full control over the response.</p>
     </attribute>
 
     <attribute name="asyncTimeout" required="false">
       <p>The default timeout for asynchronous requests in milliseconds. If not
       specified, this attribute is set to the Servlet specification default of
       30000 (30 seconds).</p>
+    </attribute>
+
+    <attribute name="discardFacades" required="false">
+      <p>A boolean value which can be used to enable or disable the recycling
+      of the facade objects that isolate the container internal request
+      processing objects. If set to <code>true</code> the facades will be
+      set for garbage collection after every request, otherwise they will be
+      reused. This setting has no effect when the security manager is enabled.
+      If not specified, this attribute is set to <code>true</code>.</p>
     </attribute>
 
     <attribute name="enableLookups" required="false">
@@ -113,27 +112,117 @@
       By default, DNS lookups are disabled.</p>
     </attribute>
 
-    <attribute name="maxHeaderCount" required="false">
-      <p>The maximum number of headers in a request that are allowed by the
-      container. A request that contains more headers than the specified limit
-      will be rejected. A value of less than 0 means no limit.
-      If not specified, a default of 100 is used.</p>
+    <attribute name="encodedReverseSolidusHandling" required="false">
+      <p>When set to <code>reject</code> request paths containing a
+      <code>%5c</code> sequence will be rejected with a 400 response. When set
+      to <code>decode</code> request paths containing a <code>%5c</code>
+      sequence will have that sequence decoded to <code>\</code> at the same
+      time other <code>%nn</code> sequences are decoded. When set to
+      <code>passthrough</code> request paths containing a <code>%5c</code>
+      sequence will be processed with the <code>%5c</code> sequence unchanged.
+      </p>
+      <p>When set to <code>decoded</code>, the <strong>allowBackslash</strong>
+      attribute will be applied after decoding.
+      </p>
+      <p>If <code>passthrough</code> is used then it is the application's
+      responsibility to perform any further <code>%nn</code> decoding required.
+      Any <code>%25</code> sequences (encoded <code>%</code>) in the request
+      path with also be processed with the <code>%25</code> sequence unchanged
+      to avoid potential corruption and/or decoding failure when the path is
+      subsequently <code>%nn</code> decoded by the application.</p>
+      <p>If not specified, the default value is <code>decode</code>.</p>
+    </attribute>
+
+    <attribute name="encodedSolidusHandling" required="false">
+      <p>When set to <code>reject</code> request paths containing a
+      <code>%2f</code> sequence will be rejected with a 400 response. When set
+      to <code>decode</code> request paths containing a <code>%2f</code>
+      sequence will have that sequence decoded to <code>/</code> at the same
+      time other <code>%nn</code> sequences are decoded. When set to
+      <code>passthrough</code> request paths containing a <code>%2f</code>
+      sequence will be processed with the <code>%2f</code> sequence unchanged.
+      </p>
+      <p>If <code>passthrough</code> is used then it is the application's
+      responsibility to perform any further <code>%nn</code> decoding required.
+      Any <code>%25</code> sequences (encoded <code>%</code>) in the request
+      path with also be processed with the <code>%25</code> sequence unchanged
+      to avoid potential corruption and/or decoding failure when the path is
+      subsequently <code>%nn</code> decoded by the application.</p>
+      <p>If not specified the default value is <code>reject</code>. This default
+      may be modified if the deprecated <a href="systemprops.html">system
+      property</a>
+      <code>org.apache.tomcat.util.buf.UDecoder.ALLOW_ENCODED_SLASH</code> is
+      set.</p>
+    </attribute>
+
+    <attribute name="maxCookieCount" required="false">
+      <p>The maximum number of cookies that are permitted for a request. A value
+      of less than zero means no limit. If not specified, a default value of 200
+      will be used.</p>
+    </attribute>
+
+    <attribute name="maxLocaleCount" required="false">
+      <p>The maximum number of locales (obtained from the
+      <code>Accept-Language</code> header(s)) that are permitted for a request.
+      Locales above this limit will be ignored when the locales are
+      parsed and an info will be logged. A value of less than 0 means no
+      limit. If not specified, a default of 10 is used.</p>
     </attribute>
 
     <attribute name="maxParameterCount" required="false">
-      <p>The maximum number of parameter and value pairs (GET plus POST) which
-      will be automatically parsed by the container. Parameter and value pairs
-      beyond this limit will be ignored. A value of less than 0 means no limit.
-      If not specified, a default of 10000 is used. Note that
-      <code>FailedRequestFilter</code> <a href="filter.html">filter</a> can be
-      used to reject requests that hit the limit.</p>
+      <p>The maximum total number of request parameters (including uploaded
+      files) obtained from the query string and, for POST requests, the request
+      body if the content type is
+      <code>application/x-www-form-urlencoded</code> or
+      <code>multipart/form-data</code>. Request parameters beyond this limit
+      will be ignored. A value of less than 0 means no limit. If not specified,
+      a default of 10000 is used. The <code>FailedRequestFilter</code>
+      <a href="filter.html">filter</a> can be used to reject requests that
+      exceed the limit.</p>
+    </attribute>
+
+    <attribute name="maxPartCount" required="false">
+      <p>The maximum total number of parts permitted in a request where the
+      content type is <code>multipart/form-data</code>. This limit is in
+      addition to <code>maxParameterCount</code>. A value of less than 0 means
+      no limit. If not specified, a default of 50 is used. Requests that exceed
+      this limit may be ignored depending on how the application processes the
+      request. The <code>FailedRequestFilter</code>
+      <a href="filter.html">filter</a> can be used to always reject requests
+      that exceed the limit.</p>
+      <p>The nature of multipart requests and the associated Servlet API
+      requirements for processing them is such that they can place a significant
+      demand on memory. Applications utilising multipart requests need to ensure
+      sufficient memory is available to avoid a potential denial of service. As
+      a guide, the memory required is <code>maxPartHeaderSize</code> x
+      <code>maxPartCount</code> x <code>maxConnections</code> x 2 (due to the
+      implementation). For the defaults that is <code>512 x 50 x 8192 x 2</code>
+      which is 400MB. If running on Java 8, this is increased by a further
+      factor of 2 due to the way Java stores Strings internally which increases
+      the default memory requirements to 800MB.</p>
+    </attribute>
+
+    <attribute name="maxPartHeaderSize" required="false">
+      <p>The maximum number of header bytes permitted per part in a request
+      where the content type is <code>multipart/form-data</code>. Requests that
+      exceed this limit will be rejected. A value of less than 0 means no limit.
+      If not specified, a default of 512 is used.</p>
     </attribute>
 
     <attribute name="maxPostSize" required="false">
-      <p>The maximum size in bytes of the POST which will be handled by
-      the container FORM URL parameter parsing. The limit can be disabled by
-      setting this attribute to a value less than zero. If not specified, this
-      attribute is set to 2097152 (2 megabytes). Note that the
+      <p>This is the maximum number of request body bytes that will be converted
+      into request parameters by Tomcat. This limit only applies in specific
+      circumstances and is <strong>not</strong> a general limit on request body
+      size for POST requests. The limit only applies when Tomcat is processing
+      the request body for parameters as per section 3.1.1
+      (<code>application/x-www-form-urlencoded</code>) or section 3.2
+      (<code>multipart/form-data</code>) of the Servlet specification. In the
+      <code>multipart/form-data</code> case, the limit only applies to the data
+      used to generate the parameters that are made available through the
+      <code>getParameter()</code> family of methods.</p>
+      <p>The limit can be disabled by setting this attribute to a value less
+      than zero. If not specified, this attribute is set to 2097152 (2 MiB).
+      Note that the
       <a href="filter.html#Failed_Request_Filter"><code>FailedRequestFilter</code></a>
       can be used to reject requests that exceed this limit.</p>
     </attribute>
@@ -150,7 +239,7 @@
       authentication request expires. The limit can be disabled by setting this
       attribute to -1. Setting the attribute to zero will disable the saving of
       POST data during authentication. If not specified, this attribute is set
-      to 4096 (4 kilobytes).</p>
+      to 4096 (4 KiB).</p>
     </attribute>
 
     <attribute name="parseBodyMethods" required="false">
@@ -227,28 +316,31 @@
     </attribute>
 
     <attribute name="scheme" required="false">
-      <p>Set this attribute to the name of the protocol you wish to have
-      returned by calls to <code>request.getScheme()</code>.  For
-      example, you would set this attribute to "<code>https</code>"
-      for an SSL Connector.  The default value is "<code>http</code>".
+      <p>Ignored if the <code>is_ssl</code> attribute is set in the
+      <code>AJP13_FORWARD_REQUEST</code> message. If <code>is_ssl</code> is set,
+      scheme is always set to <code>https</code>.
+      </p>
+      <p>Otherwise, set this attribute to the name of the protocol you wish to
+      have returned by calls to <code>request.getScheme()</code>. The default
+      value is <code>http</code>.
       </p>
     </attribute>
 
     <attribute name="secure" required="false">
-      <p>Set this attribute to <code>true</code> if you wish to have
-      calls to <code>request.isSecure()</code> to return <code>true</code>
-      for requests received by this Connector. You would want this on an
-      SSL Connector or a non SSL connector that is receiving data from a
-      SSL accelerator, like a crypto card, an SSL appliance or even a webserver.
-      The default value is <code>false</code>.</p>
+      <p>Ignored if the <code>is_ssl</code> attribute is set in the
+      <code>AJP13_FORWARD_REQUEST</code> message. If <code>is_ssl</code> is set,
+      secure is always set to <code>true</code>.
+      </p>
+      <p>Otherwise, set this attribute to <code>true</code> if you wish to have
+      calls to <code>request.isSecure()</code> to return <code>true</code> for
+      requests received by this Connector. The default value is
+      <code>false</code>.
+      </p>
     </attribute>
 
     <attribute name="URIEncoding" required="false">
       <p>This specifies the character encoding used to decode the URI bytes,
-      after %xx decoding the URL. If not specified, UTF-8 will be used unless
-      the <code>org.apache.catalina.STRICT_SERVLET_COMPLIANCE</code>
-      <a href="systemprops.html">system property</a> is set to <code>true</code>
-      in which case ISO-8859-1 will be used.</p>
+      after %xx decoding the URL. The default value is <code>UTF-8</code>.</p>
     </attribute>
 
     <attribute name="useBodyEncodingForURI" required="false">
@@ -290,9 +382,11 @@
   <attributes>
 
     <attribute name="acceptCount" required="false">
-      <p>The maximum queue length for incoming connection requests when
-      all possible request processing threads are in use.  Any requests
-      received when the queue is full will be refused.  The default
+      <p>The maximum length of the operating system provided queue for incoming
+      connection requests when <code>maxConnections</code> has been reached. The
+      operating system may ignore this setting and use a different size for the
+      queue. When this queue is full, the operating system may actively refuse
+      additional connections or those connections may time out. The default
       value is 100.</p>
     </attribute>
 
@@ -325,6 +419,18 @@
       configured with <code>::</code>.</p>
     </attribute>
 
+    <attribute name="ajpFlush" required="false">
+      <p>A boolean value which can be used to enable or disable sending
+      AJP flush messages to the fronting proxy whenever an explicit
+      flush happens. The default value is <code>true</code>.<br/>
+      An AJP flush message is a SEND_BODY_CHUNK packet with no body content.
+      Proxy implementations like mod_jk or mod_proxy_ajp will flush the
+      data buffered in the web server to the client when they receive
+      such a packet. Setting this to <code>false</code> can reduce
+      AJP packet traffic but might delay sending packets to the client.
+      At the end of the response, AJP does always flush to the client.</p>
+    </attribute>
+
     <attribute name="allowedRequestAttributesPattern" required="false">
       <p>The AJP protocol passes some information from the reverse proxy to the
       AJP connector using request attributes. These attributes are:</p>
@@ -354,10 +460,11 @@
     </attribute>
 
     <attribute name="bindOnInit" required="false">
-      <p>Controls when the socket used by the connector is bound. By default it
-      is bound when the connector is initiated and unbound when the connector is
-      destroyed. If set to <code>false</code>, the socket will be bound when the
-      connector is started and unbound when it is stopped.</p>
+      <p>Controls when the socket used by the connector is bound. If set to
+      <code>true</code> it is bound when the connector is initiated and unbound
+      when the connector is destroyed. If set to <code>false</code>, the socket
+      will be bound when the connector is started and unbound when it is
+      stopped. If not specified, the default is <code>true</code>.</p>
     </attribute>
 
     <attribute name="clientCertProvider" required="false">
@@ -421,10 +528,11 @@
       maxConnections feature and connections will not be counted.</p>
     </attribute>
 
-    <attribute name="maxCookieCount" required="false">
-      <p>The maximum number of cookies that are permitted for a request. A value
-      of less than zero means no limit. If not specified, a default value of 200
-      will be used.</p>
+    <attribute name="maxHeaderCount" required="false">
+      <p>The maximum number of headers in a request that are allowed by the
+      container. A request that contains more headers than the specified limit
+      will be rejected. A value of less than 0 means no limit.
+      If not specified, a default of 100 is used.</p>
     </attribute>
 
     <attribute name="maxThreads" required="false">
@@ -472,6 +580,7 @@
 
     <attribute name="secret" required="false">
       <p>Only requests from workers with this secret keyword will be accepted.
+      The secret keyword must consist only of standard ASCII characters.
       The default value is <code>null</code>. This attribute must be specified
       with a non-null, non-zero length value unless
       <strong>secretRequired</strong> is explicitly configured to be
@@ -522,9 +631,11 @@
     <attribute name="tomcatAuthentication" required="false">
       <p>If set to <code>true</code>, the authentication will be done in Tomcat.
       Otherwise, the authenticated principal will be propagated from the native
-      webserver and used for authorization in Tomcat. Note that this principal
-      will have no roles associated with it.
-      The default value is <code>true</code>. If
+      webserver and used for authorization in Tomcat. </p>
+      <p>The web server must send the user principal (username) as a request
+      <i>attribute</i> named <code>REMOTE_USER</code>.</p>
+      <p>Note that this principal will have no roles associated with it.</p>
+      <p>The default value is <code>true</code>. If
       <code>tomcatAuthorization</code> is set to <code>true</code> this
       attribute has no effect.</p>
     </attribute>
@@ -537,6 +648,13 @@
       authenticated principal. If the appropriate Tomcat Realm for the request
       does not recognise the provided user name, a Principal will be still be
       created but it will have no roles. The default value is
+      <code>false</code>.</p>
+    </attribute>
+
+    <attribute name="useVirtualThreads" required="false">
+      <p>(bool) Use this attribute to enable or disable usage of virtual threads
+      with the internal executor. If an executor is associated with this
+      connector, this attribute is ignored. The default value is
       <code>false</code>.</p>
     </attribute>
 
@@ -599,19 +717,19 @@
       </attribute>
       <attribute name="socket.performanceConnectionTime" required="false">
         <p>(int)The first value for the performance settings. See
-        <a href="http://docs.oracle.com/javase/6/docs/api/java/net/Socket.html#setPerformancePreferences(int,%20int,%20int)">Socket Performance Options</a>
+        <a href="https://docs.oracle.com/javase/8/docs/api/java/net/Socket.html#setPerformancePreferences(int,%20int,%20int)">Socket Performance Options</a>
         All three performance attributes must be set else the JVM defaults will
         be used for all three.</p>
       </attribute>
       <attribute name="socket.performanceLatency" required="false">
         <p>(int)The second value for the performance settings. See
-        <a href="http://docs.oracle.com/javase/6/docs/api/java/net/Socket.html#setPerformancePreferences(int,%20int,%20int)">Socket Performance Options</a>
+        <a href="https://docs.oracle.com/javase/8/docs/api/java/net/Socket.html#setPerformancePreferences(int,%20int,%20int)">Socket Performance Options</a>
         All three performance attributes must be set else the JVM defaults will
         be used for all three.</p>
       </attribute>
       <attribute name="socket.performanceBandwidth" required="false">
         <p>(int)The third value for the performance settings. See
-        <a href="http://docs.oracle.com/javase/6/docs/api/java/net/Socket.html#setPerformancePreferences(int,%20int,%20int)">Socket Performance Options</a>
+        <a href="https://docs.oracle.com/javase/8/docs/api/java/net/Socket.html#setPerformancePreferences(int,%20int,%20int)">Socket Performance Options</a>
         All three performance attributes must be set else the JVM defaults will
         be used for all three.</p>
       </attribute>
@@ -675,7 +793,7 @@
         application write buffer size + network read buffer size +
         network write buffer size</code><br/>
         The value is in bytes, the default value is <code>1024*1024*100</code>
-        (100MB).</p>
+        (100 MiB).</p>
       </attribute>
 
       <attribute name="socket.processorCache" required="false">
@@ -697,31 +815,6 @@
         collection. The integer value specifies how many objects to keep in the
         cache at most. The default is <code>500</code>. Other values are
         <code>-1</code> for unlimited cache and <code>0</code> for no cache.</p>
-      </attribute>
-
-      <attribute name="selectorPool.maxSelectors" required="false">
-        <p>(int)The max selectors to be used in the pool, to reduce selector
-        contention. Use this option when the command line
-        <code>org.apache.tomcat.util.net.NioSelectorShared</code> value is set
-        to false. Default value is <code>200</code>.</p>
-      </attribute>
-
-      <attribute name="selectorPool.maxSpareSelectors" required="false">
-        <p>(int)The max spare selectors to be used in the pool, to reduce
-        selector contention. When a selector is returned to the pool, the system
-        can decide to keep it or let it be GC'd. Use this option when the
-        command line <code>org.apache.tomcat.util.net.NioSelectorShared</code>
-        value is set to false. Default value is <code>-1</code> (unlimited).</p>
-      </attribute>
-
-      <attribute name="command-line-options" required="false">
-        <p>The following command line options are available for the NIO
-        connector:<br/>
-        <code>-Dorg.apache.tomcat.util.net.NioSelectorShared=true|false</code>
-        - default is <code>true</code>. Set this value to <code>false</code> if you wish to
-        use a selector for each thread. When you set it to <code>false</code>, you can
-        control the size of the pool of selectors by using the
-        <strong>selectorPool.maxSelectors</strong> attribute.</p>
       </attribute>
 
     </attributes>

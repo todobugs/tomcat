@@ -20,6 +20,7 @@ import java.io.Externalizable;
 import java.io.IOException;
 import java.io.ObjectInput;
 import java.io.ObjectOutput;
+import java.util.Objects;
 
 import javax.el.ELContext;
 import javax.el.ELException;
@@ -28,21 +29,29 @@ import javax.el.PropertyNotWritableException;
 import javax.el.ValueExpression;
 
 /**
- * Wrapper for providing context to ValueExpressions
- *
- * @author Jacob Hookom
+ * Wrapper for providing context to ValueExpressions.
  */
-public final class JspValueExpression extends ValueExpression implements
-        Externalizable {
+public final class JspValueExpression extends ValueExpression implements Externalizable {
+
+    private static final long serialVersionUID = 6003098379712560193L;
 
     private ValueExpression target;
 
     private String mark;
 
+    /**
+     * Default constructor for deserialization.
+     */
     public JspValueExpression() {
         super();
     }
 
+    /**
+     * Constructs an instance with the given mark and target expression.
+     *
+     * @param mark The mark string
+     * @param target The target value expression
+     */
     public JspValueExpression(String mark, ValueExpression target) {
         this.target = target;
         this.mark = mark;
@@ -54,79 +63,100 @@ public final class JspValueExpression extends ValueExpression implements
     }
 
     @Override
-    public Class<?> getType(ELContext context) throws NullPointerException,
-            PropertyNotFoundException, ELException {
+    public Class<?> getType(ELContext context) throws NullPointerException, PropertyNotFoundException, ELException {
         context.notifyBeforeEvaluation(getExpressionString());
         try {
             Class<?> result = this.target.getType(context);
             context.notifyAfterEvaluation(getExpressionString());
             return result;
         } catch (PropertyNotFoundException e) {
-            if (e instanceof JspPropertyNotFoundException) throw e;
+            if (e instanceof JspPropertyNotFoundException) {
+                throw e;
+            }
             throw new JspPropertyNotFoundException(this.mark, e);
         } catch (ELException e) {
-            if (e instanceof JspELException) throw e;
+            if (e instanceof JspELException) {
+                throw e;
+            }
             throw new JspELException(this.mark, e);
         }
     }
 
     @Override
-    public boolean isReadOnly(ELContext context) throws NullPointerException,
-            PropertyNotFoundException, ELException {
+    public boolean isReadOnly(ELContext context) throws NullPointerException, PropertyNotFoundException, ELException {
         context.notifyBeforeEvaluation(getExpressionString());
         try {
             boolean result = this.target.isReadOnly(context);
             context.notifyAfterEvaluation(getExpressionString());
             return result;
         } catch (PropertyNotFoundException e) {
-            if (e instanceof JspPropertyNotFoundException) throw e;
+            if (e instanceof JspPropertyNotFoundException) {
+                throw e;
+            }
             throw new JspPropertyNotFoundException(this.mark, e);
         } catch (ELException e) {
-            if (e instanceof JspELException) throw e;
+            if (e instanceof JspELException) {
+                throw e;
+            }
             throw new JspELException(this.mark, e);
         }
     }
 
     @Override
     public void setValue(ELContext context, Object value)
-            throws NullPointerException, PropertyNotFoundException,
-            PropertyNotWritableException, ELException {
+            throws NullPointerException, PropertyNotFoundException, PropertyNotWritableException, ELException {
         context.notifyBeforeEvaluation(getExpressionString());
         try {
             this.target.setValue(context, value);
             context.notifyAfterEvaluation(getExpressionString());
         } catch (PropertyNotWritableException e) {
-            if (e instanceof JspPropertyNotWritableException) throw e;
+            if (e instanceof JspPropertyNotWritableException) {
+                throw e;
+            }
             throw new JspPropertyNotWritableException(this.mark, e);
         } catch (PropertyNotFoundException e) {
-            if (e instanceof JspPropertyNotFoundException) throw e;
+            if (e instanceof JspPropertyNotFoundException) {
+                throw e;
+            }
             throw new JspPropertyNotFoundException(this.mark, e);
         } catch (ELException e) {
-            if (e instanceof JspELException) throw e;
+            if (e instanceof JspELException) {
+                throw e;
+            }
             throw new JspELException(this.mark, e);
         }
     }
 
     @Override
-    public Object getValue(ELContext context) throws NullPointerException,
-            PropertyNotFoundException, ELException {
+    public Object getValue(ELContext context) throws NullPointerException, PropertyNotFoundException, ELException {
         context.notifyBeforeEvaluation(getExpressionString());
         try {
             Object result = this.target.getValue(context);
             context.notifyAfterEvaluation(getExpressionString());
             return result;
         } catch (PropertyNotFoundException e) {
-            if (e instanceof JspPropertyNotFoundException) throw e;
+            if (e instanceof JspPropertyNotFoundException) {
+                throw e;
+            }
             throw new JspPropertyNotFoundException(this.mark, e);
         } catch (ELException e) {
-            if (e instanceof JspELException) throw e;
+            if (e instanceof JspELException) {
+                throw e;
+            }
             throw new JspELException(this.mark, e);
         }
     }
 
     @Override
     public boolean equals(Object obj) {
-        return this.target.equals(obj);
+        if (obj == this) {
+            return true;
+        }
+        if (!(obj instanceof JspValueExpression)) {
+            return false;
+        }
+        JspValueExpression other = (JspValueExpression) obj;
+        return Objects.equals(this.mark, other.mark) && this.target.equals(other.target);
     }
 
     @Override
@@ -151,8 +181,7 @@ public final class JspValueExpression extends ValueExpression implements
     }
 
     @Override
-    public void readExternal(ObjectInput in) throws IOException,
-            ClassNotFoundException {
+    public void readExternal(ObjectInput in) throws IOException, ClassNotFoundException {
         this.mark = in.readUTF();
         this.target = (ValueExpression) in.readObject();
     }

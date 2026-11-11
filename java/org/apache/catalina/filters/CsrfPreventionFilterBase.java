@@ -27,7 +27,16 @@ import javax.servlet.http.HttpServletResponse;
 import org.apache.juli.logging.Log;
 import org.apache.juli.logging.LogFactory;
 
+/**
+ * Base class for CSRF prevention filters.
+ */
 public abstract class CsrfPreventionFilterBase extends FilterBase {
+
+    /**
+     * Default constructor.
+     */
+    public CsrfPreventionFilterBase() {
+    }
 
     // Log must be non-static as loggers are created per class-loader and this
     // Filter may be used in multiple class loaders
@@ -45,29 +54,28 @@ public abstract class CsrfPreventionFilterBase extends FilterBase {
     }
 
     /**
-     * @return response status code that is used to reject denied request.
+     * Get the HTTP status code used to reject denied requests.
+     *
+     * @return The response status code that is used to reject denied requests
      */
     public int getDenyStatus() {
         return denyStatus;
     }
 
     /**
-     * Set response status code that is used to reject denied request. If none
-     * set, the default value of 403 will be used.
+     * Set response status code that is used to reject denied request. If none set, the default value of 403 will be
+     * used.
      *
-     * @param denyStatus
-     *            HTTP status code
+     * @param denyStatus HTTP status code
      */
     public void setDenyStatus(int denyStatus) {
         this.denyStatus = denyStatus;
     }
 
     /**
-     * Specify the class to use to generate the nonces. Must be in instance of
-     * {@link Random}.
+     * Specify the class to use to generate the nonces. Must be in instance of {@link Random}.
      *
-     * @param randomClass
-     *            The name of the class to use
+     * @param randomClass The name of the class to use
      */
     public void setRandomClass(String randomClass) {
         this.randomClass = randomClass;
@@ -79,12 +87,9 @@ public abstract class CsrfPreventionFilterBase extends FilterBase {
         super.init(filterConfig);
 
         try {
-            Class<?> clazz = Class.forName(randomClass);
-            randomSource = (Random) clazz.getConstructor().newInstance();
-        } catch (ReflectiveOperationException e) {
-            ServletException se = new ServletException(sm.getString(
-                    "csrfPrevention.invalidRandomClass", randomClass), e);
-            throw se;
+            randomSource = (Random) Class.forName(randomClass).getConstructor().newInstance();
+        } catch (ReflectiveOperationException | ClassCastException e) {
+            throw new ServletException(sm.getString("csrfPrevention.invalidRandomClass", randomClass), e);
         }
     }
 
@@ -93,24 +98,40 @@ public abstract class CsrfPreventionFilterBase extends FilterBase {
         return true;
     }
 
+
     /**
-     * Generate a once time token (nonce) for authenticating subsequent
-     * requests. The nonce generation is a simplified version of
-     * ManagerBase.generateSessionId().
+     * Generate a once time token (nonce) for authenticating subsequent requests. The nonce generation is a simplified
+     * version of ManagerBase.generateSessionId().
+     *
+     * @param request The request. Unused in this method but present for the benefit of subclasses.
      *
      * @return the generated nonce
      */
+    protected String generateNonce(HttpServletRequest request) {
+        return generateNonce();
+    }
+
+    /**
+     * Generate a once time token (nonce) for authenticating subsequent requests. The nonce generation is a simplified
+     * version of ManagerBase.generateSessionId().
+     *
+     * @return the generated nonce
+     *
+     * @deprecated Use {@link #generateNonce(HttpServletRequest)} instead. This method will be removed in Apache Tomcat
+     *                 10.1.x onwards.
+     */
+    @Deprecated
     protected String generateNonce() {
-        byte random[] = new byte[16];
+        byte[] random = new byte[16];
 
         // Render the result as a String of hexadecimal digits
         StringBuilder buffer = new StringBuilder();
 
         randomSource.nextBytes(random);
 
-        for (int j = 0; j < random.length; j++) {
-            byte b1 = (byte) ((random[j] & 0xf0) >> 4);
-            byte b2 = (byte) (random[j] & 0x0f);
+        for (byte b : random) {
+            byte b1 = (byte) ((b & 0xf0) >> 4);
+            byte b2 = (byte) (b & 0x0f);
             if (b1 < 10) {
                 buffer.append((char) ('0' + b1));
             } else {
@@ -126,6 +147,13 @@ public abstract class CsrfPreventionFilterBase extends FilterBase {
         return buffer.toString();
     }
 
+    /**
+     * Get the requested path from the given request.
+     *
+     * @param request The HTTP servlet request
+     *
+     * @return The requested path
+     */
     protected String getRequestedPath(HttpServletRequest request) {
         String path = request.getServletPath();
         if (request.getPathInfo() != null) {

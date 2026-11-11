@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.catalina.storeconfig;
 
 import java.io.PrintWriter;
@@ -23,29 +22,29 @@ import org.apache.catalina.core.StandardContext;
 import org.apache.juli.logging.Log;
 import org.apache.juli.logging.LogFactory;
 
+/**
+ * Store factory for watched resources in a StandardContext.
+ */
 public class WatchedResourceSF extends StoreFactoryBase {
-    private static Log log = LogFactory.getLog(WatchedResourceSF.class);
 
-    /*
-     * Store nested Element Value Arrays WatchedResource
-     *
-     * @see org.apache.catalina.config.IStoreFactory#store(java.io.PrintWriter,
-     *      int, java.lang.Object)
+    /**
+     * Constructs a new WatchedResourceSF.
      */
+    public WatchedResourceSF() {
+    }
+    private static final Log log = LogFactory.getLog(WatchedResourceSF.class);
+
     @Override
-    public void store(PrintWriter aWriter, int indent, Object aElement)
-            throws Exception {
+    public void store(PrintWriter aWriter, int indent, Object aElement) throws Exception {
         if (aElement instanceof StandardContext) {
-            StoreDescription elementDesc = getRegistry().findDescription(
-                    aElement.getClass().getName() + ".[WatchedResource]");
-            String[] resources = ((StandardContext) aElement)
-                    .findWatchedResources();
+            StoreDescription elementDesc =
+                    getRegistry().findDescription(aElement.getClass().getName() + ".[WatchedResource]");
+            String[] resources = ((StandardContext) aElement).findWatchedResources();
             if (elementDesc != null) {
-                if (log.isDebugEnabled())
-                    log.debug("store " + elementDesc.getTag() + "( " + aElement
-                            + " )");
-                getStoreAppender().printTagArray(aWriter, "WatchedResource",
-                        indent, resources);
+                if (log.isTraceEnabled()) {
+                    log.trace("store " + elementDesc.getTag() + "( " + aElement + " )");
+                }
+                getStoreAppender().printTagArray(aWriter, "WatchedResource", indent, resources);
             }
         } else {
             log.warn(sm.getString("storeFactory.noDescriptor", aElement.getClass(), "WatchedResource"));

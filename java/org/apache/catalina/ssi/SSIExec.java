@@ -16,68 +16,112 @@
  */
 package org.apache.catalina.ssi;
 
-
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.PrintWriter;
+import java.util.ArrayList;
 
 import org.apache.catalina.util.IOTools;
 import org.apache.tomcat.util.res.StringManager;
+
 /**
- * Implements the Server-side #exec command
- *
- * @author Bip Thelin
- * @author Amy Roh
- * @author Paul Speed
- * @author Dan Sandberg
- * @author David Becker
+ * Implements the Server-side #exec command.
  */
 public class SSIExec implements SSICommand {
     private static final StringManager sm = StringManager.getManager(SSIExec.class);
+
+    /**
+     * Default constructor.
+     */
+    public SSIExec() {
+    }
+    /**
+     * Helper instance for processing CGI includes.
+     */
     protected final SSIInclude ssiInclude = new SSIInclude();
+    /**
+     * Size of the buffer used for reading command output.
+     */
     protected static final int BUFFER_SIZE = 1024;
 
 
     /**
-     * @see SSICommand
+     * Processes the exec directive to run CGI scripts or system commands.
      */
     @Override
-    public long process(SSIMediator ssiMediator, String commandName,
-            String[] paramNames, String[] paramValues, PrintWriter writer) {
+    public long process(SSIMediator ssiMediator, String commandName, String[] paramNames, String[] paramValues,
+            PrintWriter writer) {
         long lastModified = 0;
+        if (paramNames.length == 0 || paramValues.length == 0) {
+            return 0;
+        }
         String configErrMsg = ssiMediator.getConfigErrMsg();
         String paramName = paramNames[0];
         String paramValue = paramValues[0];
         String substitutedValue = ssiMediator.substituteVariables(paramValue);
         if (paramName.equalsIgnoreCase("cgi")) {
-            lastModified = ssiInclude.process(ssiMediator, "include",
-                    new String[]{"virtual"}, new String[]{substitutedValue},
-                    writer);
+            lastModified = ssiInclude.process(ssiMediator, "include", new String[] { "virtual" },
+                    new String[] { substitutedValue }, writer);
         } else if (paramName.equalsIgnoreCase("cmd")) {
             boolean foundProgram = false;
             try {
                 Runtime rt = Runtime.getRuntime();
-                Process proc = rt.exec(substitutedValue);
+                ArrayList<String> tokens = new ArrayList<>();
+                StringBuilder current = new StringBuilder();
+                boolean inDoubleQuote = false;
+                boolean inSingleQuote = false;
+                for (int j = 0; j < substitutedValue.length(); j++) {
+                    char c = substitutedValue.charAt(j);
+                    if (c == '"' && !inSingleQuote) {
+                        inDoubleQuote = !inDoubleQuote;
+                    } else if (c == '\'' && !inDoubleQuote) {
+                        inSingleQuote = !inSingleQuote;
+                    } else if (Character.isWhitespace(c) && !inDoubleQuote && !inSingleQuote) {
+                        if (current.length() > 0) {
+                            tokens.add(current.toString());
+                            current.setLength(0);
+                        }
+                    } else {
+                        current.append(c);
+                    }
+                }
+                if (current.length() > 0) {
+                    tokens.add(current.toString());
+                }
+                String[] cmdArray = tokens.toArray(new String[0]);
+                if (cmdArray.length == 0) {
+                    throw new IOException(sm.getString("ssiExec.noCommand"));
+                }
+                Process proc = rt.exec(cmdArray);
                 foundProgram = true;
-                BufferedReader stdOutReader = new BufferedReader(
-                        new InputStreamReader(proc.getInputStream()));
-                BufferedReader stdErrReader = new BufferedReader(
-                        new InputStreamReader(proc.getErrorStream()));
                 char[] buf = new char[BUFFER_SIZE];
-                IOTools.flow(stdErrReader, writer, buf);
-                IOTools.flow(stdOutReader, writer, buf);
-                proc.waitFor();
+                try {
+                    try (BufferedReader stdOutReader = new BufferedReader(new InputStreamReader(proc.getInputStream()));
+                            BufferedReader stdErrReader = new BufferedReader(
+                                    new InputStreamReader(proc.getErrorStream()))) {
+                        // We don't spawn a thread here, since this is costly. stderr would be usually written
+                        // right away and the amount written would be small
+                        IOTools.flow(stdOutReader, writer, buf);
+                        IOTools.flow(stdErrReader, writer, buf);
+                    }
+                    proc.waitFor();
+                } finally {
+                    proc.destroy();
+                }
                 lastModified = System.currentTimeMillis();
             } catch (InterruptedException e) {
+                // Restore the interrupt status so that the enclosing container
+                // thread can continue its shutdown processing
+                Thread.currentThread().interrupt();
                 ssiMediator.log(sm.getString("ssiExec.executeFailed", substitutedValue), e);
                 writer.write(configErrMsg);
-            } catch (IOException e) {
+            } catch (IOException ioe) {
                 if (!foundProgram) {
                     // Apache doesn't output an error message if it can't find
                     // a program
                 }
-                ssiMediator.log(sm.getString("ssiExec.executeFailed", substitutedValue), e);
+                ssiMediator.log(sm.getString("ssiExec.executeFailed", substitutedValue), ioe);
             }
         }
         return lastModified;

@@ -16,23 +16,56 @@
  */
 package org.apache.el.util;
 
+import java.text.Format;
 import java.text.MessageFormat;
+import java.text.NumberFormat;
 import java.util.MissingResourceException;
 import java.util.ResourceBundle;
 
 /**
- * @author Jacob Hookom [jacob@hookom.net]
+ * Factory for creating localized EL messages.
  */
 public final class MessageFactory {
 
-    static final ResourceBundle bundle =
-            ResourceBundle.getBundle("org.apache.el.Messages");
+    private static final ResourceBundle DEFAULT_BUNDLE = ResourceBundle.getBundle("org.apache.el.Messages");
 
-    public MessageFactory() {
-        super();
+    private static final MessageFactory DEFAULT_MESSAGE_FACTORY = new MessageFactory(DEFAULT_BUNDLE);
+
+    /**
+     * Get a localized message.
+     * @param key the message key
+     * @return the message
+     */
+    public static String get(final String key) {
+        return DEFAULT_MESSAGE_FACTORY.getInternal(key);
     }
 
-    public static String get(final String key) {
+    /**
+     * Get a localized message with arguments.
+     * @param key the message key
+     * @param args the arguments
+     * @return the message
+     */
+    public static String get(final String key, final Object... args) {
+        return DEFAULT_MESSAGE_FACTORY.getInternal(key, args);
+    }
+
+    private final ResourceBundle bundle;
+
+    /**
+     * Constructor.
+     * @param bundle the resource bundle
+     */
+    public MessageFactory(ResourceBundle bundle) {
+        this.bundle = bundle;
+    }
+
+    /**
+     * Get a message from the bundle.
+     * @param key the message key
+     * @return the message
+     */
+    protected String getInternal(final String key) {
         try {
             return bundle.getString(key);
         } catch (MissingResourceException e) {
@@ -40,10 +73,34 @@ public final class MessageFactory {
         }
     }
 
-    public static String get(final String key, final Object... args) {
-        String value = get(key);
+    /**
+     * Get a message from the bundle with arguments.
+     * @param key the message key
+     * @param args the arguments
+     * @return the message
+     */
+    protected String getInternal(final String key, final Object... args) {
+        String value = getInternal(key);
 
         MessageFormat mf = new MessageFormat(value);
+        Format[] formats = null;
+
+        // Unless an argument has been explicitly configured to use a number
+        // format, convert all Number arguments to String else MessageFormat may
+        // try to format them in unexpected ways.
+        if (args != null) {
+            for (int i = 0; i < args.length; i++) {
+                if (args[i] instanceof Number) {
+                    if (formats == null) {
+                        formats = mf.getFormatsByArgumentIndex();
+                    }
+                    if (i < formats.length && !(formats[i] instanceof NumberFormat)) {
+                        args[i] = args[i].toString();
+                    }
+                }
+            }
+        }
+
         return mf.format(args, new StringBuffer(), null).toString();
     }
 }

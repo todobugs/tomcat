@@ -20,11 +20,8 @@ import org.junit.Assert;
 import org.junit.Test;
 
 /**
- * Unit tests for Section 4.2 of
- * <a href="https://tools.ietf.org/html/rfc7540">RFC 7540</a>.
- * <br>
- * The order of tests in this class is aligned with the order of the
- * requirements in the RFC.
+ * Unit tests for Section 4.2 of <a href="https://tools.ietf.org/html/rfc7540">RFC 7540</a>. <br>
+ * The order of tests in this class is aligned with the order of the requirements in the RFC.
  */
 public class TestHttp2Section_4_2 extends Http2TestBase {
 
@@ -54,6 +51,7 @@ public class TestHttp2Section_4_2 extends Http2TestBase {
         }
 
         os.write(settings);
+        os.flush();
 
         handleGoAwayResponse(1, Http2Error.FRAME_SIZE_ERROR);
     }
@@ -76,13 +74,14 @@ public class TestHttp2Section_4_2 extends Http2TestBase {
         // Empty payload
 
         os.write(ping);
+        os.flush();
 
-        handleGoAwayResponse(1,  Http2Error.FRAME_SIZE_ERROR);
+        handleGoAwayResponse(1, Http2Error.FRAME_SIZE_ERROR);
     }
 
 
     @Test
-    public void testFrameTypeLimitsTooSmall() throws Exception {
+    public void testFrameTypeLimitsTooSmallPing() throws Exception {
         // HTTP2 upgrade
         http2Connect();
 
@@ -98,8 +97,34 @@ public class TestHttp2Section_4_2 extends Http2TestBase {
         // Empty payload
 
         os.write(ping);
+        os.flush();
 
-        handleGoAwayResponse(1,  Http2Error.FRAME_SIZE_ERROR);
+        handleGoAwayResponse(1, Http2Error.FRAME_SIZE_ERROR);
+    }
+
+
+    @Test
+    public void testFrameTypeLimitsTooSmallHeaders() throws Exception {
+        // HTTP2 upgrade
+        http2Connect();
+
+        // Too small headers
+        byte[] headers = new byte[9];
+
+        // Header
+        // Length 0
+        // Type
+        headers[3] = FrameType.HEADERS.getIdByte();
+        // Set flags: End headers 0x04, Priority 0x20
+        headers[4] =  0x24;
+        // Stream 3
+        ByteUtil.set31Bits(headers, 5, 3);
+        // Empty payload
+
+        os.write(headers);
+        os.flush();
+
+        handleGoAwayResponse(3, Http2Error.FRAME_SIZE_ERROR);
     }
 
 
@@ -121,11 +146,11 @@ public class TestHttp2Section_4_2 extends Http2TestBase {
         // Empty payload
 
         os.write(priority);
+        os.flush();
 
         // Read Stream reset frame
-        parser.readFrame(true);
+        parser.readFrame();
 
-        Assert.assertTrue(output.getTrace(),
-                output.getTrace().startsWith("3-RST-[6]"));
+        Assert.assertTrue(output.getTrace(), output.getTrace().startsWith("3-RST-[6]"));
     }
 }

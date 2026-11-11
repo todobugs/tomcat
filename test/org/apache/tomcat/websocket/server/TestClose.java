@@ -17,6 +17,7 @@
 package org.apache.tomcat.websocket.server;
 
 import java.io.IOException;
+import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.concurrent.CountDownLatch;
@@ -33,7 +34,6 @@ import javax.websocket.Session;
 import javax.websocket.server.ServerEndpointConfig;
 
 import org.junit.Assert;
-import org.junit.Assume;
 import org.junit.Before;
 import org.junit.Test;
 
@@ -46,7 +46,7 @@ import org.apache.tomcat.websocket.WebSocketBaseTest;
  */
 public class TestClose extends WebSocketBaseTest {
 
-    private static Log log = LogFactory.getLog(TestClose.class);
+    private static final Log log = LogFactory.getLog(TestClose.class);
 
     // These are static because it is simpler than trying to inject them into
     // the endpoint
@@ -67,7 +67,7 @@ public class TestClose extends WebSocketBaseTest {
         // Parameter of an @OnError call
         public volatile Throwable onErrorThrowable = null;
 
-        //This is set to true for tests where the @OnMessage should send a message
+        // This is set to true for tests where the @OnMessage should send a message
         public volatile boolean onMessageSends = false;
     }
 
@@ -85,10 +85,7 @@ public class TestClose extends WebSocketBaseTest {
 
 
     public static void awaitOnClose(CloseCode... codes) {
-        Set<CloseCode> set = new HashSet<>();
-        for (CloseCode code : codes) {
-            set.add(code);
-        }
+        Set<CloseCode> set = new HashSet<>(Arrays.asList(codes));
         awaitOnClose(set);
     }
 
@@ -117,10 +114,6 @@ public class TestClose extends WebSocketBaseTest {
 
     @Test
     public void testTcpClose() throws Exception {
-        // TODO
-        Assume.assumeFalse("This test currently fails for APR",
-                getTomcatInstance().getConnector().getProtocolHandlerClassName().contains("Apr"));
-
         startServer(TestEndpointConfig.class);
 
         TesterWsClient client = new TesterWsClient("localhost", getPort());
@@ -139,7 +132,9 @@ public class TestClose extends WebSocketBaseTest {
         client.httpUpgrade(BaseEndpointConfig.PATH);
         client.forceCloseSocket();
 
-        // TODO: I'm not entirely sure when onError should be called
+        // A TCP reset causes an IOException when the server reads from
+        // the connection. Per WSC-5.2.2-2, errors arising during the
+        // functioning of the endpoint must be reported via onError.
         awaitOnError(IOException.class);
         awaitOnClose(CloseCodes.CLOSED_ABNORMALLY);
     }
@@ -180,10 +175,6 @@ public class TestClose extends WebSocketBaseTest {
 
     @Test
     public void testTcpCloseInOnMessage() throws Exception {
-        // TODO
-        Assume.assumeFalse("This test currently fails for APR",
-                getTomcatInstance().getConnector().getProtocolHandlerClassName().contains("Apr"));
-
         startServer(TestEndpointConfig.class);
 
         TesterWsClient client = new TesterWsClient("localhost", getPort());
@@ -195,6 +186,19 @@ public class TestClose extends WebSocketBaseTest {
         events.onMessageWait.countDown();
 
         awaitOnClose(CloseCodes.CLOSED_ABNORMALLY);
+    }
+
+    @Test
+    public void testCustomCloseCode() throws Exception {
+        startServer(TestEndpointConfig.class);
+
+        TesterWsClient client = new TesterWsClient("localhost", getPort());
+        client.httpUpgrade(BaseEndpointConfig.PATH);
+        client.sendCloseFrame(CloseCodes.getCloseCode(3500));
+        client.closeSocket();
+
+        awaitLatch(events.onCloseCalled, "onClose not called");
+        Assert.assertEquals(3500, events.closeReason.getCloseCode().getCode());
     }
 
 

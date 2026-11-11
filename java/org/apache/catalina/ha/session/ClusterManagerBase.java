@@ -33,9 +33,24 @@ import org.apache.catalina.tribes.io.ReplicationStream;
 import org.apache.juli.logging.Log;
 import org.apache.juli.logging.LogFactory;
 import org.apache.tomcat.util.collections.SynchronizedStack;
+import org.apache.tomcat.util.res.StringManager;
 
+/**
+ * Base class for cluster session managers. Provides common functionality for
+ * session replication and clustering.
+ */
 public abstract class ClusterManagerBase extends ManagerBase implements ClusterManager {
 
+    /**
+     * Default constructor for ClusterManagerBase.
+     */
+    public ClusterManagerBase() {
+    }
+
+    /**
+     * String manager for this class.
+     */
+    protected static final StringManager sm = StringManager.getManager(ClusterManagerBase.class);
     private final Log log = LogFactory.getLog(ClusterManagerBase.class); // must not be static
 
     /**
@@ -51,16 +66,21 @@ public abstract class ClusterManagerBase extends ManagerBase implements ClusterM
     /**
      * cached replication valve cluster container!
      */
-    private volatile ReplicationValve replicationValve = null ;
+    private volatile ReplicationValve replicationValve = null;
 
     /**
      * send all actions of session attributes.
      */
     private boolean recordAllActions = false;
 
-    private SynchronizedStack<DeltaRequest> deltaRequestPool = new SynchronizedStack<>();
+    private final SynchronizedStack<DeltaRequest> deltaRequestPool = new SynchronizedStack<>();
 
 
+    /**
+     * Returns the pool of DeltaRequest objects.
+     *
+     * @return the delta request pool
+     */
     protected SynchronizedStack<DeltaRequest> getDeltaRequestPool() {
         return deltaRequestPool;
     }
@@ -81,20 +101,42 @@ public abstract class ClusterManagerBase extends ManagerBase implements ClusterM
         return notifyListenersOnReplication;
     }
 
+    /**
+     * Sets whether listeners should be notified on replication.
+     *
+     * @param notifyListenersOnReplication the new value
+     */
     public void setNotifyListenersOnReplication(boolean notifyListenersOnReplication) {
         this.notifyListenersOnReplication = notifyListenersOnReplication;
     }
 
 
+    /**
+     * Returns whether all session attribute actions should be recorded.
+     *
+     * @return {@code true} if all actions are recorded
+     */
     public boolean isRecordAllActions() {
         return recordAllActions;
     }
 
+    /**
+     * Sets whether all session attribute actions should be recorded.
+     *
+     * @param recordAllActions the new value
+     */
     public void setRecordAllActions(boolean recordAllActions) {
         this.recordAllActions = recordAllActions;
     }
 
 
+    /**
+     * Returns the class loaders for the specified context.
+     *
+     * @param context the context
+     *
+     * @return the array of class loaders
+     */
     public static ClassLoader[] getClassLoaders(Context context) {
         ClassLoader tccl = Thread.currentThread().getContextClassLoader();
         Loader loader = context.getLoader();
@@ -106,20 +148,25 @@ public abstract class ClusterManagerBase extends ManagerBase implements ClusterM
             classLoader = tccl;
         }
         if (classLoader == tccl) {
-            return new ClassLoader[] {classLoader};
+            return new ClassLoader[] { classLoader };
         } else {
-            return new ClassLoader[] {classLoader, tccl};
+            return new ClassLoader[] { classLoader, tccl };
         }
     }
 
 
+    /**
+     * Returns the class loaders for this manager's context.
+     *
+     * @return the array of class loaders
+     */
     public ClassLoader[] getClassLoaders() {
         return getClassLoaders(getContext());
     }
 
     @Override
     public ReplicationStream getReplicationStream(byte[] data) throws IOException {
-        return getReplicationStream(data,0,data.length);
+        return getReplicationStream(data, 0, data.length);
     }
 
     @Override
@@ -129,11 +176,11 @@ public abstract class ClusterManagerBase extends ManagerBase implements ClusterM
     }
 
 
-    //  ---------------------------------------------------- persistence handler
+    // ---------------------------------------------------- persistence handler
 
     /**
-     * {@link org.apache.catalina.Manager} implementations that also implement
-     * {@link ClusterManager} do not support local session persistence.
+     * {@link org.apache.catalina.Manager} implementations that also implement {@link ClusterManager} do not support
+     * local session persistence.
      */
     @Override
     public void load() {
@@ -141,14 +188,19 @@ public abstract class ClusterManagerBase extends ManagerBase implements ClusterM
     }
 
     /**
-     * {@link org.apache.catalina.Manager} implementations that also implement
-     * {@link ClusterManager} do not support local session persistence.
+     * {@link org.apache.catalina.Manager} implementations that also implement {@link ClusterManager} do not support
+     * local session persistence.
      */
     @Override
     public void unload() {
         // NOOP
     }
 
+    /**
+     * Clone the configuration from this manager to the specified copy.
+     *
+     * @param copy the manager to clone to
+     */
     protected void clone(ClusterManagerBase copy) {
         copy.setName("Clone-from-" + getName());
         copy.setMaxActiveSessions(getMaxActiveSessions());
@@ -175,26 +227,28 @@ public abstract class ClusterManagerBase extends ManagerBase implements ClusterM
 
     /**
      * Register cross context session at replication valve thread local
+     *
      * @param session cross context session
      */
     protected void registerSessionAtReplicationValve(DeltaSession session) {
-        if(replicationValve == null) {
-            CatalinaCluster cluster = getCluster() ;
-            if(cluster != null) {
+        if (replicationValve == null) {
+            CatalinaCluster cluster = getCluster();
+            if (cluster != null) {
                 Valve[] valves = cluster.getValves();
-                if(valves != null && valves.length > 0) {
-                    for(int i=0; replicationValve == null && i < valves.length ; i++ ){
-                        if(valves[i] instanceof ReplicationValve) replicationValve =
-                                (ReplicationValve)valves[i] ;
-                    }//for
+                if (valves != null && valves.length > 0) {
+                    for (int i = 0; replicationValve == null && i < valves.length; i++) {
+                        if (valves[i] instanceof ReplicationValve) {
+                            replicationValve = (ReplicationValve) valves[i];
+                        }
+                    } // for
 
-                    if(replicationValve == null && log.isDebugEnabled()) {
-                        log.debug("no ReplicationValve found for CrossContext Support");
-                    }//endif
-                }//end if
-            }//endif
-        }//end if
-        if(replicationValve != null) {
+                    if (replicationValve == null && log.isDebugEnabled()) {
+                        log.debug(sm.getString("clusterManager.noValve"));
+                    } // endif
+                } // end if
+            } // endif
+        } // end if
+        if (replicationValve != null) {
             replicationValve.registerReplicationSession(session);
         }
     }
@@ -205,15 +259,19 @@ public abstract class ClusterManagerBase extends ManagerBase implements ClusterM
         if (getCluster() == null) {
             Cluster cluster = getContext().getCluster();
             if (cluster instanceof CatalinaCluster) {
-                setCluster((CatalinaCluster)cluster);
+                setCluster((CatalinaCluster) cluster);
             }
         }
-        if (cluster != null) cluster.registerManager(this);
+        if (cluster != null) {
+            cluster.registerManager(this);
+        }
     }
 
     @Override
     protected void stopInternal() throws LifecycleException {
-        if (cluster != null) cluster.removeManager(this);
+        if (cluster != null) {
+            cluster.removeManager(this);
+        }
         replicationValve = null;
         super.stopInternal();
     }

@@ -16,12 +16,17 @@
  */
 package org.apache.naming;
 
+import java.util.Hashtable;
+
 import javax.naming.Context;
 import javax.naming.NamingException;
 
+import org.junit.After;
 import org.junit.Assert;
 import org.junit.Test;
 
+import org.apache.catalina.LifecycleListener;
+import org.apache.catalina.core.NamingContextListener;
 import org.apache.catalina.startup.Tomcat;
 import org.apache.catalina.startup.TomcatBaseTest;
 import org.apache.naming.factory.ResourceLinkFactory;
@@ -31,6 +36,7 @@ import org.apache.tomcat.util.descriptor.web.ContextResourceLink;
 public class TestNamingContext extends TomcatBaseTest {
 
     private static final String COMP_ENV = "comp/env";
+    private static final String MODULE_ENV = "module/env";
     private static final String GLOBAL_NAME = "global";
     private static final String LOCAL_NAME = "local";
     private static final String DATA = "Cabbage";
@@ -41,7 +47,7 @@ public class TestNamingContext extends TomcatBaseTest {
         Tomcat tomcat = getTomcatInstance();
         tomcat.enableNaming();
 
-        org.apache.catalina.Context ctx = tomcat.addContext("", null);
+        org.apache.catalina.Context ctx = getProgrammaticRootContext();
 
         tomcat.start();
 
@@ -89,6 +95,114 @@ public class TestNamingContext extends TomcatBaseTest {
         // Shortcut should fail too
         obj = factory.getObjectInstance(rlr, null, null, null);
         Assert.assertNull(obj);
+    }
+
+
+    @After
+    public void resetResourceLinkGlobalContext() {
+        // The test below installs a private global context in a static field
+        ResourceLinkFactory.setGlobalContext(null);
+    }
+
+
+    @Test
+    public void testResourceLinkWithoutGlobalIsRejectedBeforeBinding() throws Exception {
+        Tomcat tomcat = getTomcatInstance();
+        tomcat.enableNaming();
+
+        org.apache.catalina.Context ctx = getProgrammaticRootContext();
+        tomcat.start();
+
+        ContextResourceLink crl = new ContextResourceLink();
+        crl.setName(LOCAL_NAME);
+        crl.setType(DATA.getClass().getName());
+        try {
+            ctx.getNamingResources().addResourceLink(crl);
+            Assert.fail("Expected an IllegalArgumentException for the missing global attribute");
+        } catch (IllegalArgumentException iae) {
+            Assert.assertTrue(iae.getMessage(), iae.getMessage().contains(LOCAL_NAME));
+        }
+
+        // The rejected link must not have been bound
+        Assert.assertNull(doLookup(ContextBindings.getContext(ctx), COMP_ENV + "/" + LOCAL_NAME));
+    }
+
+
+    @Test
+    public void testResourceLinkWithoutGlobalName() {
+        // Use a private context to keep the global context validation out of
+        // the way, whatever test order is used within the JVM
+        Context context = new NamingContext(new Hashtable<>(), "test");
+        ResourceLinkFactory.setGlobalContext(context);
+
+        // A resource link without a global name is a configuration error that
+        // must be reported as such, not as a NullPointerException
+        try {
+            ResourceLinkFactory.registerGlobalResourceAccess(context, LOCAL_NAME, null);
+            Assert.fail("Expected an IllegalArgumentException for the missing global name");
+        } catch (IllegalArgumentException iae) {
+            // Expected
+        }
+
+        try {
+            ResourceLinkFactory.registerGlobalResourceAccess(context, null, GLOBAL_NAME);
+            Assert.fail("Expected an IllegalArgumentException for the missing local name");
+        } catch (IllegalArgumentException iae) {
+            // Expected
+        }
+    }
+
+
+    @Test
+    public void testModuleEquivalentToComp() throws Exception {
+        Tomcat tomcat = getTomcatInstance();
+        tomcat.enableNaming();
+
+        org.apache.catalina.Context ctx = getProgrammaticRootContext();
+
+        tomcat.start();
+
+        // Equivalent to: Context initContext = new InitialContext();
+        Context webappInitial = ContextBindings.getContext(ctx);
+
+        // Make it writable (it is normally read-only)
+        String namingContextName = null;
+        LifecycleListener[] listeners = ctx.findLifecycleListeners();
+        for (LifecycleListener listener : listeners) {
+            if (listener instanceof NamingContextListener) {
+                NamingContextListener namingListener = (NamingContextListener) listener;
+                namingContextName = namingListener.getName();
+                break;
+            }
+        }
+        ContextAccessController.setWritable(namingContextName, ctx.getNamingToken());
+
+        // Nothing created so should be null
+        Object obj = doLookup(webappInitial, COMP_ENV + "/" + LOCAL_NAME);
+        Assert.assertNull(obj);
+        obj = doLookup(webappInitial, MODULE_ENV + "/" + LOCAL_NAME);
+        Assert.assertNull(obj);
+
+        // Create in java:comp/env
+        webappInitial.bind(COMP_ENV + "/" + LOCAL_NAME, DATA);
+
+        // Check it was created in java:comp/env and java:module/env
+        obj = doLookup(webappInitial, COMP_ENV + "/" + LOCAL_NAME);
+        Assert.assertEquals(DATA,  obj);
+        obj = doLookup(webappInitial, MODULE_ENV + "/" + LOCAL_NAME);
+        Assert.assertEquals(DATA,  obj);
+
+        // Remove it
+        webappInitial.unbind(COMP_ENV + "/" + LOCAL_NAME);
+
+        // Create in java:module/env
+        webappInitial.bind(MODULE_ENV + "/" + LOCAL_NAME, DATA);
+
+        // Check it was created in java:comp/env and java:module/env
+        obj = doLookup(webappInitial, COMP_ENV + "/" + LOCAL_NAME);
+        Assert.assertEquals(DATA,  obj);
+        obj = doLookup(webappInitial, MODULE_ENV + "/" + LOCAL_NAME);
+        Assert.assertEquals(DATA,  obj);
     }
 
 

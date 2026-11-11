@@ -22,33 +22,46 @@ import javax.naming.Context;
 import javax.naming.RefAddr;
 import javax.naming.Reference;
 
+/**
+ * Abstract base class for {@link Reference} implementations used by the naming
+ * context. Provides a default factory class name lookup mechanism.
+ */
 public abstract class AbstractRef extends Reference {
 
     private static final long serialVersionUID = 1L;
 
 
+    /**
+     * Constructs a new <code>AbstractRef</code> with the specified class name.
+     *
+     * @param className The non-null class name
+     */
     public AbstractRef(String className) {
         super(className);
     }
 
 
+    /**
+     * Constructs a new <code>AbstractRef</code> with the specified class name,
+     * factory class name, and factory location.
+     *
+     * @param className The non-null class name
+     * @param factory The factory class name
+     * @param factoryLocation The factory location
+     */
     public AbstractRef(String className, String factory, String factoryLocation) {
         super(className, factory, factoryLocation);
     }
 
 
-    /**
-     * Retrieves the class name of the factory of the object to which this
-     * reference refers.
-     */
     @Override
     public final String getFactoryClassName() {
         String factory = super.getFactoryClassName();
         if (factory != null) {
             return factory;
         } else {
-            factory = System.getProperty(Context.OBJECT_FACTORIES);
-            if (factory != null) {
+            String objectFactories = System.getProperty(Context.OBJECT_FACTORIES);
+            if (objectFactories != null) {
                 return null;
             } else {
                 return getDefaultFactoryClassName();
@@ -57,12 +70,14 @@ public abstract class AbstractRef extends Reference {
     }
 
 
+    /**
+     * Returns the default factory class name.
+     *
+     * @return the default factory class name
+     */
     protected abstract String getDefaultFactoryClassName();
 
 
-    /**
-     * Return a String rendering of this object.
-     */
     @Override
     public final String toString() {
         StringBuilder sb = new StringBuilder(this.getClass().getSimpleName());
@@ -79,9 +94,9 @@ public abstract class AbstractRef extends Reference {
             sb.append(refAddr.getType());
             sb.append(",content=");
             sb.append(refAddr.getContent());
-            sb.append("}");
+            sb.append('}');
         }
-        sb.append("]");
+        sb.append(']');
         return sb.toString();
     }
 }

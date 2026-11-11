@@ -23,18 +23,24 @@ import org.apache.juli.logging.LogFactory;
 import org.apache.tomcat.util.buf.UriUtil;
 
 /**
- * Represents a single resource (file or directory) that is located within a
- * WAR.
+ * Represents a single resource (file or directory) that is located within a WAR.
  */
 public class WarResource extends AbstractSingleArchiveResource {
 
     private static final Log log = LogFactory.getLog(WarResource.class);
 
 
-    public WarResource(AbstractArchiveResourceSet archiveResourceSet, String webAppPath,
-            String baseUrl, JarEntry jarEntry) {
-        super(archiveResourceSet, webAppPath, "war:" + baseUrl + UriUtil.getWarSeparator(),
-                jarEntry, baseUrl);
+    /**
+     * Constructs a new WarResource.
+     *
+     * @param archiveResourceSet The archive resource set
+     * @param webAppPath         The web application path
+     * @param baseUrl            The base URL
+     * @param jarEntry           The JAR entry
+     */
+    public WarResource(AbstractArchiveResourceSet archiveResourceSet, String webAppPath, String baseUrl,
+            JarEntry jarEntry) {
+        super(archiveResourceSet, webAppPath, "war:" + baseUrl + UriUtil.getWarSeparator(), jarEntry, baseUrl);
     }
 
 

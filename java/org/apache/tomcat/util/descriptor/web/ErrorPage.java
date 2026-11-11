@@ -21,22 +21,27 @@ import java.io.Serializable;
 import org.apache.tomcat.util.buf.UDecoder;
 
 /**
- * Representation of an error page element for a web application,
- * as represented in a <code>&lt;error-page&gt;</code> element in the
- * deployment descriptor.
- *
- * @author Craig R. McClanahan
+ * Representation of an error page element for a web application, as represented in a <code>&lt;error-page&gt;</code>
+ * element in the deployment descriptor.
  */
-public class ErrorPage implements Serializable {
+@SuppressWarnings("deprecation")
+public class ErrorPage extends XmlEncodingBase implements Serializable {
 
-    private static final long serialVersionUID = 1L;
+    /**
+     * Default constructor for ErrorPage.
+     */
+    public ErrorPage() {
+        // NO-OP
+    }
+
+    private static final long serialVersionUID = 2L;
+
 
     // ----------------------------------------------------- Instance Variables
 
-
     /**
-     * The error (status) code for which this error page is active. Note that
-     * status code 0 is used for the default error page.
+     * The error (status) code for which this error page is active. Note that status code 0 is used for the default
+     * error page.
      */
     private int errorCode = 0;
 
@@ -57,7 +62,9 @@ public class ErrorPage implements Serializable {
 
 
     /**
-     * @return the error code.
+     * Returns the error code for which this error page is active.
+     *
+     * @return the error code
      */
     public int getErrorCode() {
         return this.errorCode;
@@ -75,7 +82,7 @@ public class ErrorPage implements Serializable {
 
 
     /**
-     * Set the error code (hack for default XmlMapper data type).
+     * Set the error code, parsing the provided string value.
      *
      * @param errorCode The new error code
      */
@@ -90,7 +97,9 @@ public class ErrorPage implements Serializable {
 
 
     /**
-     * @return the exception type.
+     * Returns the exception type for which this error page is active.
+     *
+     * @return the fully qualified exception type name, or {@code null} if none
      */
     public String getExceptionType() {
         return this.exceptionType;
@@ -108,7 +117,9 @@ public class ErrorPage implements Serializable {
 
 
     /**
-     * @return the location.
+     * Returns the context-relative location to handle this error or exception.
+     *
+     * @return the location
      */
     public String getLocation() {
         return this.location;
@@ -121,12 +132,20 @@ public class ErrorPage implements Serializable {
      * @param location The new location
      */
     public void setLocation(String location) {
+        this.location = UDecoder.URLDecode(location, getCharset());
+    }
 
-        //        if ((location == null) || !location.startsWith("/"))
-        //            throw new IllegalArgumentException
-        //                ("Error Page Location must start with a '/'");
-        this.location = UDecoder.URLDecode(location);
 
+    /**
+     * Set the already URL decoded location.
+     *
+     * @param location The new location
+     *
+     * @deprecated This method will be removed in Tomcat 12
+     */
+    @Deprecated
+    public void setLocationDecoded(String location) {
+        this.location = location;
     }
 
 
@@ -148,10 +167,16 @@ public class ErrorPage implements Serializable {
         }
         sb.append(", location=");
         sb.append(location);
-        sb.append("]");
+        sb.append(']');
         return sb.toString();
     }
 
+    /**
+     * Returns the name of this error page, which is either the exception type or
+     * the error code.
+     *
+     * @return the error page name
+     */
     public String getName() {
         if (exceptionType == null) {
             return Integer.toString(errorCode);

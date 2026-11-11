@@ -19,8 +19,7 @@ package org.apache.coyote.http11;
 import org.apache.tomcat.util.net.AbstractJsseEndpoint;
 import org.apache.tomcat.util.net.openssl.OpenSSLImplementation;
 
-public abstract class AbstractHttp11JsseProtocol<S>
-        extends AbstractHttp11Protocol<S> {
+public abstract class AbstractHttp11JsseProtocol<S> extends AbstractHttp11Protocol<S> {
 
     public AbstractHttp11JsseProtocol(AbstractJsseEndpoint<S,?> endpoint) {
         super(endpoint);
@@ -38,14 +37,26 @@ public abstract class AbstractHttp11JsseProtocol<S>
         if (OpenSSLImplementation.class.getName().equals(getSslImplementationName())) {
             return "openssl";
         }
+        if (getSslImplementationName() != null &&
+                getSslImplementationName().endsWith(".panama.OpenSSLImplementation")) {
+            return "opensslffm";
+        }
         return "jsse";
     }
 
-    public String getSslImplementationName() { return getEndpoint().getSslImplementationName(); }
-    public void setSslImplementationName(String s) { getEndpoint().setSslImplementationName(s); }
+    public String getSslImplementationName() {
+        return getEndpoint().getSslImplementationName();
+    }
+
+    public void setSslImplementationName(String s) {
+        getEndpoint().setSslImplementationName(s);
+    }
 
 
-    public int getSniParseLimit() { return getEndpoint().getSniParseLimit(); }
+    public int getSniParseLimit() {
+        return getEndpoint().getSniParseLimit();
+    }
+
     public void setSniParseLimit(int sniParseLimit) {
         getEndpoint().setSniParseLimit(sniParseLimit);
     }

@@ -25,14 +25,18 @@ import javax.el.VariableMapper;
 
 /**
  * Simple ELContextWrapper for runtime evaluation of EL w/ dynamic FunctionMappers
- *
- * @author jhook
  */
 public final class ELContextWrapper extends ELContext {
 
     private final ELContext target;
     private final FunctionMapper fnMapper;
 
+    /**
+     * Construct a new ELContextWrapper.
+     *
+     * @param target The target ELContext to wrap
+     * @param fnMapper The function mapper to use
+     */
     public ELContextWrapper(ELContext target, FunctionMapper fnMapper) {
         this.target = target;
         this.fnMapper = fnMapper;
@@ -45,7 +49,9 @@ public final class ELContextWrapper extends ELContext {
 
     @Override
     public FunctionMapper getFunctionMapper() {
-        if (this.fnMapper != null) return this.fnMapper;
+        if (this.fnMapper != null) {
+            return this.fnMapper;
+        }
         return this.target.getFunctionMapper();
     }
 
@@ -70,8 +76,7 @@ public final class ELContextWrapper extends ELContext {
     }
 
     @Override
-    public void putContext(@SuppressWarnings("rawtypes") Class key,
-            Object contextObject) throws NullPointerException {
+    public void putContext(@SuppressWarnings("rawtypes") Class key, Object contextObject) throws NullPointerException {
         this.target.putContext(key, contextObject);
     }
 

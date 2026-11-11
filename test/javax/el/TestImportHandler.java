@@ -21,6 +21,7 @@ import java.util.ArrayList;
 import org.junit.Assert;
 import org.junit.Test;
 
+import org.apache.catalina.authenticator.DigestAuthenticator;
 import org.apache.tomcat.util.res.StringManager;
 
 public class TestImportHandler {
@@ -64,8 +65,7 @@ public class TestImportHandler {
         for (int i = 1; i <= 3; i++) {
             try {
                 Class<?> clazz = handler.resolveClass("ExceptionUtils");
-                Assert.fail("Expected ELException but got [" + clazz.getName()
-                        + "] on iteration " + i);
+                Assert.fail("Expected ELException but got [" + clazz.getName() + "] on iteration " + i);
             } catch (ELException ex) {
                 // Expected
             }
@@ -74,8 +74,7 @@ public class TestImportHandler {
 
 
     /**
-     * Multiple package imports with a single match.
-     * https://bz.apache.org/bugzilla/show_bug.cgi?id=57113
+     * Multiple package imports with a single match. https://bz.apache.org/bugzilla/show_bug.cgi?id=57113
      */
     @Test
     public void testResolveClass04() {
@@ -158,8 +157,7 @@ public class TestImportHandler {
         for (int i = 1; i <= 3; i++) {
             try {
                 handler.importClass("org.apache.jasper.util.ExceptionUtils");
-                Assert.fail("Expected ELException but got none on iteration "
-                        + i);
+                Assert.fail("Expected ELException but got none on iteration " + i);
             } catch (ELException ex) {
                 // Expected
             }
@@ -214,7 +212,7 @@ public class TestImportHandler {
     /**
      * Import an invalid static field - does not exist.
      */
-    @Test(expected=ELException.class)
+    @Test(expected = ELException.class)
     public void testImportStatic02() {
         ImportHandler handler = new ImportHandler();
 
@@ -248,8 +246,7 @@ public class TestImportHandler {
         for (int i = 1; i <= 3; i++) {
             try {
                 handler.importStatic("org.apache.tomcat.util.threads.Constants.Package");
-                Assert.fail("Expected ELException but got none on iteration "
-                        + i);
+                Assert.fail("Expected ELException but got none on iteration " + i);
             } catch (ELException ex) {
                 // Expected
             }
@@ -258,8 +255,7 @@ public class TestImportHandler {
 
 
     /**
-     * Package imports with conflicts due to non-public classes should not
-     * conflict.
+     * Package imports with conflicts due to non-public classes should not conflict.
      */
     @Test
     public void testBug57135() {
@@ -269,5 +265,21 @@ public class TestImportHandler {
         importHandler.importPackage("util.b");
 
         importHandler.resolveClass("Foo");
+    }
+
+
+    /**
+     * Support for inner classes.
+     * <p>
+     * https://bz.apache.org/bugzilla/show_bug.cgi?id=69635
+     */
+    @Test
+    public void testResolveInnerClass() {
+        ImportHandler importHandler = new ImportHandler();
+
+        importHandler.importClass("org.apache.catalina.authenticator.DigestAuthenticator.AuthDigest");
+        Class<?> clazz = importHandler.resolveClass("AuthDigest");
+
+        Assert.assertEquals(DigestAuthenticator.AuthDigest.class, clazz);
     }
 }

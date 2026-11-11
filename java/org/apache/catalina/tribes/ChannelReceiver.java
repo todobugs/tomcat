@@ -14,80 +14,114 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.catalina.tribes;
 
+import java.io.IOException;
 
 /**
- * ChannelReceiver Interface<br>
- * The <code>ChannelReceiver</code> interface is the data receiver component
- * at the bottom layer, the IO layer (for layers see the javadoc for the {@link Channel} interface).
- * This class may optionally implement a thread pool for parallel processing of incoming messages.
+ * The <code>ChannelReceiver</code> interface is the data receiver component at the bottom layer, the IO layer (for
+ * layers see the {@link Channel} interface). An implementation of this interface may optionally implement a thread
+ * pool for parallel processing of incoming messages.
  */
 public interface ChannelReceiver extends Heartbeat {
-    public static final int MAX_UDP_SIZE = 65535;
+    /**
+     * Maximum UDP packet size.
+     */
+    int MAX_UDP_SIZE = 65535;
 
     /**
      * Start listening for incoming messages on the host/port
-     * @throws java.io.IOException Listen failed
+     *
+     * @throws IOException Listen failed
      */
-    public void start() throws java.io.IOException;
+    void start() throws IOException;
 
     /**
      * Stop listening for messages
      */
-    public void stop();
+    void stop();
 
     /**
-     * String representation of the IPv4 or IPv6 address that this host is listening
-     * to.
+     * String representation of the IPv4 or IPv6 address that this host is listening to.
+     *
      * @return the host that this receiver is listening to
      */
-    public String getHost();
+    String getHost();
 
 
     /**
      * Returns the listening port
+     *
      * @return port
      */
-    public int getPort();
+    int getPort();
+
+    /**
+     * Returns the port the receiver is actually bound to. This may differ from the configured port if the receiver
+     * automatically bound to another port because the configured port was not available.
+     *
+     * @return the bound port, -1 if the non-secure port is not bound
+     */
+    int getBoundPort();
 
     /**
      * Returns the secure listening port
+     *
      * @return port, -1 if a secure port is not activated
      */
-    public int getSecurePort();
+    int getSecurePort();
+
+    /**
+     * Returns the secure port the receiver is actually bound to. This may differ from the configured secure port if
+     * the receiver automatically bound to another port because the configured port was not available.
+     *
+     * @return the bound secure port, -1 if the secure port is not bound
+     */
+    int getBoundSecurePort();
 
     /**
      * Returns the UDP port
+     *
      * @return port, -1 if the UDP port is not activated.
      */
-    public int getUdpPort();
+    int getUdpPort();
 
     /**
-     * Sets the message listener to receive notification of incoming
-     * @param listener MessageListener
-     * @see MessageListener
+     * Returns the UDP port the receiver is actually bound to. This may differ from the configured UDP port if the
+     * receiver automatically bound to another port because the configured port was not available.
+     *
+     * @return the bound UDP port, -1 if the UDP port is not bound
      */
-    public void setMessageListener(MessageListener listener);
+    int getBoundUdpPort();
+
+    /**
+     * Sets the message listener to receive notification of incoming messages.
+     *
+     * @param listener MessageListener
+     */
+    void setMessageListener(MessageListener listener);
 
     /**
      * Returns the message listener that is associated with this receiver
+     *
      * @return MessageListener
+     *
      * @see MessageListener
      */
-    public MessageListener getMessageListener();
+    MessageListener getMessageListener();
 
     /**
      * Return the channel that is related to this ChannelReceiver
+     *
      * @return Channel
      */
-    public Channel getChannel();
+    Channel getChannel();
 
     /**
      * Set the channel that is related to this ChannelReceiver
+     *
      * @param channel The channel
      */
-    public void setChannel(Channel channel);
+    void setChannel(Channel channel);
 
 }

@@ -35,27 +35,28 @@ import org.apache.catalina.Globals;
 import org.apache.coyote.ActionCode;
 import org.apache.coyote.CloseNowException;
 import org.apache.coyote.Response;
+import org.apache.tomcat.util.buf.B2CConverter;
 import org.apache.tomcat.util.buf.C2BConverter;
+import org.apache.tomcat.util.http.Method;
 import org.apache.tomcat.util.res.StringManager;
 
 /**
- * The buffer used by Tomcat response. This is a derivative of the Tomcat 3.3
- * OutputBuffer, with the removal of some of the state handling (which in
- * Coyote is mostly the Processor's responsibility).
- *
- * @author Costin Manolache
- * @author Remy Maucherat
+ * The buffer used by Tomcat response. This is a derivative of the Tomcat 3.3 OutputBuffer, with the removal of some of
+ * the state handling (which in Coyote is mostly the Processor's responsibility).
  */
 public class OutputBuffer extends Writer {
 
     private static final StringManager sm = StringManager.getManager(OutputBuffer.class);
 
+    /**
+     * Default buffer size in bytes.
+     */
     public static final int DEFAULT_BUFFER_SIZE = 8 * 1024;
 
     /**
      * Encoder cache.
      */
-    private final Map<Charset, C2BConverter> encoders = new HashMap<>();
+    private final Map<Charset,C2BConverter> encoders = new HashMap<>();
 
 
     /**
@@ -212,8 +213,7 @@ public class OutputBuffer extends Writer {
 
 
     /**
-     * Close the output buffer. This tries to calculate the response size if
-     * the response has not been committed yet.
+     * Close the output buffer. This tries to calculate the response size if the response has not been committed yet.
      *
      * @throws IOException An underlying IOException occurred
      */
@@ -233,23 +233,18 @@ public class OutputBuffer extends Writer {
             flushCharBuffer();
         }
 
-        if ((!coyoteResponse.isCommitted()) && (coyoteResponse.getContentLengthLong() == -1)
-                && !coyoteResponse.getRequest().method().equals("HEAD")) {
-            // If this didn't cause a commit of the response, the final content
-            // length can be calculated. Only do this if this is not a HEAD
-            // request since in that case no body should have been written and
-            // setting a value of zero here will result in an explicit content
-            // length of zero being set on the response.
-            if (!coyoteResponse.isCommitted()) {
-                coyoteResponse.setContentLength(bb.remaining());
-            }
+        // Content length can be calculated if:
+        // - the response has not been committed
+        // AND
+        // - the content length has not been explicitly set
+        // AND
+        // - some content has been written OR this is NOT a HEAD request
+        if (!coyoteResponse.isCommitted() && coyoteResponse.getContentLengthLong() == -1 &&
+                (bb.remaining() > 0 || !Method.HEAD.equals(coyoteResponse.getRequest().getMethod()))) {
+            coyoteResponse.setContentLength(bb.remaining());
         }
 
-        if (coyoteResponse.getStatus() == HttpServletResponse.SC_SWITCHING_PROTOCOLS) {
-            doFlush(true);
-        } else {
-            doFlush(false);
-        }
+        doFlush(coyoteResponse.getStatus() == HttpServletResponse.SC_SWITCHING_PROTOCOLS);
         closed = true;
 
         // The request should have been completely read by the time the response
@@ -277,6 +272,7 @@ public class OutputBuffer extends Writer {
      * Flush bytes or chars contained in the buffer.
      *
      * @param realFlush <code>true</code> if this should also cause a real network flush
+     *
      * @throws IOException An underlying IOException occurred
      */
     protected void doFlush(boolean realFlush) throws IOException {
@@ -288,7 +284,7 @@ public class OutputBuffer extends Writer {
         try {
             doFlush = true;
             if (initial) {
-                coyoteResponse.sendHeaders();
+                coyoteResponse.commit();
                 initial = false;
             }
             if (cb.remaining() > 0) {
@@ -316,8 +312,7 @@ public class OutputBuffer extends Writer {
     // ------------------------------------------------- Bytes Handling Methods
 
     /**
-     * Sends the buffer data to the client output, checking the
-     * state of Response and calling the right interceptors.
+     * Sends the buffer data to the client output, checking the state of Response and calling the right interceptors.
      *
      * @param buf the ByteBuffer to be written to the response
      *
@@ -328,9 +323,6 @@ public class OutputBuffer extends Writer {
         if (closed) {
             return;
         }
-        if (coyoteResponse == null) {
-            return;
-        }
 
         // If we really have something to write
         if (buf.remaining() > 0) {
@@ -338,24 +330,32 @@ public class OutputBuffer extends Writer {
             try {
                 coyoteResponse.doWrite(buf);
             } catch (CloseNowException e) {
-                // Catch this sub-class as it requires specific handling.
+                // Catch this subclass as it requires specific handling.
                 // Examples where this exception is thrown:
                 // - HTTP/2 stream timeout
                 // Prevent further output for this response
                 closed = true;
                 throw e;
-            } catch (IOException e) {
+            } catch (IOException ioe) {
                 // An IOException on a write is almost always due to
                 // the remote client aborting the request. Wrap this
                 // so that it can be handled better by the error dispatcher.
-                throw new ClientAbortException(e);
+                throw new ClientAbortException(ioe);
             }
         }
 
     }
 
 
-    public void write(byte b[], int off, int len) throws IOException {
+    /**
+     * Writes the specified bytes to the output buffer.
+     *
+     * @param b The byte array
+     * @param off The offset in the array
+     * @param len The number of bytes to write
+     * @throws IOException if an I/O error occurs
+     */
+    public void write(byte[] b, int off, int len) throws IOException {
 
         if (suspended) {
             return;
@@ -366,6 +366,12 @@ public class OutputBuffer extends Writer {
     }
 
 
+    /**
+     * Writes bytes from the given buffer to the output.
+     *
+     * @param from The byte buffer to read from
+     * @throws IOException if an I/O error occurs
+     */
     public void write(ByteBuffer from) throws IOException {
 
         if (suspended) {
@@ -377,7 +383,7 @@ public class OutputBuffer extends Writer {
     }
 
 
-    private void writeBytes(byte b[], int off, int len) throws IOException {
+    private void writeBytes(byte[] b, int off, int len) throws IOException {
 
         if (closed) {
             return;
@@ -401,8 +407,9 @@ public class OutputBuffer extends Writer {
             return;
         }
 
+        int remaining = from.remaining();
         append(from);
-        bytesWritten += from.remaining();
+        bytesWritten += remaining;
 
         // if called from within flush(), then immediately flush
         // remaining bytes
@@ -413,6 +420,12 @@ public class OutputBuffer extends Writer {
     }
 
 
+    /**
+     * Writes a single byte to the output buffer.
+     *
+     * @param b The byte to write
+     * @throws IOException if an I/O error occurs
+     */
     public void writeByte(int b) throws IOException {
 
         if (suspended) {
@@ -449,12 +462,12 @@ public class OutputBuffer extends Writer {
             }
             if (from.remaining() > 0) {
                 flushByteBuffer();
-            } else if (conv.isUndeflow() && bb.limit() > bb.capacity() - 4) {
+            } else if (conv.isUnderflow() && bb.limit() > bb.capacity() - 4) {
                 // Handle an edge case. There are no more chars to write at the
                 // moment but there is a leftover character in the converter
                 // which must be part of a surrogate pair. The byte buffer does
                 // not have enough space left to output the bytes for this pair
-                // once it is complete )it will require 4 bytes) so flush now to
+                // once it is complete (it will require 4 bytes) so flush now to
                 // prevent the bytes for the leftover char and the rest of the
                 // surrogate pair yet to be written from being lost.
                 // See TestOutputBuffer#testUtf8SurrogateBody()
@@ -482,7 +495,7 @@ public class OutputBuffer extends Writer {
 
 
     @Override
-    public void write(char c[]) throws IOException {
+    public void write(char[] c) throws IOException {
 
         if (suspended) {
             return;
@@ -494,7 +507,7 @@ public class OutputBuffer extends Writer {
 
 
     @Override
-    public void write(char c[], int off, int len) throws IOException {
+    public void write(char[] c, int off, int len) throws IOException {
 
         if (suspended) {
             return;
@@ -525,7 +538,7 @@ public class OutputBuffer extends Writer {
         while (sOff < sEnd) {
             int n = transfer(s, sOff, sEnd - sOff, cb);
             sOff += n;
-            if (isFull(cb)) {
+            if (sOff < sEnd && isFull(cb)) {
                 flushCharBuffer();
             }
         }
@@ -548,18 +561,24 @@ public class OutputBuffer extends Writer {
     }
 
 
+    /**
+     * Checks and initializes the character-to-byte converter if needed.
+     *
+     * @throws IOException if an I/O error occurs
+     */
     public void checkConverter() throws IOException {
         if (conv != null) {
             return;
         }
 
-        Charset charset = null;
-
-        if (coyoteResponse != null) {
-            charset = coyoteResponse.getCharset();
-        }
+        Charset charset = coyoteResponse.getCharset();
 
         if (charset == null) {
+            if (coyoteResponse.getCharacterEncoding() != null) {
+                // setCharacterEncoding() was called with an invalid character set
+                // Trigger an UnsupportedEncodingException
+                charset = B2CConverter.getCharset(coyoteResponse.getCharacterEncoding());
+            }
             charset = org.apache.coyote.Constants.DEFAULT_BODY_CHARSET;
         }
 
@@ -590,8 +609,13 @@ public class OutputBuffer extends Writer {
     }
 
 
-    // --------------------  BufferedOutputStream compatibility
+    // -------------------- BufferedOutputStream compatibility
 
+    /**
+     * Returns the total number of bytes and characters written.
+     *
+     * @return The total content written
+     */
     public long getContentWritten() {
         return bytesWritten + charsWritten;
     }
@@ -599,14 +623,18 @@ public class OutputBuffer extends Writer {
     /**
      * Has this buffer been used at all?
      *
-     * @return true if no chars or bytes have been added to the buffer since the
-     *         last call to {@link #recycle()}
+     * @return true if no chars or bytes have been added to the buffer since the last call to {@link #recycle()}
      */
     public boolean isNew() {
         return (bytesWritten == 0) && (charsWritten == 0);
     }
 
 
+    /**
+     * Sets the buffer size, allocating a new buffer if needed.
+     *
+     * @param size The new buffer size
+     */
     public void setBufferSize(int size) {
         if (size > bb.capacity()) {
             bb = ByteBuffer.allocate(size);
@@ -615,10 +643,18 @@ public class OutputBuffer extends Writer {
     }
 
 
+    /**
+     * Resets the output buffer without resetting writer/stream flags.
+     */
     public void reset() {
         reset(false);
     }
 
+    /**
+     * Resets the output buffer.
+     *
+     * @param resetWriterStreamFlags Whether to reset writer and stream flags
+     */
     public void reset(boolean resetWriterStreamFlags) {
         clear(bb);
         clear(cb);
@@ -634,30 +670,53 @@ public class OutputBuffer extends Writer {
     }
 
 
+    /**
+     * Returns the buffer size.
+     *
+     * @return The buffer size in bytes
+     */
     public int getBufferSize() {
         return bb.capacity();
     }
 
 
     /*
-     * All the non-blocking write state information is held in the Response so
-     * it is visible / accessible to all the code that needs it.
+     * All the non-blocking write state information is held in the Response so it is visible / accessible to all the
+     * code that needs it.
      */
 
+    /**
+     * Checks if the output is ready for writing.
+     *
+     * @return true if ready for writing
+     */
     public boolean isReady() {
         return coyoteResponse.isReady();
     }
 
 
+    /**
+     * Sets the write listener for this output buffer.
+     *
+     * @param listener The write listener
+     */
     public void setWriteListener(WriteListener listener) {
         coyoteResponse.setWriteListener(listener);
     }
 
 
+    /**
+     * Checks if this output buffer is in blocking mode.
+     *
+     * @return true if in blocking mode
+     */
     public boolean isBlocking() {
         return coyoteResponse.getWriteListener() == null;
     }
 
+    /**
+     * Checks and registers for write if needed.
+     */
     public void checkRegisterForWrite() {
         coyoteResponse.checkRegisterForWrite();
     }
@@ -668,16 +727,17 @@ public class OutputBuffer extends Writer {
      * @param src Bytes array
      * @param off Offset
      * @param len Length
+     *
      * @throws IOException Writing overflow data to the output channel failed
      */
-    public void append(byte src[], int off, int len) throws IOException {
+    public void append(byte[] src, int off, int len) throws IOException {
         if (bb.remaining() == 0) {
             appendByteArray(src, off, len);
         } else {
             int n = transfer(src, off, len, bb);
             len = len - n;
             off = off + n;
-            if (isFull(bb)) {
+            if (len > 0 && isFull(bb)) {
                 flushByteBuffer();
                 appendByteArray(src, off, len);
             }
@@ -686,14 +746,16 @@ public class OutputBuffer extends Writer {
 
     /**
      * Add data to the buffer.
+     *
      * @param src Char array
      * @param off Offset
      * @param len Length
+     *
      * @throws IOException Writing overflow data to the output channel failed
      */
-    public void append(char src[], int off, int len) throws IOException {
+    public void append(char[] src, int off, int len) throws IOException {
         // if we have limit and we're below
-        if(len <= cb.capacity() - cb.limit()) {
+        if (len <= cb.capacity() - cb.limit()) {
             transfer(src, off, len, cb);
             return;
         }
@@ -704,11 +766,11 @@ public class OutputBuffer extends Writer {
         // copy the first part, flush, then copy the second part - 1 write
         // and still have some space for more. We'll still have 2 writes, but
         // we write more on the first.
-        if(len + cb.limit() < 2 * cb.capacity()) {
-            /* If the request length exceeds the size of the output buffer,
-               flush the output buffer and then write the data directly.
-               We can't avoid 2 writes, but we can write more on the second
-            */
+        if (len + cb.limit() < 2 * cb.capacity()) {
+            /*
+             * If the request length exceeds the size of the output buffer, flush the output buffer and then write the
+             * data directly. We can't avoid 2 writes, but we can write more on the second
+             */
             int n = transfer(src, off, len, cb);
 
             flushCharBuffer();
@@ -724,25 +786,42 @@ public class OutputBuffer extends Writer {
     }
 
 
+    /**
+     * Appends bytes from the given buffer to the output.
+     *
+     * @param from The byte buffer to append
+     * @throws IOException if an I/O error occurs
+     */
     public void append(ByteBuffer from) throws IOException {
         if (bb.remaining() == 0) {
             appendByteBuffer(from);
         } else {
             transfer(from, bb);
-            if (isFull(bb)) {
+            if (from.hasRemaining() && isFull(bb)) {
                 flushByteBuffer();
                 appendByteBuffer(from);
             }
         }
     }
 
-    private void appendByteArray(byte src[], int off, int len) throws IOException {
+
+    /**
+     * Sets the error exception for this output buffer.
+     *
+     * @param e The exception
+     */
+    public void setErrorException(Exception e) {
+        coyoteResponse.setErrorException(e);
+    }
+
+
+    private void appendByteArray(byte[] src, int off, int len) throws IOException {
         if (len == 0) {
             return;
         }
 
         int limit = bb.capacity();
-        while (len >= limit) {
+        while (len > limit) {
             realWriteBytes(ByteBuffer.wrap(src, off, limit));
             len = len - limit;
             off = off + limit;
@@ -760,7 +839,7 @@ public class OutputBuffer extends Writer {
 
         int limit = bb.capacity();
         int fromLimit = from.limit();
-        while (from.remaining() >= limit) {
+        while (from.remaining() > limit) {
             from.limit(from.position() + limit);
             realWriteBytes(from.slice());
             from.position(from.limit());
@@ -845,23 +924,19 @@ public class OutputBuffer extends Writer {
     }
 
     private void toReadMode(Buffer buffer) {
-        buffer.limit(buffer.position())
-              .reset();
+        buffer.limit(buffer.position()).reset();
     }
 
     private void toWriteMode(Buffer buffer) {
-        buffer.mark()
-              .position(buffer.limit())
-              .limit(buffer.capacity());
+        buffer.mark().position(buffer.limit()).limit(buffer.capacity());
     }
 
 
-    private static class PrivilegedCreateConverter
-            implements PrivilegedExceptionAction<C2BConverter> {
+    private static class PrivilegedCreateConverter implements PrivilegedExceptionAction<C2BConverter> {
 
         private final Charset charset;
 
-        public PrivilegedCreateConverter(Charset charset) {
+        PrivilegedCreateConverter(Charset charset) {
             this.charset = charset;
         }
 

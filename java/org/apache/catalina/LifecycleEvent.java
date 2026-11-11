@@ -19,10 +19,7 @@ package org.apache.catalina;
 import java.util.EventObject;
 
 /**
- * General event for notifying listeners of significant changes on a component
- * that implements the Lifecycle interface.
- *
- * @author Craig R. McClanahan
+ * General event for notifying listeners of significant changes on a component that implements the Lifecycle interface.
  */
 public final class LifecycleEvent extends EventObject {
 
@@ -33,8 +30,8 @@ public final class LifecycleEvent extends EventObject {
      * Construct a new LifecycleEvent with the specified parameters.
      *
      * @param lifecycle Component on which this event occurred
-     * @param type Event type (required)
-     * @param data Event data (if any)
+     * @param type      Event type (required)
+     * @param data      Event data (if any)
      */
     public LifecycleEvent(Lifecycle lifecycle, String type, Object data) {
         super(lifecycle);
@@ -56,7 +53,9 @@ public final class LifecycleEvent extends EventObject {
 
 
     /**
-     * @return the event data of this event.
+     * Returns the event data of this event.
+     *
+     * @return the event data
      */
     public Object getData() {
         return data;
@@ -64,7 +63,9 @@ public final class LifecycleEvent extends EventObject {
 
 
     /**
-     * @return the Lifecycle on which this event occurred.
+     * Returns the Lifecycle on which this event occurred.
+     *
+     * @return the lifecycle
      */
     public Lifecycle getLifecycle() {
         return (Lifecycle) getSource();
@@ -72,7 +73,9 @@ public final class LifecycleEvent extends EventObject {
 
 
     /**
-     * @return the event type of this event.
+     * Returns the event type of this event.
+     *
+     * @return the event type
      */
     public String getType() {
         return this.type;

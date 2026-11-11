@@ -18,12 +18,11 @@ package org.apache.catalina.connector;
 
 import java.io.Serializable;
 import java.security.Principal;
+import java.util.Objects;
 
 /**
- * Generic implementation of <strong>java.security.Principal</strong> that
- * is used to represent principals authenticated at the protocol handler level.
- *
- * @author Remy Maucherat
+ * Generic implementation of <strong>java.security.Principal</strong> that is used to represent principals authenticated
+ * at the protocol handler level.
  */
 public class CoyotePrincipal implements Principal, Serializable {
 
@@ -32,6 +31,11 @@ public class CoyotePrincipal implements Principal, Serializable {
 
     // ----------------------------------------------------------- Constructors
 
+    /**
+     * Construct a new CoyotePrincipal.
+     *
+     * @param name The name of the principal
+     */
     public CoyotePrincipal(String name) {
 
         this.name = name;
@@ -57,15 +61,30 @@ public class CoyotePrincipal implements Principal, Serializable {
 
 
     /**
-     * Return a String representation of this object, which exposes only
-     * information that should be public.
+     * Return a String representation of this object, which exposes only information that should be public.
      */
     @Override
     public String toString() {
-        StringBuilder sb = new StringBuilder("CoyotePrincipal[");
-        sb.append(this.name);
-        sb.append("]");
-        return sb.toString();
+        return "CoyotePrincipal[" + this.name + "]";
+    }
+
+
+    @Override
+    public boolean equals(Object obj) {
+        if (this == obj) {
+            return true;
+        }
+        if (obj == null || getClass() != obj.getClass()) {
+            return false;
+        }
+        CoyotePrincipal that = (CoyotePrincipal) obj;
+        return Objects.equals(this.name, that.name);
+    }
+
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(name);
     }
 
 

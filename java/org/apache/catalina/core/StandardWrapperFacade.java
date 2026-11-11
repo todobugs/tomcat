@@ -14,8 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
-
 package org.apache.catalina.core;
 
 
@@ -27,11 +25,8 @@ import javax.servlet.ServletContext;
 
 /**
  * Facade for the <b>StandardWrapper</b> object.
- *
- * @author Remy Maucherat
  */
-public final class StandardWrapperFacade
-    implements ServletConfig {
+public final class StandardWrapperFacade implements ServletConfig {
 
 
     // ----------------------------------------------------------- Constructors
@@ -39,6 +34,7 @@ public final class StandardWrapperFacade
 
     /**
      * Create a new facade around a StandardWrapper.
+     *
      * @param config the associated wrapper
      */
     public StandardWrapperFacade(StandardWrapper config) {
@@ -75,6 +71,10 @@ public final class StandardWrapperFacade
 
     @Override
     public ServletContext getServletContext() {
+        /*
+         * Multiple threads may initialize context concurrently, but the same context/facade
+         * object is always returned, so this is functionally safe.
+         */
         if (context == null) {
             context = config.getServletContext();
             if (context instanceof ApplicationContext) {

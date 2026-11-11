@@ -18,27 +18,74 @@ package org.apache.tomcat.websocket.pojo;
 
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
+import java.util.ArrayList;
+import java.util.List;
 
+import javax.naming.NamingException;
 import javax.websocket.DecodeException;
+import javax.websocket.Decoder;
 import javax.websocket.MessageHandler;
 import javax.websocket.Session;
 
+import org.apache.juli.logging.Log;
+import org.apache.juli.logging.LogFactory;
+import org.apache.tomcat.InstanceManager;
+import org.apache.tomcat.util.res.StringManager;
 import org.apache.tomcat.websocket.WsSession;
 
 /**
- * Common implementation code for the POJO whole message handlers. All the real
- * work is done in this class and in the superclass.
+ * Common implementation code for the POJO whole message handlers. All the real work is done in this class and in the
+ * superclass.
  *
- * @param <T>   The type of message to handle
+ * @param <T> The type of message to handle
  */
-public abstract class PojoMessageHandlerWholeBase<T>
-        extends PojoMessageHandlerBase<T> implements MessageHandler.Whole<T> {
+public abstract class PojoMessageHandlerWholeBase<T> extends PojoMessageHandlerBase<T>
+        implements MessageHandler.Whole<T> {
 
-    public PojoMessageHandlerWholeBase(Object pojo, Method method,
-            Session session, Object[] params, int indexPayload,
+    private final Log log = LogFactory.getLog(PojoMessageHandlerWholeBase.class); // must not be static
+    private static final StringManager sm = StringManager.getManager(PojoMessageHandlerWholeBase.class);
+
+    /**
+     * The list of decoders for this message handler.
+     */
+    protected final List<Decoder> decoders = new ArrayList<>();
+
+    /**
+     * Create a whole message handler.
+     *
+     * @param pojo          POJO instance
+     * @param method        Method to invoke
+     * @param session       WebSocket session
+     * @param params        Pre-populated parameter array
+     * @param indexPayload  Index of the payload parameter
+     * @param convert       Convert the message before passing to the method
+     * @param indexSession  Index of the session parameter
+     * @param maxMessageSize Maximum message size
+     */
+    public PojoMessageHandlerWholeBase(Object pojo, Method method, Session session, Object[] params, int indexPayload,
             boolean convert, int indexSession, long maxMessageSize) {
-        super(pojo, method, session, params, indexPayload, convert,
-                indexSession, maxMessageSize);
+        super(pojo, method, session, params, indexPayload, convert, indexSession, maxMessageSize);
+    }
+
+
+    /**
+     * Create an instance of the given decoder class.
+     *
+     * @param clazz Decoder class
+     *
+     * @return New decoder instance
+     *
+     * @throws ReflectiveOperationException If the decoder cannot be instantiated
+     * @throws NamingException If the instance manager fails to create the decoder
+     */
+    protected Decoder createDecoderInstance(Class<? extends Decoder> clazz)
+            throws ReflectiveOperationException, NamingException {
+        InstanceManager instanceManager = ((WsSession) session).getInstanceManager();
+        if (instanceManager == null) {
+            return clazz.getConstructor().newInstance();
+        } else {
+            return (Decoder) instanceManager.newInstance(clazz);
+        }
     }
 
 
@@ -46,8 +93,7 @@ public abstract class PojoMessageHandlerWholeBase<T>
     public final void onMessage(T message) {
 
         if (params.length == 1 && params[0] instanceof DecodeException) {
-            ((WsSession) session).getLocal().onError(session,
-                    (DecodeException) params[0]);
+            ((WsSession) session).getLocal().onError(session, (DecodeException) params[0]);
             return;
         }
 
@@ -84,11 +130,46 @@ public abstract class PojoMessageHandlerWholeBase<T>
         processResult(result);
     }
 
+
+    /**
+     * Called when the WebSocket session is closed. Destroys all decoders.
+     */
+    protected void onClose() {
+        InstanceManager instanceManager = ((WsSession) session).getInstanceManager();
+
+        for (Decoder decoder : decoders) {
+            decoder.destroy();
+            if (instanceManager != null) {
+                try {
+                    instanceManager.destroyInstance(decoder);
+                } catch (IllegalAccessException | InvocationTargetException e) {
+                    log.warn(sm.getString("pojoMessageHandlerWholeBase.decodeDestroyFailed", decoder.getClass()), e);
+                }
+            }
+        }
+    }
+
+
+    /**
+     * Convert the message to the type expected by the target method.
+     *
+     * @param message Message to convert
+     *
+     * @return Converted message
+     */
     protected Object convert(T message) {
         return message;
     }
 
 
+    /**
+     * Decode the message using the registered decoders.
+     *
+     * @param message Message to decode
+     *
+     * @return Decoded message or {@code null} if no decoder could decode it
+     *
+     * @throws DecodeException If the message cannot be decoded
+     */
     protected abstract Object decode(T message) throws DecodeException;
-    protected abstract void onClose();
 }

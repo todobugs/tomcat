@@ -21,23 +21,42 @@ import java.util.concurrent.ForkJoinPool.ForkJoinWorkerThreadFactory;
 import java.util.concurrent.ForkJoinWorkerThread;
 
 /**
- * Provides a {@link ForkJoinWorkerThreadFactory} that provides {@link
- * ForkJoinWorkerThread}s that won't trigger memory leaks due to retained
- * references to web application class loaders.
+ * Provides a {@link ForkJoinWorkerThreadFactory} that provides {@link ForkJoinWorkerThread}s that won't trigger memory
+ * leaks due to retained references to web application class loaders.
  * <p>
- * Note: This class must be available on the boot strap class path for it to be
- * visible to {@link ForkJoinPool}.
+ * Note: This class must be available on the bootstrap class path for it to be visible to {@link ForkJoinPool}.
  */
 public class SafeForkJoinWorkerThreadFactory implements ForkJoinWorkerThreadFactory {
 
+    /**
+     * Default constructor.
+     */
+    public SafeForkJoinWorkerThreadFactory() {
+    }
+
+    /**
+     * Create a new {@link SafeForkJoinWorkerThread} for the given pool.
+     *
+     * @param pool the fork-join pool
+     * @return a new worker thread with a safe context class loader
+     */
     @Override
     public ForkJoinWorkerThread newThread(ForkJoinPool pool) {
         return new SafeForkJoinWorkerThread(pool);
     }
 
 
+    /**
+     * A ForkJoinWorkerThread that sets its context class loader to the bootstrap class loader to
+     * prevent memory leaks caused by retained references to web application class loaders.
+     */
     private static class SafeForkJoinWorkerThread extends ForkJoinWorkerThread {
 
+        /**
+         * Create a new safe worker thread and set its context class loader to the bootstrap loader.
+         *
+         * @param pool the fork-join pool
+         */
         protected SafeForkJoinWorkerThread(ForkJoinPool pool) {
             super(pool);
             setContextClassLoader(ForkJoinPool.class.getClassLoader());

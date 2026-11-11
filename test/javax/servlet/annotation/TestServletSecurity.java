@@ -50,13 +50,13 @@ public class TestServletSecurity extends TomcatBaseTest {
         Tomcat tomcat = getTomcatInstance();
 
         // No file system docBase required
-        Context ctx = tomcat.addContext("", null);
+        Context ctx = getProgrammaticRootContext();
 
         Tomcat.addServlet(ctx, "Foo", Foo.class.getName());
-        ctx.addServletMappingDecoded("/foo/*", "Foo");
+        ctx.addServletMapping("/foo/*", "Foo");
 
         Tomcat.addServlet(ctx, "FooBar", FooBar.class.getName());
-        ctx.addServletMappingDecoded("/foo/bar/*", "FooBar");
+        ctx.addServletMapping("/foo/bar/*", "FooBar");
 
         tomcat.start();
 
@@ -88,8 +88,7 @@ public class TestServletSecurity extends TomcatBaseTest {
         private static final long serialVersionUID = 1L;
 
         @Override
-        protected void doGet(HttpServletRequest req, HttpServletResponse resp)
-                throws ServletException, IOException {
+        protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
             resp.getWriter().print("OK: Foo");
         }
     }
@@ -100,8 +99,7 @@ public class TestServletSecurity extends TomcatBaseTest {
         private static final long serialVersionUID = 1L;
 
         @Override
-        protected void doGet(HttpServletRequest req, HttpServletResponse resp)
-                throws ServletException, IOException {
+        protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
             resp.getWriter().print("OK: FooBar");
         }
     }

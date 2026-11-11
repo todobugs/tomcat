@@ -23,11 +23,17 @@ import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 
 /**
+ * Used when multiple {@link Resource} annotations are required.
+ *
  * @since Common Annotations 1.0
  */
 @Documented
 @Target(ElementType.TYPE)
 @Retention(RetentionPolicy.RUNTIME)
 public @interface Resources {
-    public Resource[] value();
+
+    /**
+     * @return a Resource[] with the value of this Resources
+     */
+    Resource[] value();
 }

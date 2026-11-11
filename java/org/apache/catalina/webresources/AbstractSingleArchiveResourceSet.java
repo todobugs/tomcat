@@ -31,8 +31,7 @@ import org.apache.tomcat.util.buf.UriUtil;
 import org.apache.tomcat.util.compat.JreCompat;
 
 /**
- * Base class for a {@link org.apache.catalina.WebResourceSet} based on a
- * single, rather than nested, archive.
+ * Base class for a {@link org.apache.catalina.WebResourceSet} based on a single, rather than nested, archive.
  */
 public abstract class AbstractSingleArchiveResourceSet extends AbstractArchiveResourceSet {
 
@@ -45,8 +44,19 @@ public abstract class AbstractSingleArchiveResourceSet extends AbstractArchiveRe
     }
 
 
-    public AbstractSingleArchiveResourceSet(WebResourceRoot root, String webAppMount, String base,
-            String internalPath) throws IllegalArgumentException {
+    /**
+     * Constructs a new {@code AbstractSingleArchiveResourceSet}.
+     *
+     * @param root         The root
+     * @param webAppMount  The web app mount
+     * @param base         The base
+     * @param internalPath The internal path
+     *
+     * @throws IllegalStateException if the {@link WebResourceRoot} is available but this resource set cannot be
+     *                                      started
+     */
+    public AbstractSingleArchiveResourceSet(WebResourceRoot root, String webAppMount, String base, String internalPath)
+            throws IllegalStateException {
         setRoot(root);
         setWebAppMount(webAppMount);
         setBase(base);
@@ -56,7 +66,7 @@ public abstract class AbstractSingleArchiveResourceSet extends AbstractArchiveRe
             try {
                 start();
             } catch (LifecycleException e) {
-                throw new IllegalStateException(e);
+                throw new IllegalStateException(sm.getString("abstractSingleArchiveResourceSet.startFail"), e);
             }
         }
     }
@@ -78,7 +88,8 @@ public abstract class AbstractSingleArchiveResourceSet extends AbstractArchiveRe
                 } catch (IOException ioe) {
                     // Should never happen
                     archiveEntries = null;
-                    throw new IllegalStateException(ioe);
+                    throw new IllegalStateException(
+                            sm.getString("abstractArchiveResourceSet.archiveEntriesFail", getBase()), ioe);
                 } finally {
                     if (jarFile != null) {
                         closeJarFile();
@@ -98,7 +109,8 @@ public abstract class AbstractSingleArchiveResourceSet extends AbstractArchiveRe
             return jarFile.getJarEntry(pathInArchive);
         } catch (IOException ioe) {
             // Should never happen
-            throw new IllegalStateException(ioe);
+            throw new IllegalStateException(
+                    sm.getString("abstractArchiveResourceSet.archiveEntryFail", getBase()), ioe);
         } finally {
             if (jarFile != null) {
                 closeJarFile();
@@ -115,11 +127,11 @@ public abstract class AbstractSingleArchiveResourceSet extends AbstractArchiveRe
                     JarFile jarFile = null;
                     try {
                         jarFile = openJarFile();
-                        multiRelease = Boolean.valueOf(
-                                JreCompat.getInstance().jarFileIsMultiRelease(jarFile));
+                        multiRelease = Boolean.valueOf(JreCompat.getInstance().jarFileIsMultiRelease(jarFile));
                     } catch (IOException ioe) {
                         // Should never happen
-                        throw new IllegalStateException(ioe);
+                        throw new IllegalStateException(
+                                sm.getString("abstractArchiveResourceSet.multiReleaseFail", getBase()), ioe);
                     } finally {
                         if (jarFile != null) {
                             closeJarFile();
@@ -133,20 +145,22 @@ public abstract class AbstractSingleArchiveResourceSet extends AbstractArchiveRe
     }
 
 
-    //-------------------------------------------------------- Lifecycle methods
+    // -------------------------------------------------------- Lifecycle methods
     @Override
     protected void initInternal() throws LifecycleException {
 
         try (JarFile jarFile = JreCompat.getInstance().jarFileNewInstance(getBase())) {
             setManifest(jarFile.getManifest());
         } catch (IOException ioe) {
-            throw new IllegalArgumentException(ioe);
+            throw new LifecycleException(
+                    sm.getString("abstractArchiveResourceSet.manifestFail", getBase()), ioe);
         }
 
         try {
             setBaseUrl(UriUtil.buildJarSafeUrl(new File(getBase())));
         } catch (MalformedURLException e) {
-            throw new IllegalArgumentException(e);
+            throw new LifecycleException(
+                    sm.getString("abstractArchiveResourceSet.baseUrlFail", getBase()), e);
         }
     }
 }

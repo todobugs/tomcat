@@ -14,66 +14,227 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.catalina.tribes.transport.nio;
 
 
+/**
+ * MBean interface for NIO receiver management.
+ */
 public interface NioReceiverMBean {
 
     // Receiver Attributes
-    public String getAddress();
+    /**
+     * Returns the bind address.
+     *
+     * @return the address string
+     */
+    String getAddress();
 
-    public boolean getDirect();
+    /**
+     * Returns whether direct buffers are used.
+     *
+     * @return {@code true} if direct buffers are used
+     */
+    boolean getDirect();
 
-    public int getPort();
+    /**
+     * Returns the TCP listen port.
+     *
+     * @return the TCP port
+     */
+    int getPort();
 
-    public int getAutoBind();
+    /**
+     * Returns the TCP port the receiver is actually bound to, which may differ from the configured port if
+     * auto-bind was used.
+     *
+     * @return the bound TCP port, -1 if not bound
+     */
+    int getBoundPort();
 
-    public int getSecurePort();
+    /**
+     * Returns the auto-bind mode.
+     *
+     * @return the auto-bind mode
+     */
+    int getAutoBind();
 
-    public int getUdpPort();
+    /**
+     * Returns the secure port.
+     *
+     * @return the secure port
+     */
+    int getSecurePort();
 
-    public long getSelectorTimeout();
+    /**
+     * Returns the secure port the receiver is actually bound to, which may differ from the configured secure port if
+     * auto-bind was used.
+     *
+     * @return the bound secure port, -1 if not bound
+     */
+    int getBoundSecurePort();
 
-    public int getMaxThreads();
+    /**
+     * Returns the UDP port.
+     *
+     * @return the UDP port
+     */
+    int getUdpPort();
 
-    public int getMinThreads();
+    /**
+     * Returns the UDP port the receiver is actually bound to, which may differ from the configured UDP port if
+     * auto-bind was used.
+     *
+     * @return the bound UDP port, -1 if not bound
+     */
+    int getBoundUdpPort();
 
-    public long getMaxIdleTime();
+    /**
+     * Returns the selector timeout.
+     *
+     * @return the selector timeout in milliseconds
+     */
+    long getSelectorTimeout();
 
-    public boolean getOoBInline();
+    /**
+     * Returns the maximum number of threads.
+     *
+     * @return the max thread count
+     */
+    int getMaxThreads();
 
-    public int getRxBufSize();
+    /**
+     * Returns the minimum number of threads.
+     *
+     * @return the min thread count
+     */
+    int getMinThreads();
 
-    public int getTxBufSize();
+    /**
+     * Returns the maximum idle time.
+     *
+     * @return the max idle time in milliseconds
+     */
+    long getMaxIdleTime();
 
-    public int getUdpRxBufSize();
+    /**
+     * Returns whether out-of-band inline is enabled.
+     *
+     * @return {@code true} if OOB inline is enabled
+     */
+    boolean getOoBInline();
 
-    public int getUdpTxBufSize();
+    /**
+     * Returns the receive buffer size.
+     *
+     * @return the receive buffer size in bytes
+     */
+    int getRxBufSize();
 
-    public boolean getSoKeepAlive();
+    /**
+     * Returns the transmit buffer size.
+     *
+     * @return the transmit buffer size in bytes
+     */
+    int getTxBufSize();
 
-    public boolean getSoLingerOn();
+    /**
+     * Returns the UDP receive buffer size.
+     *
+     * @return the UDP receive buffer size in bytes
+     */
+    int getUdpRxBufSize();
 
-    public int getSoLingerTime();
+    /**
+     * Returns the UDP transmit buffer size.
+     *
+     * @return the UDP transmit buffer size in bytes
+     */
+    int getUdpTxBufSize();
 
-    public boolean getSoReuseAddress();
+    /**
+     * Returns whether SO_KEEPALIVE is enabled.
+     *
+     * @return {@code true} if keep-alive is enabled
+     */
+    boolean getSoKeepAlive();
 
-    public boolean getTcpNoDelay();
+    /**
+     * Returns whether SO_LINGER is enabled.
+     *
+     * @return {@code true} if SO_LINGER is enabled
+     */
+    boolean getSoLingerOn();
 
-    public int getTimeout();
+    /**
+     * Returns the SO_LINGER timeout.
+     *
+     * @return the SO_LINGER timeout in seconds
+     */
+    int getSoLingerTime();
 
-    public boolean getUseBufferPool();
+    /**
+     * Returns whether SO_REUSEADDR is enabled.
+     *
+     * @return {@code true} if SO_REUSEADDR is enabled
+     */
+    boolean getSoReuseAddress();
 
-    public boolean isListening();
+    /**
+     * Returns whether TCP_NODELAY is enabled.
+     *
+     * @return {@code true} if TCP_NODELAY is enabled
+     */
+    boolean getTcpNoDelay();
+
+    /**
+     * Returns the socket timeout.
+     *
+     * @return the socket timeout in milliseconds
+     */
+    int getTimeout();
+
+    /**
+     * Returns whether the buffer pool is used.
+     *
+     * @return {@code true} if the buffer pool is used
+     */
+    boolean getUseBufferPool();
+
+    /**
+     * Returns whether the receiver is currently listening.
+     *
+     * @return {@code true} if listening
+     */
+    boolean isListening();
 
     // pool stats
-    public int getPoolSize();
+    /**
+     * Returns the current pool size.
+     *
+     * @return the pool size
+     */
+    int getPoolSize();
 
-    public int getActiveCount();
+    /**
+     * Returns the number of actively running tasks.
+     *
+     * @return the active task count
+     */
+    int getActiveCount();
 
-    public long getTaskCount();
+    /**
+     * Returns the total number of tasks submitted.
+     *
+     * @return the total task count
+     */
+    long getTaskCount();
 
-    public long getCompletedTaskCount();
+    /**
+     * Returns the total number of completed tasks.
+     *
+     * @return the completed task count
+     */
+    long getCompletedTaskCount();
 
 }

@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -14,10 +14,12 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.catalina.storeconfig;
 
 import java.io.PrintWriter;
+import java.util.Arrays;
+import java.util.HashSet;
+import java.util.Set;
 
 import org.apache.tomcat.util.net.openssl.OpenSSLConf;
 import org.apache.tomcat.util.net.openssl.OpenSSLConfCmd;
@@ -28,18 +30,32 @@ import org.apache.tomcat.util.net.openssl.OpenSSLConfCmd;
 public class OpenSSLConfSF extends StoreFactoryBase {
 
     /**
+     * Constructs an OpenSSLConfSF.
+     */
+    public OpenSSLConfSF() {
+    }
+
+    private static final Set<String> INTERNAL_COMMANDS = new HashSet<>(Arrays.asList(OpenSSLConfCmd.NO_OCSP_CHECK,
+            OpenSSLConfCmd.OCSP_SOFT_FAIL, OpenSSLConfCmd.OCSP_TIMEOUT, OpenSSLConfCmd.OCSP_VERIFY_FLAGS));
+
+    /**
      * Store nested OpenSSLConfCmd elements.
+     * <p>
      * {@inheritDoc}
      */
     @Override
-    public void storeChildren(PrintWriter aWriter, int indent, Object aOpenSSLConf,
-            StoreDescription parentDesc) throws Exception {
+    public void storeChildren(PrintWriter aWriter, int indent, Object aOpenSSLConf, StoreDescription parentDesc)
+            throws Exception {
         if (aOpenSSLConf instanceof OpenSSLConf) {
             OpenSSLConf openSslConf = (OpenSSLConf) aOpenSSLConf;
             // Store nested <OpenSSLConfCmd> elements
-            OpenSSLConfCmd[] openSSLConfCmds = openSslConf.getCommands().toArray(new OpenSSLConfCmd[0]);
-            storeElementArray(aWriter, indent + 2, openSSLConfCmds);
+            for (OpenSSLConfCmd openSSLConfCmd : openSslConf.getCommands()) {
+                // Don't store the internal commands that are created from other SslHostConfig attributes.
+                if (INTERNAL_COMMANDS.contains(openSSLConfCmd.getName())) {
+                    continue;
+                }
+                storeElement(aWriter, indent + 2, openSSLConfCmd);
+            }
         }
     }
-
 }

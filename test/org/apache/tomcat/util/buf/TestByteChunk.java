@@ -18,19 +18,14 @@ package org.apache.tomcat.util.buf;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
-import java.io.IOException;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 import java.io.UnsupportedEncodingException;
-import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 
 import org.junit.Assert;
-import org.junit.Ignore;
 import org.junit.Test;
-
-import org.apache.tomcat.util.buf.ByteChunk.ByteOutputChannel;
 
 /**
  * Test cases for {@link ByteChunk}.
@@ -172,37 +167,6 @@ public class TestByteChunk {
     }
 
 
-    @Ignore // Requires a 6GB heap (on markt's desktop - YMMV)
-    @Test
-    public void testAppend() throws Exception {
-        ByteChunk bc = new ByteChunk();
-        bc.setByteOutputChannel(new Sink());
-        // Defaults to no limit
-
-        byte data[] = new byte[32 * 1024 * 1024];
-
-        for (int i = 0; i < 100; i++) {
-            bc.append(data, 0, data.length);
-        }
-
-        Assert.assertEquals(AbstractChunk.ARRAY_MAX_SIZE, bc.getBuffer().length);
-    }
-
-
-    public static class Sink implements ByteOutputChannel {
-
-        @Override
-        public void realWriteBytes(byte[] cbuf, int off, int len) throws IOException {
-            // NO-OP
-        }
-
-        @Override
-        public void realWriteBytes(ByteBuffer from) throws IOException {
-            // NO-OP
-        }
-    }
-
-
     @Test
     public void testToString() {
         ByteChunk bc = new ByteChunk();
@@ -214,5 +178,15 @@ public class TestByteChunk {
         // toString() should behave consistently for new ByteChunk and
         // immediately after a call to recycle().
         Assert.assertNull(bc.toString());
+    }
+
+
+    @Test
+    public void testEqualsIgnoreCase() {
+        byte[] bytes = "Hello".getBytes();
+        ByteChunk bc = new ByteChunk();
+        bc.setBytes(bytes, 0, bytes.length);
+        Assert.assertTrue(bc.equalsIgnoreCase("heLLo"));
+        Assert.assertFalse(bc.equalsIgnoreCase("\u8a48\u8a65\u8a6c\u8a6c\u8a6f"));
     }
 }

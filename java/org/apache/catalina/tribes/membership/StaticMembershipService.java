@@ -14,14 +14,15 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.catalina.tribes.membership;
 
 import java.io.IOException;
 import java.net.InetAddress;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.List;
 import java.util.Properties;
+import java.util.concurrent.CopyOnWriteArrayList;
 
 import javax.management.ObjectName;
 
@@ -32,13 +33,21 @@ import org.apache.catalina.tribes.util.StringManager;
 import org.apache.juli.logging.Log;
 import org.apache.juli.logging.LogFactory;
 
-public class StaticMembershipService extends MembershipServiceBase
-        implements StaticMembershipServiceMBean {
+/**
+ * Service that manages static membership for a cluster channel.
+ */
+public class StaticMembershipService extends MembershipServiceBase implements StaticMembershipServiceMBean {
 
     private static final Log log = LogFactory.getLog(StaticMembershipService.class);
+    /**
+     * String manager for this class.
+     */
     protected static final StringManager sm = StringManager.getManager(Constants.Package);
 
-    protected final ArrayList<StaticMember> staticMembers = new ArrayList<>();
+    /**
+     * List of static members configured for this service.
+     */
+    protected final List<StaticMember> staticMembers = new CopyOnWriteArrayList<>();
     private StaticMember localMember;
     private StaticMembershipProvider provider;
 
@@ -47,8 +56,11 @@ public class StaticMembershipService extends MembershipServiceBase
      */
     private ObjectName oname = null;
 
+    /**
+     * Default constructor.
+     */
     public StaticMembershipService() {
-        //default values
+        // default values
         setDefaults(this.properties);
     }
 
@@ -57,6 +69,11 @@ public class StaticMembershipService extends MembershipServiceBase
         if (provider != null) {
             provider.start(level);
             return;
+        }
+        if (localMember == null) {
+            // The local member is resolved when the channel receiver starts, or is configured
+            // explicitly. Starting the membership without either leaves it unknown.
+            throw new IllegalStateException(sm.getString("staticMembershipService.localMemberNotSet"));
         }
         localMember.setServiceStartTime(System.currentTimeMillis());
         localMember.setMemberAliveTime(100);
@@ -71,14 +88,22 @@ public class StaticMembershipService extends MembershipServiceBase
         }
     }
 
+    /**
+     * Builds and configures the membership provider.
+     * @return the configured membership provider
+     * @throws Exception if initialization fails
+     */
     protected StaticMembershipProvider buildMembershipProvider() throws Exception {
         StaticMembershipProvider provider = new StaticMembershipProvider();
         provider.setChannel(channel);
         provider.setMembershipListener(this);
         provider.setMembershipService(this);
         provider.setStaticMembers(staticMembers);
-        properties.setProperty("membershipName", getMembershipName());
-        provider.init(properties);
+        // Pass the derived membership name to the provider on a copy of the configuration, so the
+        // internal key does not leak into the properties this service exposes
+        Properties providerProperties = (Properties) properties.clone();
+        providerProperties.setProperty("membershipName", getMembershipName());
+        provider.init(providerProperties);
         return provider;
     }
 
@@ -87,7 +112,10 @@ public class StaticMembershipService extends MembershipServiceBase
         try {
             if (provider != null && provider.stop(level)) {
                 if (oname != null) {
-                    JmxRegistry.getRegistry(channel).unregisterJmx(oname);
+                    JmxRegistry jmxRegistry = JmxRegistry.getRegistry(channel);
+                    if (jmxRegistry != null) {
+                        jmxRegistry.unregisterJmx(oname);
+                    }
                     oname = null;
                 }
                 provider = null;
@@ -100,15 +128,14 @@ public class StaticMembershipService extends MembershipServiceBase
 
     @Override
     public Member getLocalMember(boolean incAliveTime) {
-        if ( incAliveTime && localMember != null) {
-            localMember.setMemberAliveTime(System.currentTimeMillis()-localMember.getServiceStartTime());
+        if (incAliveTime && localMember != null) {
+            localMember.setMemberAliveTime(System.currentTimeMillis() - localMember.getServiceStartTime());
         }
         return localMember;
     }
 
     @Override
-    public void setLocalMemberProperties(String listenHost, int listenPort,
-            int securePort, int udpPort) {
+    public void setLocalMemberProperties(String listenHost, int listenPort, int securePort, int udpPort) {
         properties.setProperty("tcpListenHost", listenHost);
         properties.setProperty("tcpListenPort", String.valueOf(listenPort));
         try {
@@ -118,8 +145,8 @@ public class StaticMembershipService extends MembershipServiceBase
             localMember.setSecurePort(securePort);
             localMember.setUdpPort(udpPort);
             localMember.getData(true, true);
-        } catch (IOException x) {
-            throw new IllegalArgumentException(x);
+        } catch (IOException ioe) {
+            throw new IllegalArgumentException(ioe);
         }
     }
 
@@ -138,18 +165,36 @@ public class StaticMembershipService extends MembershipServiceBase
         return provider;
     }
 
+    /**
+     * Returns a copy of the list of static members. Mutating the returned list has no effect on
+     * this service. The configured list is safe to modify while the provider runs, so use
+     * {@link #addStaticMember(StaticMember)} and {@link #removeStaticMember(StaticMember)} to change it.
+     * @return a copy of the static members list
+     */
     public ArrayList<StaticMember> getStaticMembers() {
-        return staticMembers;
+        return new ArrayList<>(staticMembers);
     }
 
+    /**
+     * Adds a static member to the cluster.
+     * @param member the member to add
+     */
     public void addStaticMember(StaticMember member) {
         staticMembers.add(member);
     }
 
+    /**
+     * Removes a static member from the cluster.
+     * @param member the member to remove
+     */
     public void removeStaticMember(StaticMember member) {
         staticMembers.remove(member);
     }
 
+    /**
+     * Sets the local member for this service.
+     * @param member the local member
+     */
     public void setLocalMember(StaticMember member) {
         this.localMember = member;
         localMember.setLocal(true);
@@ -161,6 +206,10 @@ public class StaticMembershipService extends MembershipServiceBase
         return Long.parseLong(expirationTime);
     }
 
+    /**
+     * Sets the member expiration time in milliseconds.
+     * @param expirationTime the expiration time
+     */
     public void setExpirationTime(long expirationTime) {
         properties.setProperty("expirationTime", String.valueOf(expirationTime));
     }
@@ -171,6 +220,10 @@ public class StaticMembershipService extends MembershipServiceBase
         return Integer.parseInt(connectTimeout);
     }
 
+    /**
+     * Sets the connection timeout in milliseconds.
+     * @param connectTimeout the connection timeout
+     */
     public void setConnectTimeout(int connectTimeout) {
         properties.setProperty("connectTimeout", String.valueOf(connectTimeout));
     }
@@ -181,6 +234,10 @@ public class StaticMembershipService extends MembershipServiceBase
         return Long.parseLong(rpcTimeout);
     }
 
+    /**
+     * Sets the RPC timeout in milliseconds.
+     * @param rpcTimeout the RPC timeout
+     */
     public void setRpcTimeout(long rpcTimeout) {
         properties.setProperty("rpcTimeout", String.valueOf(rpcTimeout));
     }
@@ -191,6 +248,10 @@ public class StaticMembershipService extends MembershipServiceBase
         return Boolean.parseBoolean(useThread);
     }
 
+    /**
+     * Sets whether to use a background thread for pinging.
+     * @param useThread true to use a background thread
+     */
     public void setUseThread(boolean useThread) {
         properties.setProperty("useThread", String.valueOf(useThread));
     }
@@ -201,48 +262,77 @@ public class StaticMembershipService extends MembershipServiceBase
         return Long.parseLong(pingInterval);
     }
 
+    /**
+     * Sets the ping interval in milliseconds.
+     * @param pingInterval the ping interval
+     */
     public void setPingInterval(long pingInterval) {
         properties.setProperty("pingInterval", String.valueOf(pingInterval));
     }
 
+    /**
+     * Sets the properties for this service. The values are read when the membership provider is
+     * built, as the service starts. Replacing the properties while the service runs therefore has
+     * no effect on the running provider. It keeps the values it started with until the service is
+     * fully stopped and started again, even though the attribute getters of the service report the
+     * new values.
+     *
+     * @param properties the new configuration
+     */
     @Override
     public void setProperties(Properties properties) {
+        if (provider != null) {
+            log.warn(sm.getString("staticMembershipService.propertiesWhileRunning"));
+        }
         setDefaults(properties);
         this.properties = properties;
     }
 
+    /**
+     * Sets default property values.
+     * @param properties the properties to configure
+     */
     protected void setDefaults(Properties properties) {
         // default values
-        if (properties.getProperty("expirationTime") == null)
-            properties.setProperty("expirationTime","5000");
-        if (properties.getProperty("connectTimeout") == null)
-            properties.setProperty("connectTimeout","500");
-        if (properties.getProperty("rpcTimeout") == null)
-            properties.setProperty("rpcTimeout","3000");
-        if (properties.getProperty("useThread") == null)
-            properties.setProperty("useThread","false");
-        if (properties.getProperty("pingInterval") == null)
-            properties.setProperty("pingInterval","1000");
+        if (properties.getProperty("expirationTime") == null) {
+            properties.setProperty("expirationTime", "5000");
+        }
+        if (properties.getProperty("connectTimeout") == null) {
+            properties.setProperty("connectTimeout", "500");
+        }
+        if (properties.getProperty("rpcTimeout") == null) {
+            properties.setProperty("rpcTimeout", "3000");
+        }
+        if (properties.getProperty("useThread") == null) {
+            properties.setProperty("useThread", "false");
+        }
+        if (properties.getProperty("pingInterval") == null) {
+            properties.setProperty("pingInterval", "1000");
+        }
     }
 
     private String getMembershipName() {
-        return channel.getName()+"-"+"StaticMembership";
+        return channel.getName() + "-" + "StaticMembership";
     }
 
     private void findLocalMember() throws IOException {
-        if (this.localMember != null) return;
+        if (this.localMember != null) {
+            return;
+        }
         String listenHost = properties.getProperty("tcpListenHost");
         String listenPort = properties.getProperty("tcpListenPort");
 
         // find local member from static members
         for (StaticMember staticMember : this.staticMembers) {
-            if (Arrays.equals(InetAddress.getByName(listenHost).getAddress(), staticMember.getHost())
-                    && Integer.parseInt(listenPort) == staticMember.getPort()) {
+            if (Arrays.equals(InetAddress.getByName(listenHost).getAddress(), staticMember.getHost()) &&
+                    Integer.parseInt(listenPort) == staticMember.getPort()) {
                 this.localMember = staticMember;
                 break;
             }
         }
-        if (this.localMember == null) throw new IllegalStateException(sm.getString("staticMembershipService.noLocalMember"));
+        if (this.localMember == null) {
+            throw new IllegalStateException(sm.getString("staticMembershipService.noLocalMember"));
+        }
         staticMembers.remove(this.localMember);
     }
 }

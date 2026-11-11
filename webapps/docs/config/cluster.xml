@@ -23,7 +23,6 @@
   &project;
 
   <properties>
-    <author email="fhanik@apache.org">Filip Hanik</author>
     <title>The Cluster object</title>
   </properties>
 
@@ -43,22 +42,44 @@
   making the configuration seem like a lot, but don't lose faith, instead you have a tremendous control
   over what is going on.</p>
 </section>
+
 <section name="Security">
+  <p>
+  Tomcat clustering is typically used over a secure, trusted network. If a trusted network is not
+  available then a cluster may be configured to use TLS. To configure a cluster to use TLS the
+  following changes/additions to a working non-TLS cluster configuration are required:
+  </p>
+  <ul>
+    <li>OpenSSL-FFM support (Java 22+ and OpenSSL library) or Tomact Native 2.0.17+ must be available to provide the TLS
+        support.</li>
+    <li>The <code>pskKey</code> and <code>pskIdentity</code> attributes of the <code>Channel</code> must be set to the
+        same values on each cluster node.</li>
+    <li>The <code>secure</code> attribute of the <code>Channel</code> must be set to <code>true</code> on each cluster
+        node.</li>
+    <li>The <code>securePort</code> attribute of the <code>Receiver</code> must be set.</li>
+    <li>The <code>securePort</code> attribute of each <code>Member</code> must be set to match the associated
+        <code>Receiver</code>.</li>
+    <li>It is recommended that the cluster is configured to use static membership. It is possible to use TLS in
+        combination with dynamic membership (multicast discovery) but the network communication that manages the dynamic
+        membership takes place in the clear. If any nodes (including potentially untrusted nodes) attempt to join a
+        cluster using TLS with dynamic membership without the correct TLS configuration, it will trigger a significant
+        amount of logging until those nodes stop attempting to join the cluster.</li>
+  </ul>
 
-<p>The cluster implementation is written on the basis that a secure, trusted
-network is used for all of the cluster related network traffic. It is not safe
-to run a cluster on a insecure, untrusted network.</p>
+  <p>
+  The <code>EncryptInterceptor</code> is deprecated and should no longer be used to secure cluster traffic.
+  </p>
 
-<p>There are many options for providing a secure, trusted network for use by a
-Tomcat cluster. These include:</p>
-<ul>
-  <li><a href="cluster-interceptor.html#org.apache.catalina.tribes.group.interceptors.EncryptInterceptor_Attributes">EncryptInterceptor</a></li>
-  <li>private LAN</li>
-  <li>a Virtual Private Network (VPN)</li>
-  <li>IPSEC</li>
-</ul>
-
+  <p>
+  Other options for providing a secure, trusted network for use by a Tomcat cluster include:
+  </p>
+  <ul>
+    <li>private LAN</li>
+    <li>a Virtual Private Network (VPN)</li>
+    <li>IPSEC</li>
+  </ul>
 </section>
+
 <section name="Engine vs Host placement">
   <p>
    You can place the <code>&lt;Cluster&gt;</code> element inside either the <code>&lt;Engine&gt;</code>
@@ -109,16 +130,6 @@ Tomcat cluster. These include:</p>
   </p>
 </section>
 
-<section name="Deprecated configuration options">
-  <p>
-    <b>Deprecated settings:</b> In the previous version of Tomcat you were able to control session
-       manager settings using manager.&lt;property&gt;=value.
-       This has been discontinued, as the way it was written interferes with
-       the ability to support multiple different manager classes under one cluster implementation,
-       as the same properties might have the different effect on different managers.
-  </p>
-</section>
-
 <section name="Attributes">
   <subsection name="SimpleTcpCluster Attributes">
   <attributes>
@@ -128,30 +139,45 @@ Tomcat cluster. These include:</p>
       </p>
     </attribute>
     <attribute name="channelSendOptions" required="true">
-      <p>The Tribes channel send options, default is <code>8</code>.<br/>
-         This option is used to set the flag that all messages sent through the
-         SimpleTcpCluster uses. The flag decides how the messages are sent, and is a simple logical OR.</p>
-
-      <source>int options = Channel.SEND_OPTIONS_ASYNCHRONOUS |
-              Channel.SEND_OPTIONS_SYNCHRONIZED_ACK |
-              Channel.SEND_OPTIONS_USE_ACK;</source>
-      <p>Some of the values are:<br/>
-      <code>Channel.SEND_OPTIONS_SYNCHRONIZED_ACK = 0x0004</code><br/>
-      <code>Channel.SEND_OPTIONS_ASYNCHRONOUS = 0x0008</code><br/>
-      <code>Channel.SEND_OPTIONS_USE_ACK = 0x0002</code><br/>
-      So to use ACK and ASYNC messaging, the flag would be <code>10</code> (8+2)
-      <br/>
-      Note that if you use ASYNC messaging it is possible for update messages
-      for a session to be processed by the receiving nodes in a different order
-      to the order in which they were sent.
-      </p>
-      <p>
-      You may also set these options as a comma separated string, e.g. "async, multicast", which
-      will be translated into <code>Channel.SEND_OPTIONS_ASYNCHRONOUS | Channel.SEND_OPTIONS_MULTICAST</code>
-      <br/>
-      The valid option names are "asynchronous" (alias "async"), "byte_message" (alias "byte")
-      , "multicast", "secure", "synchronized_ack" (alias "sync"), "udp", "use_ack"
-      </p>
+        <p>The Tribes channel send options. This option is used for all messages
+        sent through the SimpleTcpCluster.</p>
+        <p>The value may be specified either as an integer (add values to use
+        multiple flags) or using a comma-separate list of the human-readable
+        option names. Human-readable names are translated to their integer
+        values on startup.</p>
+        <p>The different values offer a tradeoff between throughput on the
+        sending node and the reliability of replication should the sending or
+        receiving node(s) fail.</p>
+        <p>The supported values are:</p>
+        <dl>
+          <dt><code>byte_message</code>, <code>byte</code> or
+              <code>1</code></dt>
+          <dd>The message is a pure byte message and no marshaling or
+              unmarshalling will be performed</dd>
+          <dt><code>use_ack</code> or <code>2</code></dt>
+          <dd>The message is sent and an ACK is received when the message has
+              been received by the recipient. If no ack is received, the message
+              is not considered successful.</dd>
+          <dt><code>synchronized_ack</code>, <code>sync</code> or
+              <code>4</code></dt>
+          <dd>Has no effect unless <code>use_ack</code> is set. The message is
+              sent and an ACK is received when the message has been received and
+              processed by the recipient. If no ack is received, the message is
+              not considered successful.</dd>
+          <dt><code>asynchronous</code>, <code>async</code> or
+              <code>8</code></dt>
+          <dd>The message will be placed on a queue and sent by a separate
+              thread. It is possible for update messages for a session to be
+              processed by the receiving node in a different order to the order
+              in which they were sent.</dd>
+          <dt><code>secure</code> or <code>16</code></dt>
+          <dd>Not implemented. Has no effect if used.</dd>
+          <dt><code>udp</code> or <code>32</code></dt>
+          <dd>The message will be sent using UDP instead of TCP.</dd>
+          <dt><code>multicast</code> or <code>64</code></dt>
+          <dd>Not implemented. Messages will not be sent if used.</dd>
+        </dl>
+        <p>The default value is <code>8</code> (<code>async</code>).</p>
     </attribute>
     <attribute name="channelStartOptions" required="false">
       <p>Sets the start and stop flags for the &lt;Channel&gt; object used by the cluster.
@@ -162,6 +188,10 @@ Tomcat cluster. These include:</p>
                   Channel.SND_TX_SEQ (2) |
                   Channel.MBR_RX_SEQ (4) |
                   Channel.MBR_TX_SEQ (8);</source>
+      <p>When using the static membership service
+      <code>org.apache.catalina.tribes.membership.StaticMembershipService</code>
+      you must ensure that this attribute is configured to use the default
+      value.</p>
     </attribute>
 
     <attribute name="heartbeatBackgroundEnabled" required="false">

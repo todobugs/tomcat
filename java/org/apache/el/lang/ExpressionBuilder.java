@@ -41,38 +41,31 @@ import org.apache.el.parser.ELParser;
 import org.apache.el.parser.Node;
 import org.apache.el.parser.NodeVisitor;
 import org.apache.el.util.ConcurrentCache;
+import org.apache.el.util.ExceptionUtils;
 import org.apache.el.util.MessageFactory;
 
 /**
- * @author Jacob Hookom [jacob@hookom.net]
+ * Builds compiled EL expressions from parsed AST nodes.
  */
 public final class ExpressionBuilder implements NodeVisitor {
 
     private static final SynchronizedStack<ELParser> parserCache = new SynchronizedStack<>();
 
     private static final int CACHE_SIZE;
-    private static final String CACHE_SIZE_PROP =
-        "org.apache.el.ExpressionBuilder.CACHE_SIZE";
+    private static final String CACHE_SIZE_PROP = "org.apache.el.ExpressionBuilder.CACHE_SIZE";
 
     static {
         String cacheSizeStr;
         if (System.getSecurityManager() == null) {
             cacheSizeStr = System.getProperty(CACHE_SIZE_PROP, "5000");
         } else {
-            cacheSizeStr = AccessController.doPrivileged(
-                    new PrivilegedAction<String>() {
-
-                    @Override
-                    public String run() {
-                        return System.getProperty(CACHE_SIZE_PROP, "5000");
-                    }
-                });
+            cacheSizeStr = AccessController
+                    .doPrivileged((PrivilegedAction<String>) () -> System.getProperty(CACHE_SIZE_PROP, "5000"));
         }
         CACHE_SIZE = Integer.parseInt(cacheSizeStr);
     }
 
-    private static final ConcurrentCache<String, Node> expressionCache =
-            new ConcurrentCache<>(CACHE_SIZE);
+    private static final ConcurrentCache<String,Node> expressionCache = new ConcurrentCache<>(CACHE_SIZE);
 
     private FunctionMapper fnMapper;
 
@@ -80,8 +73,14 @@ public final class ExpressionBuilder implements NodeVisitor {
 
     private final String expression;
 
-    public ExpressionBuilder(String expression, ELContext ctx)
-            throws ELException {
+    /**
+     * Creates a new ExpressionBuilder for the given expression and context.
+     *
+     * @param expression the EL expression string
+     * @param ctx the EL context
+     * @throws ELException if the expression is invalid
+     */
+    public ExpressionBuilder(String expression, ELContext ctx) throws ELException {
         this.expression = expression;
 
         FunctionMapper ctxFn = ctx.getFunctionMapper();
@@ -95,13 +94,18 @@ public final class ExpressionBuilder implements NodeVisitor {
         }
     }
 
-    public static final Node createNode(String expr) throws ELException {
-        Node n = createNodeInternal(expr);
-        return n;
+    /**
+     * Creates a parsed AST node for the given expression string.
+     *
+     * @param expr the expression string to parse
+     * @return the parsed AST node
+     * @throws ELException if parsing fails
+     */
+    public static Node createNode(String expr) throws ELException {
+        return createNodeInternal(expr);
     }
 
-    private static final Node createNodeInternal(String expr)
-            throws ELException {
+    private static Node createNodeInternal(String expr) throws ELException {
         if (expr == null) {
             throw new ELException(MessageFactory.get("error.null"));
         }
@@ -123,30 +127,29 @@ public final class ExpressionBuilder implements NodeVisitor {
                     n = n.jjtGetChild(0);
                 } else {
                     Class<?> type = null;
-                    Node child = null;
+                    Node child;
                     for (int i = 0; i < numChildren; i++) {
                         child = n.jjtGetChild(i);
-                        if (child instanceof AstLiteralExpression)
+                        if (child instanceof AstLiteralExpression) {
                             continue;
-                        if (type == null)
+                        }
+                        if (type == null) {
                             type = child.getClass();
-                        else {
+                        } else {
                             if (!type.equals(child.getClass())) {
-                                throw new ELException(MessageFactory.get(
-                                        "error.mixed", expr));
+                                throw new ELException(MessageFactory.get("error.mixed", expr));
                             }
                         }
                     }
                 }
 
-                if (n instanceof AstDeferredExpression
-                        || n instanceof AstDynamicExpression) {
+                if (n instanceof AstDeferredExpression || n instanceof AstDynamicExpression) {
                     n = n.jjtGetChild(0);
                 }
                 expressionCache.put(expr, n);
-            } catch (Exception e) {
-                throw new ELException(
-                        MessageFactory.get("error.parseFail", expr), e);
+            } catch (Throwable t) {
+                ExceptionUtils.handleThrowable(t);
+                throw new ELException(MessageFactory.get("error.parseFail", expr), t);
             } finally {
                 if (parser != null) {
                     parserCache.push(parser);
@@ -177,18 +180,12 @@ public final class ExpressionBuilder implements NodeVisitor {
     private Node build() throws ELException {
         Node n = createNodeInternal(this.expression);
         this.prepare(n);
-        if (n instanceof AstDeferredExpression
-                || n instanceof AstDynamicExpression) {
+        if (n instanceof AstDeferredExpression || n instanceof AstDynamicExpression) {
             n = n.jjtGetChild(0);
         }
         return n;
     }
 
-    /*
-     * (non-Javadoc)
-     *
-     * @see com.sun.el.parser.NodeVisitor#visit(com.sun.el.parser.Node)
-     */
     @Override
     public void visit(Node node) throws ELException {
         if (node instanceof AstFunction) {
@@ -198,15 +195,13 @@ public final class ExpressionBuilder implements NodeVisitor {
             Method m = null;
 
             if (this.fnMapper != null) {
-                m = fnMapper.resolveFunction(funcNode.getPrefix(), funcNode
-                        .getLocalName());
+                m = fnMapper.resolveFunction(funcNode.getPrefix(), funcNode.getLocalName());
             }
 
             // References to variables that refer to lambda expressions will be
             // parsed as functions. This is handled at runtime but at this point
             // need to treat it as a variable rather than a function.
-            if (m == null && this.varMapper != null &&
-                    funcNode.getPrefix().length() == 0) {
+            if (m == null && this.varMapper != null && funcNode.getPrefix().isEmpty()) {
                 this.varMapper.resolveVariable(funcNode.getLocalName());
                 return;
             }
@@ -216,8 +211,7 @@ public final class ExpressionBuilder implements NodeVisitor {
             }
 
             if (m == null) {
-                throw new ELException(MessageFactory.get(
-                        "error.fnMapper.method", funcNode.getOutputName()));
+                throw new ELException(MessageFactory.get("error.fnMapper.method", funcNode.getOutputName()));
             }
 
             int methodParameterCount = m.getParameterTypes().length;
@@ -225,8 +219,7 @@ public final class ExpressionBuilder implements NodeVisitor {
             int inputParameterCount = node.jjtGetChild(0).jjtGetNumChildren();
             if (m.isVarArgs() && inputParameterCount < methodParameterCount - 1 ||
                     !m.isVarArgs() && inputParameterCount != methodParameterCount) {
-                throw new ELException(MessageFactory.get(
-                        "error.fnMapper.paramcount", funcNode.getOutputName(),
+                throw new ELException(MessageFactory.get("error.fnMapper.paramcount", funcNode.getOutputName(),
                         "" + methodParameterCount, "" + node.jjtGetChild(0).jjtGetNumChildren()));
             }
         } else if (node instanceof AstIdentifier && this.varMapper != null) {
@@ -237,35 +230,45 @@ public final class ExpressionBuilder implements NodeVisitor {
         }
     }
 
-    public ValueExpression createValueExpression(Class<?> expectedType)
-            throws ELException {
+    /**
+     * Creates a ValueExpression from the parsed expression.
+     *
+     * @param expectedType the expected type of the expression result
+     * @return the value expression
+     * @throws ELException if expression building fails
+     */
+    public ValueExpression createValueExpression(Class<?> expectedType) throws ELException {
         Node n = this.build();
-        return new ValueExpressionImpl(this.expression, n, this.fnMapper,
-                this.varMapper, expectedType);
+        return new ValueExpressionImpl(this.expression, n, this.fnMapper, this.varMapper, expectedType);
     }
 
-    public MethodExpression createMethodExpression(Class<?> expectedReturnType,
-            Class<?>[] expectedParamTypes) throws ELException {
+    /**
+     * Creates a MethodExpression from the parsed expression.
+     *
+     * @param expectedReturnType the expected return type
+     * @param expectedParamTypes the expected parameter types
+     * @return the method expression
+     * @throws ELException if expression building fails
+     */
+    public MethodExpression createMethodExpression(Class<?> expectedReturnType, Class<?>[] expectedParamTypes)
+            throws ELException {
         Node n = this.build();
         if (!n.isParametersProvided() && expectedParamTypes == null) {
-            throw new NullPointerException(MessageFactory
-                    .get("error.method.nullParms"));
+            throw new NullPointerException(MessageFactory.get("error.method.nullParms"));
         }
         if (n instanceof AstValue || n instanceof AstIdentifier) {
-            return new MethodExpressionImpl(expression, n, this.fnMapper,
-                    this.varMapper, expectedReturnType, expectedParamTypes);
-        } else if (n instanceof AstLiteralExpression) {
-            return new MethodExpressionLiteral(expression, expectedReturnType,
+            return new MethodExpressionImpl(expression, n, this.fnMapper, this.varMapper, expectedReturnType,
                     expectedParamTypes);
+        } else if (n instanceof AstLiteralExpression) {
+            return new MethodExpressionLiteral(expression, expectedReturnType, expectedParamTypes);
         } else {
             throw new ELException(MessageFactory.get("error.invalidMethodExpression", expression));
         }
     }
 
     /*
-     * Copied from org.apache.tomcat.util.collections.SynchronizedStack since
-     * we don't want the EL implementation to depend on the JAR where that
-     * class resides.
+     * Copied from org.apache.tomcat.util.collections.SynchronizedStack since we don't want the EL implementation to
+     * depend on the JAR where that class resides.
      */
     private static class SynchronizedStack<T> {
 
@@ -283,11 +286,11 @@ public final class ExpressionBuilder implements NodeVisitor {
         private Object[] stack;
 
 
-        public SynchronizedStack() {
+        SynchronizedStack() {
             this(DEFAULT_SIZE, DEFAULT_LIMIT);
         }
 
-        public SynchronizedStack(int size, int limit) {
+        SynchronizedStack(int size, int limit) {
             this.size = size;
             this.limit = limit;
             stack = new Object[size];

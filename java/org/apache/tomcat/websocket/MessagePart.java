@@ -20,64 +20,119 @@ import java.nio.ByteBuffer;
 
 import javax.websocket.SendHandler;
 
-class MessagePart {
+/**
+ * Represents a part of a WebSocket message.
+ */
+public class MessagePart {
+    /** Whether this is the final part. */
     private final boolean fin;
+    /** Reserved bits. */
     private final int rsv;
+    /** Operation code. */
     private final byte opCode;
+    /** Payload data. */
     private final ByteBuffer payload;
+    /** Intermediate send handler. */
     private final SendHandler intermediateHandler;
+    /** End send handler. */
     private volatile SendHandler endHandler;
-    private final long blockingWriteTimeoutExpiry;
+    /** Whether the write is blocking. */
+    private final boolean blocking;
+    /** Write timeout expiry. */
+    private final long writeTimeoutExpiry;
 
-    public MessagePart( boolean fin, int rsv, byte opCode, ByteBuffer payload,
-            SendHandler intermediateHandler, SendHandler endHandler,
-            long blockingWriteTimeoutExpiry) {
+    /**
+     * Constructor.
+     * @param fin whether this is the final part
+     * @param rsv reserved bits
+     * @param opCode operation code
+     * @param payload payload data
+     * @param intermediateHandler intermediate send handler
+     * @param endHandler end send handler
+     * @param blocking whether the write is blocking
+     * @param writeTimeoutExpiry write timeout expiry
+     */
+    MessagePart(boolean fin, int rsv, byte opCode, ByteBuffer payload, SendHandler intermediateHandler,
+            SendHandler endHandler, boolean blocking, long writeTimeoutExpiry) {
         this.fin = fin;
         this.rsv = rsv;
         this.opCode = opCode;
         this.payload = payload;
         this.intermediateHandler = intermediateHandler;
         this.endHandler = endHandler;
-        this.blockingWriteTimeoutExpiry = blockingWriteTimeoutExpiry;
+        this.blocking = blocking;
+        this.writeTimeoutExpiry = writeTimeoutExpiry;
     }
 
-
+    /**
+     * Check if this is the final part.
+     * @return true if final
+     */
     public boolean isFin() {
         return fin;
     }
 
-
+    /**
+     * Get the reserved bits.
+     * @return the reserved bits
+     */
     public int getRsv() {
         return rsv;
     }
 
-
+    /**
+     * Get the operation code.
+     * @return the operation code
+     */
     public byte getOpCode() {
         return opCode;
     }
 
-
+    /**
+     * Get the payload.
+     * @return the payload
+     */
     public ByteBuffer getPayload() {
         return payload;
     }
 
-
+    /**
+     * Get the intermediate handler.
+     * @return the intermediate handler
+     */
     public SendHandler getIntermediateHandler() {
         return intermediateHandler;
     }
 
-
+    /**
+     * Get the end handler.
+     * @return the end handler
+     */
     public SendHandler getEndHandler() {
         return endHandler;
     }
 
+    /**
+     * Set the end handler.
+     * @param endHandler the end handler
+     */
     public void setEndHandler(SendHandler endHandler) {
         this.endHandler = endHandler;
     }
 
-    public long getBlockingWriteTimeoutExpiry() {
-        return blockingWriteTimeoutExpiry;
+    /**
+     * Determine if the write is blocking.
+     * @return {@code true} if the write is blocking, otherwise {@code false}
+     */
+    public boolean isBlocking() {
+        return blocking;
+    }
+
+    /**
+     * Get the write timeout expiry.
+     * @return the write timeout expiry
+     */
+    public long getWriteTimeoutExpiry() {
+        return writeTimeoutExpiry;
     }
 }
-
-

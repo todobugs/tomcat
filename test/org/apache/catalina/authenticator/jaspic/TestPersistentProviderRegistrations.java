@@ -1,4 +1,4 @@
- /**
+/*
  *  Licensed to the Apache Software Foundation (ASF) under one or more
  *  contributor license agreements.  See the NOTICE file distributed with
  *  this work for additional information regarding copyright ownership.
@@ -30,7 +30,7 @@ public class TestPersistentProviderRegistrations {
     public void testLoadEmpty() {
         File f = new File("test/conf/jaspic-test-01.xml");
         Providers result = PersistentProviderRegistrations.loadProviders(f);
-        Assert.assertEquals(0,  result.getProviders().size());
+        Assert.assertEquals(0, result.getProviders().size());
     }
 
 
@@ -43,14 +43,14 @@ public class TestPersistentProviderRegistrations {
 
 
     private void validateSimple(Providers providers) {
-        Assert.assertEquals(1,  providers.getProviders().size());
+        Assert.assertEquals(1, providers.getProviders().size());
         Provider p = providers.getProviders().get(0);
         Assert.assertEquals("a", p.getClassName());
         Assert.assertEquals("b", p.getLayer());
         Assert.assertEquals("c", p.getAppContext());
         Assert.assertEquals("d", p.getDescription());
 
-        Assert.assertEquals(2,  p.getProperties().size());
+        Assert.assertEquals(2, p.getProperties().size());
         Assert.assertEquals("f", p.getProperties().get("e"));
         Assert.assertEquals("h", p.getProperties().get("g"));
     }
@@ -95,7 +95,7 @@ public class TestPersistentProviderRegistrations {
 
 
     private void validateNoLayerAndAC(Providers providers) {
-        Assert.assertEquals(1,  providers.getProviders().size());
+        Assert.assertEquals(1, providers.getProviders().size());
         Provider p = providers.getProviders().get(0);
         Assert.assertEquals("a", p.getClassName());
         Assert.assertNull(p.getLayer());

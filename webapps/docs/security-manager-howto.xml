@@ -24,8 +24,6 @@
     &project;
 
     <properties>
-        <author email="glenn@voyager.apg.more.net">Glenn Nielsen</author>
-        <author email="jeanfrancois.arcand@sun.com">Jean-Francois Arcand</author>
         <title>Security Manager How-To</title>
     </properties>
 
@@ -61,6 +59,15 @@
   configuration before allowing untrusted users to publish web applications,
   JSPs, servlets, beans, or tag libraries.  <strong>However, running with a
   SecurityManager is definitely better than running without one.</strong></p>
+
+</section>
+
+
+<section name="Known Issues">
+
+  <p>As of Java 17, the SecurityManager has been deprecated with the expectation
+  that it will be removed in a future Java version. Users currently using a
+  SecurityManager are recommended to start planning for its removal.</p>
 
 </section>
 

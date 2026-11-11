@@ -23,24 +23,35 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
 import javax.management.MBeanNotificationInfo;
 
 /**
- * <p>Internal configuration information for a <code>Notification</code>
- * descriptor.</p>
- *
- * @author Craig R. McClanahan
+ * <p>
+ * Internal configuration information for a <code>Notification</code> descriptor.
+ * </p>
  */
 public class NotificationInfo extends FeatureInfo {
 
-    static final long serialVersionUID = -6319885418912650856L;
+    /**
+     * Constructs a new NotificationInfo.
+     */
+    public NotificationInfo() {
+    }
+
+    private static final long serialVersionUID = -6319885418912650856L;
 
     // ----------------------------------------------------- Instance Variables
 
 
     /**
-     * The <code>ModelMBeanNotificationInfo</code> object that corresponds
-     * to this <code>NotificationInfo</code> instance.
+     * The <code>ModelMBeanNotificationInfo</code> object that corresponds to this <code>NotificationInfo</code>
+     * instance.
      */
-    transient MBeanNotificationInfo info = null;
-    protected String notifTypes[] = new String[0];
+    transient MBeanNotificationInfo notifInfo = null;
+    /**
+     * Array of notification types.
+     */
+    protected String[] notifTypes = new String[0];
+    /**
+     * Lock for notification types access.
+     */
     protected final ReadWriteLock notifTypesLock = new ReentrantReadWriteLock();
 
     // ------------------------------------------------------------- Properties
@@ -54,7 +65,7 @@ public class NotificationInfo extends FeatureInfo {
     @Override
     public void setDescription(String description) {
         super.setDescription(description);
-        this.info = null;
+        this.notifInfo = null;
     }
 
 
@@ -66,12 +77,14 @@ public class NotificationInfo extends FeatureInfo {
     @Override
     public void setName(String name) {
         super.setName(name);
-        this.info = null;
+        this.notifInfo = null;
     }
 
 
     /**
-     * @return the set of notification types for this MBean.
+     * Returns the array of notification types for this MBean.
+     *
+     * @return The array of notification types
      */
     public String[] getNotifTypes() {
         Lock readLock = notifTypesLock.readLock();
@@ -98,11 +111,11 @@ public class NotificationInfo extends FeatureInfo {
         writeLock.lock();
         try {
 
-            String results[] = new String[notifTypes.length + 1];
+            String[] results = new String[notifTypes.length + 1];
             System.arraycopy(notifTypes, 0, results, 0, notifTypes.length);
             results[notifTypes.length] = notifType;
             notifTypes = results;
-            this.info = null;
+            this.notifInfo = null;
         } finally {
             writeLock.unlock();
         }
@@ -110,23 +123,24 @@ public class NotificationInfo extends FeatureInfo {
 
 
     /**
-     * Create and return a <code>ModelMBeanNotificationInfo</code> object that
-     * corresponds to the attribute described by this instance.
+     * Create and return a <code>ModelMBeanNotificationInfo</code> object that corresponds to the notification
+     * described by this instance.
+     *
      * @return the notification info
      */
     public MBeanNotificationInfo createNotificationInfo() {
 
         // Return our cached information (if any)
-        if (info != null)
-            return info;
+        if (notifInfo != null) {
+            return notifInfo;
+        }
 
         // Create and return a new information object
-        info = new MBeanNotificationInfo
-            (getNotifTypes(), getName(), getDescription());
-        //Descriptor descriptor = info.getDescriptor();
-        //addFields(descriptor);
-        //info.setDescriptor(descriptor);
-        return info;
+        notifInfo = new MBeanNotificationInfo(getNotifTypes(), getName(), getDescription());
+        // Descriptor descriptor = notifInfo.getDescriptor();
+        // addFields(descriptor);
+        // notifInfo.setDescriptor(descriptor);
+        return notifInfo;
 
     }
 
@@ -150,7 +164,7 @@ public class NotificationInfo extends FeatureInfo {
         } finally {
             readLock.unlock();
         }
-        sb.append("]");
+        sb.append(']');
         return sb.toString();
     }
 }

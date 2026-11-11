@@ -27,12 +27,26 @@ import org.apache.coyote.UpgradeToken;
 import org.apache.tomcat.util.net.AbstractEndpoint.Handler.SocketState;
 import org.apache.tomcat.util.net.SocketWrapperBase;
 
+/**
+ * Base class for HTTP upgrade processors.
+ */
 public abstract class UpgradeProcessorBase extends AbstractProcessorLight implements WebConnection {
 
+    /**
+     * Timeout value that disables timeout checking.
+     */
     protected static final int INFINITE_TIMEOUT = -1;
 
+    /**
+     * The upgrade token containing handler and context information.
+     */
     private final UpgradeToken upgradeToken;
 
+    /**
+     * Constructs a new UpgradeProcessorBase.
+     *
+     * @param upgradeToken the upgrade token
+     */
     public UpgradeProcessorBase(UpgradeToken upgradeToken) {
         this.upgradeToken = upgradeToken;
     }
@@ -52,9 +66,16 @@ public abstract class UpgradeProcessorBase extends AbstractProcessorLight implem
     }
 
 
+    /**
+     * {@inheritDoc}
+     * <p>
+     * Upgrade processors are not recycled and re-used. This method is only used to trigger any necessary clean-up once
+     * the upgrade processor is no longer required.
+     */
     @Override
-    public final void recycle() {
-        // Currently a NO-OP as upgrade processors are not recycled.
+    public void recycle() {
+        // NO-OP. Sub-classes override this to release resources when the
+        // processor is released by the container.
     }
 
 

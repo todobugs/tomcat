@@ -29,8 +29,10 @@ import org.apache.el.util.MessageFactory;
 import org.apache.el.util.ReflectionUtil;
 
 
-public final class ValueExpressionLiteral extends ValueExpression implements
-        Externalizable {
+/**
+ * A literal value expression that represents a constant value.
+ */
+public final class ValueExpressionLiteral extends ValueExpression implements Externalizable {
 
     private static final long serialVersionUID = 1L;
 
@@ -39,10 +41,19 @@ public final class ValueExpressionLiteral extends ValueExpression implements
 
     private Class<?> expectedType;
 
+    /**
+     * Constructs a new ValueExpressionLiteral for deserialization.
+     */
     public ValueExpressionLiteral() {
         super();
     }
 
+    /**
+     * Constructs a new ValueExpressionLiteral.
+     *
+     * @param value        The literal value
+     * @param expectedType The expected return type
+     */
     public ValueExpressionLiteral(Object value, Class<?> expectedType) {
         this.value = value;
         this.expectedType = expectedType;
@@ -64,8 +75,7 @@ public final class ValueExpressionLiteral extends ValueExpression implements
     @Override
     public void setValue(ELContext context, Object value) {
         context.notifyBeforeEvaluation(getExpressionString());
-        throw new PropertyNotWritableException(MessageFactory.get(
-                "error.value.literal.write", this.value));
+        throw new PropertyNotWritableException(MessageFactory.get("error.value.literal.write", this.value));
     }
 
     @Override
@@ -98,13 +108,19 @@ public final class ValueExpressionLiteral extends ValueExpression implements
 
     @Override
     public boolean equals(Object obj) {
-        return (obj instanceof ValueExpressionLiteral && this
-                .equals((ValueExpressionLiteral) obj));
+        return (obj instanceof ValueExpressionLiteral && this.equals((ValueExpressionLiteral) obj));
     }
 
+    /**
+     * Compares this literal value expression with another for equality.
+     *
+     * @param ve The other literal value expression
+     *
+     * @return {@code true} if the values are equal, {@code false} otherwise
+     */
     public boolean equals(ValueExpressionLiteral ve) {
-        return (ve != null && (this.value != null && ve.value != null && (this.value == ve.value || this.value
-                .equals(ve.value))));
+        return (ve != null &&
+                (this.value != null && ve.value != null && (this.value == ve.value || this.value.equals(ve.value))));
     }
 
     @Override
@@ -120,16 +136,14 @@ public final class ValueExpressionLiteral extends ValueExpression implements
     @Override
     public void writeExternal(ObjectOutput out) throws IOException {
         out.writeObject(this.value);
-        out.writeUTF((this.expectedType != null) ? this.expectedType.getName()
-                : "");
+        out.writeUTF((this.expectedType != null) ? this.expectedType.getName() : "");
     }
 
     @Override
-    public void readExternal(ObjectInput in) throws IOException,
-            ClassNotFoundException {
+    public void readExternal(ObjectInput in) throws IOException, ClassNotFoundException {
         this.value = in.readObject();
         String type = in.readUTF();
-        if (!"".equals(type)) {
+        if (!type.isEmpty()) {
             this.expectedType = ReflectionUtil.forName(type);
         }
     }

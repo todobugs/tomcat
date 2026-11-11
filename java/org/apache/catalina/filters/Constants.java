@@ -16,62 +16,65 @@
  */
 package org.apache.catalina.filters;
 
+import org.apache.tomcat.util.http.Method;
 
 /**
  * Manifest constants for this Java package.
- *
- *
- * @author Craig R. McClanahan
  */
 public final class Constants {
 
     /**
-     * The session attribute key under which the CSRF nonce
-     * cache will be stored.
+     * Prevents instantiation.
      */
-    public static final String CSRF_NONCE_SESSION_ATTR_NAME =
-        "org.apache.catalina.filters.CSRF_NONCE";
+    private Constants() {
+    }
 
     /**
-     * The request attribute key under which the current
-     * requests's CSRF nonce can be found.
+     * The session attribute key under which the CSRF nonce cache will be stored.
      */
-    public static final String CSRF_NONCE_REQUEST_ATTR_NAME =
-        "org.apache.catalina.filters.CSRF_REQUEST_NONCE";
+    public static final String CSRF_NONCE_SESSION_ATTR_NAME = "org.apache.catalina.filters.CSRF_NONCE";
 
     /**
-     * The name of the request parameter which carries CSRF nonces
-     * from the client to the server for validation.
+     * The request attribute key under which the current request's CSRF nonce can be found.
      */
-    public static final String CSRF_NONCE_REQUEST_PARAM =
-        "org.apache.catalina.filters.CSRF_NONCE";
+    public static final String CSRF_NONCE_REQUEST_ATTR_NAME = "org.apache.catalina.filters.CSRF_REQUEST_NONCE";
 
     /**
-     * The servlet context attribute key under which the
-     * CSRF request parameter name can be found.
+     * The name of the request parameter which carries CSRF nonces from the client to the server for validation.
      */
-    public static final String CSRF_NONCE_REQUEST_PARAM_NAME_KEY =
-        "org.apache.catalina.filters.CSRF_NONCE_PARAM_NAME";
+    public static final String CSRF_NONCE_REQUEST_PARAM = "org.apache.catalina.filters.CSRF_NONCE";
 
-    public static final String METHOD_GET = "GET";
+    /**
+     * The servlet context attribute key under which the CSRF request parameter name can be found.
+     */
+    public static final String CSRF_NONCE_REQUEST_PARAM_NAME_KEY = "org.apache.catalina.filters.CSRF_NONCE_PARAM_NAME";
 
+    @Deprecated
+    public static final String METHOD_GET = Method.GET;
+
+    /**
+     * The HTTP header name used to carry the CSRF nonce in REST requests.
+     */
     public static final String CSRF_REST_NONCE_HEADER_NAME = "X-CSRF-Token";
 
+    /**
+     * The fetch mode value for the CSRF REST nonce header.
+     */
     public static final String CSRF_REST_NONCE_HEADER_FETCH_VALUE = "Fetch";
 
+    /**
+     * The required mode value for the CSRF REST nonce header.
+     */
     public static final String CSRF_REST_NONCE_HEADER_REQUIRED_VALUE = "Required";
 
     /**
-     * The session attribute key under which the CSRF REST nonce
-     * cache will be stored.
+     * The session attribute key under which the CSRF REST nonce cache will be stored.
      */
-    public static final String CSRF_REST_NONCE_SESSION_ATTR_NAME =
-        "org.apache.catalina.filters.CSRF_REST_NONCE";
+    public static final String CSRF_REST_NONCE_SESSION_ATTR_NAME = "org.apache.catalina.filters.CSRF_REST_NONCE";
 
     /**
-     * The servlet context attribute key under which the
-     * CSRF REST header name can be found.
+     * The servlet context attribute key under which the CSRF REST header name can be found.
      */
     public static final String CSRF_REST_NONCE_HEADER_NAME_KEY =
-        "org.apache.catalina.filters.CSRF_REST_NONCE_HEADER_NAME";
+            "org.apache.catalina.filters.CSRF_REST_NONCE_HEADER_NAME";
 }

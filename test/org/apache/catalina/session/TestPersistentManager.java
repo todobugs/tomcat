@@ -17,12 +17,15 @@
 package org.apache.catalina.session;
 
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.locks.ReadWriteLock;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpSessionEvent;
 import javax.servlet.http.HttpSessionListener;
 
 import org.junit.Assert;
+import org.junit.Before;
 import org.junit.Test;
 
 import org.apache.catalina.Context;
@@ -39,6 +42,11 @@ import org.easymock.EasyMock;
 import org.easymock.IAnswer;
 
 public class TestPersistentManager {
+
+    @Before
+    public void setup() {
+        System.setProperty("org.apache.catalina.session.StandardSession.ACTIVITY_CHECK", "true");
+    }
 
     @Test
     public void testMinIdleSwap() throws Exception {
@@ -72,6 +80,38 @@ public class TestPersistentManager {
     }
 
     @Test
+    public void testMaxActiveSwapUsesLeastRecentlyUsed() throws Exception {
+        OrderedPersistentManager manager = new OrderedPersistentManager();
+        TesterStore store = new TesterStore();
+        manager.setStore(store);
+
+        Host host = new TesterHost();
+        Context context = new TesterContext();
+        context.setParent(host);
+
+        manager.setContext(context);
+        manager.setMaxActiveSessions(3);
+        manager.setMinIdleSwap(0);
+
+        manager.start();
+
+        StandardSession oldest = (StandardSession) manager.createSession("oldest");
+        StandardSession middle = (StandardSession) manager.createSession("middle");
+        StandardSession newest = (StandardSession) manager.createSession("newest");
+
+        long now = System.currentTimeMillis();
+        oldest.lastAccessedTime = now - 30000;
+        middle.lastAccessedTime = now - 20000;
+        newest.lastAccessedTime = now - 10000;
+
+        manager.setOrderedSessions(newest, middle, oldest);
+        manager.processMaxActiveSwaps();
+
+        Assert.assertEquals(1, store.getSavedIds().size());
+        Assert.assertEquals("oldest", store.getSavedIds().get(0));
+    }
+
+    @Test
     public void testBug62175() throws Exception {
         PersistentManager manager = new PersistentManager();
         AtomicInteger sessionExpireCounter = new AtomicInteger();
@@ -82,6 +122,12 @@ public class TestPersistentManager {
             @Override
             public Session answer() throws Throwable {
                 return timedOutSession(manager, sessionExpireCounter);
+            }
+        }).anyTimes();
+        EasyMock.expect(mockStore.getSessionStoreLock(EasyMock.anyString())).andAnswer(new IAnswer<ReadWriteLock>() {
+            @Override
+            public ReadWriteLock answer() throws Throwable {
+                return new ReentrantReadWriteLock();
             }
         }).anyTimes();
 
@@ -108,6 +154,7 @@ public class TestPersistentManager {
         context.setParent(host);
 
         Connector connector = EasyMock.createNiceMock(Connector.class);
+        EasyMock.replay(connector);
         Request req = new Request(connector) {
             @Override
             public Context getContext() {
@@ -116,7 +163,6 @@ public class TestPersistentManager {
         };
         req.setRequestedSessionId("invalidSession");
         HttpServletRequest request = new RequestFacade(req);
-        EasyMock.replay(connector);
         requestCachingSessionListener.request = request;
 
         manager.setContext(context);
@@ -135,6 +181,28 @@ public class TestPersistentManager {
         @Override
         public void sessionDestroyed(HttpSessionEvent se) {
             request.getSession(false);
+        }
+    }
+
+    private static class OrderedPersistentManager extends PersistentManagerBase {
+
+        private Session[] orderedSessions;
+
+        void setOrderedSessions(Session... orderedSessions) {
+            this.orderedSessions = orderedSessions;
+        }
+
+        @Override
+        public Session[] findSessions() {
+            if (orderedSessions == null) {
+                return super.findSessions();
+            }
+            return orderedSessions;
+        }
+
+        @Override
+        public String getName() {
+            return "OrderedPersistentManager";
         }
     }
 

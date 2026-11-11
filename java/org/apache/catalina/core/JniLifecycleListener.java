@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.catalina.core;
 
 import org.apache.catalina.Lifecycle;
@@ -25,21 +24,29 @@ import org.apache.juli.logging.LogFactory;
 import org.apache.tomcat.util.res.StringManager;
 
 /**
- * An implementation of LifeCycleListener that loads a native library into the JVM.
+ * An implementation of LifecycleListener that loads a native library into the JVM.
  * <p>
- * Native libraries are associated with the class loader of the class that loaded them,
- * and the same library may not be loaded by more than one class loader. Due to that
- * restriction, loading a native library from a Webapp's class loader makes it impossible
- * for other Webapps to load the native library.
+ * Native libraries are associated with the class loader of the class that loaded them, and the same library may not be
+ * loaded by more than one class loader. Due to that restriction, loading a native library from a Webapp's class loader
+ * makes it impossible for other Webapps to load the native library.
  * <p>
- * Loading the native library using this listener solves the issue as it is loaded
- * by a shared class loader (typically the Common class loader, but may vary in some
- * configurations).
+ * Loading the native library using this listener solves the issue as it is loaded by a shared class loader (typically
+ * the Common class loader, but may vary in some configurations).
  */
 public class JniLifecycleListener implements LifecycleListener {
 
+    /**
+     * Constructs a new JniLifecycleListener.
+     */
+    public JniLifecycleListener() {
+    }
+
     private static final Log log = LogFactory.getLog(JniLifecycleListener.class);
-    protected static final StringManager sm = StringManager.getManager(Constants.Package);
+
+    /**
+     * StringManager for this class.
+     */
+    protected static final StringManager sm = StringManager.getManager(JniLifecycleListener.class);
 
     private String libraryName = "";
     private String libraryPath = "";
@@ -61,6 +68,11 @@ public class JniLifecycleListener implements LifecycleListener {
         }
     }
 
+    /**
+     * Set the name of the library to load.
+     *
+     * @param libraryName the library name
+     */
     public void setLibraryName(String libraryName) {
 
         if (!this.libraryPath.isEmpty()) {
@@ -70,10 +82,20 @@ public class JniLifecycleListener implements LifecycleListener {
         this.libraryName = libraryName;
     }
 
+    /**
+     * Get the name of the library to load.
+     *
+     * @return the library name
+     */
     public String getLibraryName() {
         return libraryName;
     }
 
+    /**
+     * Set the path of the library to load.
+     *
+     * @param libraryPath the library path
+     */
     public void setLibraryPath(String libraryPath) {
 
         if (!this.libraryName.isEmpty()) {
@@ -83,6 +105,11 @@ public class JniLifecycleListener implements LifecycleListener {
         this.libraryPath = libraryPath;
     }
 
+    /**
+     * Get the path of the library to load.
+     *
+     * @return the library path
+     */
     public String getLibraryPath() {
         return libraryPath;
     }

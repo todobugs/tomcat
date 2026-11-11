@@ -21,7 +21,6 @@ import java.security.PrivilegedAction;
 import java.util.ArrayList;
 import java.util.List;
 
-import javax.el.CompositeELResolver;
 import javax.el.ELContext;
 import javax.el.ELContextEvent;
 import javax.el.ELContextListener;
@@ -37,16 +36,13 @@ import org.apache.jasper.el.ELContextImpl;
 import org.apache.jasper.el.JasperELResolver;
 
 /**
- * Implementation of JspApplicationContext
- *
- * @author Jacob Hookom
+ * Implementation of JspApplicationContext.
  */
 public class JspApplicationContextImpl implements JspApplicationContext {
 
     private static final String KEY = JspApplicationContextImpl.class.getName();
 
-    private final ExpressionFactory expressionFactory =
-            ExpressionFactory.newInstance();
+    private final ExpressionFactory expressionFactory = ExpressionFactory.newInstance();
 
     private final List<ELContextListener> contextListeners = new ArrayList<>();
 
@@ -56,6 +52,9 @@ public class JspApplicationContextImpl implements JspApplicationContext {
 
     private ELResolver resolver;
 
+    /**
+     * Constructs a new JspApplicationContextImpl instance.
+     */
     public JspApplicationContextImpl() {
 
     }
@@ -68,12 +67,18 @@ public class JspApplicationContextImpl implements JspApplicationContext {
         this.contextListeners.add(listener);
     }
 
+    /**
+     * Returns the JspApplicationContextImpl singleton for the given ServletContext.
+     * Creates a new instance if one does not yet exist.
+     *
+     * @param context The ServletContext
+     * @return The JspApplicationContextImpl instance
+     */
     public static JspApplicationContextImpl getInstance(ServletContext context) {
         if (context == null) {
             throw new IllegalArgumentException(Localizer.getMessage("jsp.error.nullArgument"));
         }
-        JspApplicationContextImpl impl = (JspApplicationContextImpl) context
-                .getAttribute(KEY);
+        JspApplicationContextImpl impl = (JspApplicationContextImpl) context.getAttribute(KEY);
         if (impl == null) {
             impl = new JspApplicationContextImpl();
             context.setAttribute(KEY, impl);
@@ -81,6 +86,12 @@ public class JspApplicationContextImpl implements JspApplicationContext {
         return impl;
     }
 
+    /**
+     * Creates an ELContext for the given JspContext.
+     *
+     * @param context The JspContext
+     * @return The created ELContextImpl
+     */
     public ELContextImpl createELContext(JspContext context) {
         if (context == null) {
             throw new IllegalArgumentException(Localizer.getMessage("jsp.error.nullArgument"));
@@ -90,13 +101,7 @@ public class JspApplicationContextImpl implements JspApplicationContext {
         final ELResolver r = this.createELResolver();
         ELContextImpl ctx;
         if (Constants.IS_SECURITY_ENABLED) {
-            ctx = AccessController.doPrivileged(
-                    new PrivilegedAction<ELContextImpl>() {
-                        @Override
-                        public ELContextImpl run() {
-                            return new ELContextImpl(r);
-                        }
-                    });
+            ctx = AccessController.doPrivileged((PrivilegedAction<ELContextImpl>) () -> new ELContextImpl(r));
         } else {
             ctx = new ELContextImpl(r);
         }
@@ -108,19 +113,22 @@ public class JspApplicationContextImpl implements JspApplicationContext {
         return ctx;
     }
 
+    /**
+     * Notifies all registered ELContextListeners that a new ELContext has been created.
+     *
+     * @param elContext The newly created ELContext
+     */
     protected void fireListeners(ELContext elContext) {
         ELContextEvent event = new ELContextEvent(elContext);
-        for (int i = 0; i < this.contextListeners.size(); i++) {
-            this.contextListeners.get(i).contextCreated(event);
+        for (ELContextListener contextListener : this.contextListeners) {
+            contextListener.contextCreated(event);
         }
     }
 
     private ELResolver createELResolver() {
         this.instantiated = true;
         if (this.resolver == null) {
-            CompositeELResolver r = new JasperELResolver(this.resolvers,
-                    expressionFactory.getStreamELResolver());
-            this.resolver = r;
+            this.resolver = new JasperELResolver(this.resolvers, expressionFactory.getStreamELResolver());
         }
         return this.resolver;
     }

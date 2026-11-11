@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.el;
 
 import java.io.Externalizable;
@@ -30,7 +29,12 @@ import javax.el.MethodInfo;
 import org.apache.el.util.ReflectionUtil;
 
 
+/**
+ * Literal method expression.
+ */
 public class MethodExpressionLiteral extends MethodExpression implements Externalizable {
+
+    private static final long serialVersionUID = -3475757320946305522L;
 
     private Class<?> expectedType;
 
@@ -38,12 +42,20 @@ public class MethodExpressionLiteral extends MethodExpression implements Externa
 
     private Class<?>[] paramTypes;
 
+    /**
+     * Default constructor.
+     */
     public MethodExpressionLiteral() {
         // do nothing
     }
 
-    public MethodExpressionLiteral(String expr, Class<?> expectedType,
-            Class<?>[] paramTypes) {
+    /**
+     * Constructor.
+     * @param expr the expression
+     * @param expectedType the expected type
+     * @param paramTypes the parameter types
+     */
+    public MethodExpressionLiteral(String expr, Class<?> expectedType, Class<?>[] paramTypes) {
         this.expr = expr;
         this.expectedType = expectedType;
         this.paramTypes = paramTypes;
@@ -52,8 +64,7 @@ public class MethodExpressionLiteral extends MethodExpression implements Externa
     @Override
     public MethodInfo getMethodInfo(ELContext context) throws ELException {
         context.notifyBeforeEvaluation(getExpressionString());
-        MethodInfo result =
-                new MethodInfo(this.expr, this.expectedType, this.paramTypes);
+        MethodInfo result = new MethodInfo(this.expr, this.expectedType, this.paramTypes);
         context.notifyAfterEvaluation(getExpressionString());
         return result;
     }
@@ -78,7 +89,11 @@ public class MethodExpressionLiteral extends MethodExpression implements Externa
 
     @Override
     public boolean equals(Object obj) {
-        return (obj instanceof MethodExpressionLiteral && this.hashCode() == obj.hashCode());
+        if (!(obj instanceof MethodExpressionLiteral)) {
+            return false;
+        }
+
+        return this.expr.equals(((MethodExpressionLiteral) obj).expr);
     }
 
     @Override
@@ -95,18 +110,16 @@ public class MethodExpressionLiteral extends MethodExpression implements Externa
     public void readExternal(ObjectInput in) throws IOException, ClassNotFoundException {
         this.expr = in.readUTF();
         String type = in.readUTF();
-        if (!"".equals(type)) {
+        if (!type.isEmpty()) {
             this.expectedType = ReflectionUtil.forName(type);
         }
-        this.paramTypes = ReflectionUtil.toTypeArray(((String[]) in
-                .readObject()));
+        this.paramTypes = ReflectionUtil.toTypeArray(((String[]) in.readObject()));
     }
 
     @Override
     public void writeExternal(ObjectOutput out) throws IOException {
         out.writeUTF(this.expr);
-        out.writeUTF((this.expectedType != null) ? this.expectedType.getName()
-                : "");
+        out.writeUTF((this.expectedType != null) ? this.expectedType.getName() : "");
         out.writeObject(ReflectionUtil.toTypeNameArray(this.paramTypes));
     }
 }

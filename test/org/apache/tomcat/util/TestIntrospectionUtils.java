@@ -16,6 +16,9 @@
  */
 package org.apache.tomcat.util;
 
+import java.util.Map;
+import java.util.Properties;
+
 import org.junit.Assert;
 import org.junit.Test;
 
@@ -101,12 +104,90 @@ public class TestIntrospectionUtils {
                 StandardContext.class, "javax.management.NotificationBroadcaster"));
     }
 
-    // And one to check that non-matches return false
 
+    // And one to check that non-matches return false
 
     @Test
     public void testIsInstanceStandardContext12() {
         Assert.assertFalse(IntrospectionUtils.isInstance(
                 StandardContext.class, "com.example.Other"));
+    }
+
+
+    @Test
+    public void testReplaceProperties() {
+        Properties properties = new Properties();
+
+        Assert.assertEquals("no-expression", IntrospectionUtils.replaceProperties(
+                "no-expression", properties, null, null));
+
+        Assert.assertEquals("${normal}", IntrospectionUtils.replaceProperties(
+                "${normal}", properties, null, null));
+
+        properties.setProperty("normal", "value1");
+        Assert.assertEquals("value1", IntrospectionUtils.replaceProperties(
+                "${normal}", properties, null, null));
+
+        Assert.assertEquals("abcvalue1xyz", IntrospectionUtils.replaceProperties(
+                "abc${normal}xyz", properties, null, null));
+
+        properties.setProperty("prop_with:-colon", "value2");
+        Assert.assertEquals("value2", IntrospectionUtils.replaceProperties(
+                "${prop_with:-colon}", properties, null, null));
+
+        Assert.assertEquals("value1", IntrospectionUtils.replaceProperties(
+                "${normal:-default}", properties, null, null));
+
+        properties.remove("normal");
+        Assert.assertEquals("default", IntrospectionUtils.replaceProperties(
+                "${normal:-default}", properties, null, null));
+
+        Assert.assertEquals("abc${normal}xyz", IntrospectionUtils.replaceProperties(
+                "abc${normal}xyz", properties, null, null));
+    }
+
+
+    // A setter with an unsupported parameter type must not be silently
+    // invoked with a null value.
+
+    @Test
+    public void testSetPropertyUnsupportedTypeNoFallback() {
+        TesterBean bean = new TesterBean();
+        Assert.assertFalse(IntrospectionUtils.setProperty(bean, "unsupported", "value", false));
+        Assert.assertNull(bean.getUnsupported());
+        Assert.assertFalse(bean.isGenericCalled());
+    }
+
+
+    @Test
+    public void testSetPropertyUnsupportedTypeWithFallback() {
+        TesterBean bean = new TesterBean();
+        Assert.assertTrue(IntrospectionUtils.setProperty(bean, "unsupported", "value", true));
+        Assert.assertNull(bean.getUnsupported());
+        Assert.assertTrue(bean.isGenericCalled());
+    }
+
+
+    public static class TesterBean {
+
+        private Map<Object, Object> unsupported;
+        private boolean genericCalled;
+
+        public void setUnsupported(Map<Object, Object> unsupported) {
+            this.unsupported = unsupported;
+        }
+
+        public Map<Object, Object> getUnsupported() {
+            return unsupported;
+        }
+
+        @SuppressWarnings("unused")
+        public void setProperty(String name, String value) {
+            genericCalled = true;
+        }
+
+        public boolean isGenericCalled() {
+            return genericCalled;
+        }
     }
 }

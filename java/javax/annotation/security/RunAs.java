@@ -29,5 +29,9 @@ import java.lang.annotation.Target;
 @Target(ElementType.TYPE)
 @Retention(RetentionPolicy.RUNTIME)
 public @interface RunAs {
-    public String value();
+
+    /**
+     * @return a String with the value for RunAs
+     */
+    String value();
 }

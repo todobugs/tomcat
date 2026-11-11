@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package javax.el;
 
 import java.beans.FeatureDescriptor;
@@ -22,14 +21,25 @@ import java.lang.reflect.Array;
 import java.util.Iterator;
 import java.util.Objects;
 
+/**
+ * Standard ELResolver for working with arrays.
+ */
 public class ArrayELResolver extends ELResolver {
 
     private final boolean readOnly;
 
+    /**
+     * Creates a writable instance of the standard array resolver.
+     */
     public ArrayELResolver() {
         this.readOnly = false;
     }
 
+    /**
+     * Creates an instance of the standard array resolver.
+     *
+     * @param readOnly {@code true} if the created instance should be read-only otherwise false.
+     */
     public ArrayELResolver(boolean readOnly) {
         this.readOnly = readOnly;
     }
@@ -69,24 +79,21 @@ public class ArrayELResolver extends ELResolver {
     }
 
     @Override
-    public void setValue(ELContext context, Object base, Object property,
-            Object value) {
+    public void setValue(ELContext context, Object base, Object property, Object value) {
         Objects.requireNonNull(context);
 
         if (base != null && base.getClass().isArray()) {
             context.setPropertyResolved(base, property);
 
             if (this.readOnly) {
-                throw new PropertyNotWritableException(Util.message(context,
-                        "resolverNotWriteable", base.getClass().getName()));
+                throw new PropertyNotWritableException(
+                        Util.message(context, "resolverNotWritable", base.getClass().getName()));
             }
 
             int idx = coerce(property);
             checkBounds(base, idx);
-            if (value != null && !Util.isAssignableFrom(value.getClass(),
-                    base.getClass().getComponentType())) {
-                throw new ClassCastException(Util.message(context,
-                        "objectNotAssignable", value.getClass().getName(),
+            if (value != null && !Util.isAssignableFrom(value.getClass(), base.getClass().getComponentType())) {
+                throw new ClassCastException(Util.message(context, "objectNotAssignable", value.getClass().getName(),
                         base.getClass().getComponentType().getName()));
             }
             Array.set(base, idx, value);
@@ -123,14 +130,13 @@ public class ArrayELResolver extends ELResolver {
         return null;
     }
 
-    private static final void checkBounds(Object base, int idx) {
+    private static void checkBounds(Object base, int idx) {
         if (idx < 0 || idx >= Array.getLength(base)) {
-            throw new PropertyNotFoundException(
-                    new ArrayIndexOutOfBoundsException(idx).getMessage());
+            throw new PropertyNotFoundException(new ArrayIndexOutOfBoundsException(idx).getMessage());
         }
     }
 
-    private static final int coerce(Object property) {
+    private static int coerce(Object property) {
         if (property instanceof Number) {
             return ((Number) property).intValue();
         }
@@ -143,8 +149,7 @@ public class ArrayELResolver extends ELResolver {
         if (property instanceof String) {
             return Integer.parseInt((String) property);
         }
-        throw new IllegalArgumentException(property != null ?
-                property.toString() : "null");
+        throw new IllegalArgumentException(property != null ? property.toString() : "null");
     }
 
 }

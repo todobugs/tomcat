@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.jasper.runtime;
 
 import java.io.IOException;
@@ -31,20 +30,19 @@ import org.apache.jasper.compiler.Localizer;
 
 /**
  * This is the super class of all JSP-generated servlets.
- *
- * @author Anil K. Vijendran
  */
 public abstract class HttpJspBase extends HttpServlet implements HttpJspPage {
 
     private static final long serialVersionUID = 1L;
 
+    /**
+     * Creates a new instance of an HTTP JSP servlet.
+     */
     protected HttpJspBase() {
     }
 
     @Override
-    public final void init(ServletConfig config)
-        throws ServletException
-    {
+    public final void init(ServletConfig config) throws ServletException {
         super.init(config);
         jspInit();
         _jspInit();
@@ -61,13 +59,9 @@ public abstract class HttpJspBase extends HttpServlet implements HttpJspPage {
         _jspDestroy();
     }
 
-    /**
-     * Entry point into service.
-     */
     @Override
     public final void service(HttpServletRequest request, HttpServletResponse response)
-        throws ServletException, IOException
-    {
+            throws ServletException, IOException {
         _jspService(request, response);
     }
 
@@ -75,6 +69,9 @@ public abstract class HttpJspBase extends HttpServlet implements HttpJspPage {
     public void jspInit() {
     }
 
+    /**
+     * Sub-classes may override this method to perform initialization. Called from {@link #init(javax.servlet.ServletConfig)}.
+     */
     public void _jspInit() {
     }
 
@@ -82,11 +79,13 @@ public abstract class HttpJspBase extends HttpServlet implements HttpJspPage {
     public void jspDestroy() {
     }
 
+    /**
+     * Sub-classes may override this method to perform cleanup. Called from {@link #destroy()}.
+     */
     protected void _jspDestroy() {
     }
 
     @Override
-    public abstract void _jspService(HttpServletRequest request,
-                                     HttpServletResponse response)
-        throws ServletException, IOException;
+    public abstract void _jspService(HttpServletRequest request, HttpServletResponse response)
+            throws ServletException, IOException;
 }

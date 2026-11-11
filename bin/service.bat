@@ -41,6 +41,7 @@ set "SELF=%~dp0%service.bat"
 
 set DEFAULT_SERVICE_NAME=Tomcat@VERSION_MAJOR@
 set SERVICE_NAME=%DEFAULT_SERVICE_NAME%
+set "RENAMED_SERVICE_EXE="
 
 set "CURRENT_DIR=%cd%"
 
@@ -67,7 +68,7 @@ if "x%1x" == "xx" goto displayUsage
 set SERVICE_USER=%1
 shift
 runas /env /savecred /user:%SERVICE_USER% "%COMSPEC% /K \"%SELF%\" %SERVICE_CMD% %SERVICE_NAME%"
-goto end
+exit /b 0
 
 rem Check the environment
 :checkEnv
@@ -75,8 +76,8 @@ rem Check the environment
 rem Guess CATALINA_HOME if not defined
 if not "%CATALINA_HOME%" == "" goto gotHome
 set "CATALINA_HOME=%cd%"
-if exist "%CATALINA_HOME%\bin\%DEFAULT_SERVICE_NAME%.exe" goto okHome
-if exist "%CATALINA_HOME%\bin\%SERVICE_NAME%.exe" goto okHome
+if exist "%CATALINA_HOME%\bin\%DEFAULT_SERVICE_NAME%.exe" goto gotHome
+if exist "%CATALINA_HOME%\bin\%SERVICE_NAME%.exe" goto gotHome
 rem CD to the upper dir
 cd ..
 set "CATALINA_HOME=%cd%"
@@ -98,41 +99,54 @@ echo Either the CATALINA_HOME environment variable is not defined correctly or
 echo the incorrect service name has been used.
 echo Both the CATALINA_HOME environment variable and the correct service name
 echo are required to run this program.
-goto end
+exit /b 1
 :okHome
 cd "%CURRENT_DIR%"
 
 rem Make sure prerequisite environment variables are set
-if not "%JAVA_HOME%" == "" goto gotJdkHome
 if not "%JRE_HOME%" == "" goto gotJreHome
+if not "%JAVA_HOME%" == "" goto gotJavaHome
 echo Neither the JAVA_HOME nor the JRE_HOME environment variable is defined
 echo Service will try to guess them from the registry.
-goto okJavaHome
-:gotJreHome
-if not exist "%JRE_HOME%\bin\java.exe" goto noJavaHome
-goto okJavaHome
-:gotJdkHome
-if not exist "%JAVA_HOME%\bin\javac.exe" goto noJavaHome
+goto okJava
+
+:gotJavaHome
+rem No JRE given, check if JAVA_HOME is usable as JRE_HOME
 rem Java 9 has a different directory structure
 if exist "%JAVA_HOME%\jre\bin\java.exe" goto preJava9Layout
-if not exist "%JAVA_HOME%\bin\java.exe" goto noJavaHome
-if not "%JRE_HOME%" == "" goto okJavaHome
+if not exist "%JAVA_HOME%\bin\java.exe" goto noJavaHomeAsJre
+rem Use JAVA_HOME as JRE_HOME
 set "JRE_HOME=%JAVA_HOME%"
-goto okJavaHome
+goto okJava
+
 :preJava9Layout
-if not "%JRE_HOME%" == "" goto okJavaHome
+rem Use JAVA_HOME\jre as JRE_HOME
 set "JRE_HOME=%JAVA_HOME%\jre"
-goto okJavaHome
-:noJavaHome
-echo The JAVA_HOME environment variable is not defined correctly
+goto okJava
+
+:noJavaHomeAsJre
+echo The JAVA_HOME environment variable is not defined correctly.
+echo JAVA_HOME=%JAVA_HOME%
+echo NB: JAVA_HOME should point to a JDK not a JRE.
+exit /b 1
+
+:gotJreHome
+rem Check if we have a usable JRE
+if not exist "%JRE_HOME%\bin\java.exe" goto noJreHome
+goto okJava
+
+:noJreHome
+rem Needed at least a JRE
+echo The JRE_HOME environment variable is not defined correctly
+echo JRE_HOME=%JRE_HOME%
 echo This environment variable is needed to run this program
-echo NB: JAVA_HOME should point to a JDK not a JRE
-goto end
-:okJavaHome
+exit /b 1
+
+:okJava
 if not "%CATALINA_BASE%" == "" goto gotBase
 set "CATALINA_BASE=%CATALINA_HOME%"
-:gotBase
 
+:gotBase
 rem Java 9 no longer supports the java.endorsed.dirs
 rem system property. Only try to use it if
 rem JAVA_ENDORSED_DIRS was explicitly set
@@ -154,7 +168,7 @@ echo Unknown parameter "%SERVICE_CMD%"
 :displayUsage
 echo.
 echo Usage: service.bat install/remove [service_name [--rename]] [--user username]
-goto end
+exit /b 1
 
 :doRemove
 rem Remove the service
@@ -165,14 +179,33 @@ echo Using CATALINA_BASE:    "%CATALINA_BASE%"
     --LogPath "%CATALINA_BASE%\logs"
 if not errorlevel 1 goto removed
 echo Failed removing '%SERVICE_NAME%' service
-goto end
+exit /b 1
 :removed
 echo The service '%SERVICE_NAME%' has been removed
-if exist "%CATALINA_HOME%\bin\%SERVICE_NAME%.exe" (
-    rename "%SERVICE_NAME%.exe" "%DEFAULT_SERVICE_NAME%.exe"
-    rename "%SERVICE_NAME%w.exe" "%DEFAULT_SERVICE_NAME%w.exe"
+rem Restore the default executable names only when install --rename changed them.
+rem The default executable is not a renamed copy, and renaming a file to itself fails.
+rem The source path is required: rename looks up a bare file name in the current directory, not in CATALINA_HOME\bin.
+if /I not "%SERVICE_NAME%" == "%DEFAULT_SERVICE_NAME%" (
+    if exist "%CATALINA_HOME%\bin\%SERVICE_NAME%.exe" (
+        rename "%CATALINA_HOME%\bin\%SERVICE_NAME%.exe" "%DEFAULT_SERVICE_NAME%.exe"
+        if errorlevel 1 (
+            echo Failed to rename "%SERVICE_NAME%.exe" to "%DEFAULT_SERVICE_NAME%.exe"
+            exit /b 1
+        )
+        set "RENAMED_SERVICE_EXE=1"
+    )
+    if exist "%CATALINA_HOME%\bin\%SERVICE_NAME%w.exe" (
+        rename "%CATALINA_HOME%\bin\%SERVICE_NAME%w.exe" "%DEFAULT_SERVICE_NAME%w.exe"
+        if errorlevel 1 (
+            echo Failed to rename "%SERVICE_NAME%w.exe" to "%DEFAULT_SERVICE_NAME%w.exe"
+            if defined RENAMED_SERVICE_EXE (
+                rename "%CATALINA_HOME%\bin\%DEFAULT_SERVICE_NAME%.exe" "%SERVICE_NAME%.exe"
+            )
+            exit /b 1
+        )
+    )
 )
-goto end
+exit /b 0
 
 :doInstall
 rem Install the service
@@ -200,13 +233,48 @@ if "%SERVICE_STARTUP_MODE%" == "" set SERVICE_STARTUP_MODE=manual
 if "%JvmMs%" == "" set JvmMs=128
 if "%JvmMx%" == "" set JvmMx=256
 
-if exist "%CATALINA_HOME%\bin\%DEFAULT_SERVICE_NAME%.exe" (
+rem Rename using the full source path. A bare file name is resolved against
+rem the current directory, so "install service_name --rename" failed unless
+rem it was started from CATALINA_HOME\bin. The new name must be a file name
+rem only. Skip when the requested name is already the default: renaming a
+rem file to itself fails, and there is nothing to rename. If the default
+rem executable is already absent, a previous --rename left the service name
+rem in place and install continues with that file.
+if /I not "%SERVICE_NAME%" == "%DEFAULT_SERVICE_NAME%" (
     if "x%RENAME%x" == "x--renamex" (
-        rename "%DEFAULT_SERVICE_NAME%.exe" "%SERVICE_NAME%.exe"
-        rename "%DEFAULT_SERVICE_NAME%w.exe" "%SERVICE_NAME%w.exe"
-        set "EXECUTABLE=%CATALINA_HOME%\bin\%SERVICE_NAME%.exe"
+        if exist "%CATALINA_HOME%\bin\%DEFAULT_SERVICE_NAME%.exe" (
+            if exist "%CATALINA_HOME%\bin\%SERVICE_NAME%.exe" (
+                echo The file "%SERVICE_NAME%.exe" already exists. The executables were not renamed.
+                exit /b 1
+            )
+            if exist "%CATALINA_HOME%\bin\%SERVICE_NAME%w.exe" (
+                echo The file "%SERVICE_NAME%w.exe" already exists. The executables were not renamed.
+                exit /b 1
+            )
+            rename "%CATALINA_HOME%\bin\%DEFAULT_SERVICE_NAME%.exe" "%SERVICE_NAME%.exe"
+            if errorlevel 1 (
+                echo Failed to rename "%DEFAULT_SERVICE_NAME%.exe" to "%SERVICE_NAME%.exe"
+                exit /b 1
+            )
+            rename "%CATALINA_HOME%\bin\%DEFAULT_SERVICE_NAME%w.exe" "%SERVICE_NAME%w.exe"
+            if errorlevel 1 (
+                echo Failed to rename "%DEFAULT_SERVICE_NAME%w.exe" to "%SERVICE_NAME%w.exe"
+                rename "%CATALINA_HOME%\bin\%SERVICE_NAME%.exe" "%DEFAULT_SERVICE_NAME%.exe"
+                exit /b 1
+            )
+            set "EXECUTABLE=%CATALINA_HOME%\bin\%SERVICE_NAME%.exe"
+        )
     )
 )
+
+rem Configure JAVA 9 specific start-up parameters - ensure to keep it in line with catalina.bat
+set                "JVM9_OPTIONS=--add-opens=java.base/java.lang=ALL-UNNAMED"
+set "JVM9_OPTIONS=%JVM9_OPTIONS%;--add-opens=java.base/java.lang.invoke=ALL-UNNAMED"
+set "JVM9_OPTIONS=%JVM9_OPTIONS%;--add-opens=java.base/java.lang.reflect=ALL-UNNAMED"
+set "JVM9_OPTIONS=%JVM9_OPTIONS%;--add-opens=java.base/java.io=ALL-UNNAMED"
+set "JVM9_OPTIONS=%JVM9_OPTIONS%;--add-opens=java.base/java.util=ALL-UNNAMED"
+set "JVM9_OPTIONS=%JVM9_OPTIONS%;--add-opens=java.base/java.util.concurrent=ALL-UNNAMED"
+set "JVM9_OPTIONS=%JVM9_OPTIONS%;--add-opens=java.rmi/sun.rmi.transport=ALL-UNNAMED"
 
 "%EXECUTABLE%" //IS//%SERVICE_NAME% ^
     --Description "Apache Tomcat @VERSION@ Server - https://tomcat.apache.org/" ^
@@ -225,15 +293,14 @@ if exist "%CATALINA_HOME%\bin\%DEFAULT_SERVICE_NAME%.exe" (
     --StopClass org.apache.catalina.startup.Bootstrap ^
     --StartParams start ^
     --StopParams stop ^
-    --JvmOptions "-Dcatalina.home=%CATALINA_HOME%;-Dcatalina.base=%CATALINA_BASE%;-D%ENDORSED_PROP%=%CATALINA_HOME%\endorsed;-Djava.io.tmpdir=%CATALINA_BASE%\temp;-Djava.util.logging.manager=org.apache.juli.ClassLoaderLogManager;-Djava.util.logging.config.file=%CATALINA_BASE%\conf\logging.properties;%JvmArgs%" ^
-    --JvmOptions9 "--add-opens=java.base/java.lang=ALL-UNNAMED#--add-opens=java.base/java.io=ALL-UNNAMED#--add-opens=java.rmi/sun.rmi.transport=ALL-UNNAMED" ^
+    --JvmOptions "-Dcatalina.home=%CATALINA_HOME%;-Dcatalina.base=%CATALINA_BASE%;-D%ENDORSED_PROP%=%CATALINA_HOME%\endorsed;-Djava.io.tmpdir=%CATALINA_BASE%\temp;-Djava.util.logging.manager=org.apache.juli.ClassLoaderLogManager;-Djava.util.logging.config.file=%CATALINA_BASE%\conf\logging.properties;-Dsun.io.useCanonCaches=false;%JvmArgs%" ^
+    --JvmOptions9 "%JVM9_OPTIONS%" ^
     --Startup "%SERVICE_STARTUP_MODE%" ^
     --JvmMs "%JvmMs%" ^
     --JvmMx "%JvmMx%"
 if not errorlevel 1 goto installed
 echo Failed installing '%SERVICE_NAME%' service
-goto end
+exit /b 1
 :installed
 echo The service '%SERVICE_NAME%' has been installed.
-
-:end
+exit /b 0

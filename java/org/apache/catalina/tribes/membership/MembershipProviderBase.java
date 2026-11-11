@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.catalina.tribes.membership;
 
 import java.util.Properties;
@@ -25,12 +24,33 @@ import org.apache.catalina.tribes.MembershipListener;
 import org.apache.catalina.tribes.MembershipProvider;
 import org.apache.catalina.tribes.MembershipService;
 
+/**
+ * Base implementation for membership providers.
+ */
 public abstract class MembershipProviderBase implements MembershipProvider {
 
+    /**
+     * Default constructor.
+     */
+    public MembershipProviderBase() {
+    }
+
+    /**
+     * The membership.
+     */
     protected Membership membership;
+    /**
+     * The membership listener.
+     */
     protected MembershipListener membershipListener;
+    /**
+     * The membership service.
+     */
     protected MembershipService service;
     // The event notification executor
+    /**
+     * The event notification executor.
+     */
     protected ScheduledExecutorService executor;
 
     @Override
@@ -39,19 +59,25 @@ public abstract class MembershipProviderBase implements MembershipProvider {
 
     @Override
     public boolean hasMembers() {
-        if (membership == null ) return false;
+        if (membership == null) {
+            return false;
+        }
         return membership.hasMembers();
     }
 
     @Override
     public Member getMember(Member mbr) {
-        if (membership.getMembers() == null) return null;
+        if (membership == null || membership.getMembers() == null) {
+            return null;
+        }
         return membership.getMember(mbr);
     }
 
     @Override
     public Member[] getMembers() {
-        if (membership.getMembers() == null) return Membership.EMPTY_MEMBERS;
+        if (membership == null || membership.getMembers() == null) {
+            return Membership.EMPTY_MEMBERS;
+        }
         return membership.getMembers();
     }
 

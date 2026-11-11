@@ -27,18 +27,34 @@ import org.apache.tomcat.util.res.StringManager;
  * Source for descriptor data. More sources can be added.
  */
 public abstract class ModelerSource {
+    /**
+     * Default constructor.
+     */
+    public ModelerSource() {
+    }
+
+    /**
+     * The string manager for the package that contains {@link Registry}.
+     */
     protected static final StringManager sm = StringManager.getManager(Registry.class);
+    /**
+     * The source object.
+     */
     protected Object source;
 
     /**
      * Load data, returns a list of items.
      *
      * @param registry The registry
-     * @param type The bean registry type
-     * @param source Introspected object or some other source
-     * @return a list of object names
+     * @param type     The bean registry type
+     * @param source   Introspected object or some other source
+     *
+     * @return a list of object names. The sources provided with Tomcat
+     *         register the descriptors with the given registry instead of
+     *         returning object names, so the returned list is empty and
+     *         unmodifiable.
+     *
      * @throws Exception Error loading descriptors
      */
-    public abstract List<ObjectName> loadDescriptors(Registry registry,
-            String type, Object source) throws Exception;
+    public abstract List<ObjectName> loadDescriptors(Registry registry, String type, Object source) throws Exception;
 }

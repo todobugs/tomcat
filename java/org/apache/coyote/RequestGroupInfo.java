@@ -21,11 +21,13 @@ import java.util.List;
 
 import org.apache.tomcat.util.modeler.BaseModelMBean;
 
-/** This can be moved to top level ( eventually with a better name ).
- *  It is currently used only as a JMX artifact, to aggregate the data
- *  collected from each RequestProcessor thread.
+/**
+ * JMX artifact to aggregate data from each request processor thread.
  */
 public class RequestGroupInfo extends BaseModelMBean {
+    /**
+     * List of request processors.
+     */
     private final List<RequestInfo> processors = new ArrayList<>();
     private long deadMaxTime = 0;
     private long deadProcessingTime = 0;
@@ -34,35 +36,62 @@ public class RequestGroupInfo extends BaseModelMBean {
     private long deadBytesReceived = 0;
     private long deadBytesSent = 0;
 
-    public synchronized void addRequestProcessor( RequestInfo rp ) {
-        processors.add( rp );
+    /**
+     * Default constructor.
+     */
+    public RequestGroupInfo() {
+        super();
     }
 
-    public synchronized void removeRequestProcessor( RequestInfo rp ) {
-        if( rp != null ) {
-            if( deadMaxTime < rp.getMaxTime() )
+    /**
+     * Add a request processor.
+     *
+     * @param rp the request processor
+     */
+    public synchronized void addRequestProcessor(RequestInfo rp) {
+        processors.add(rp);
+    }
+
+    /**
+     * Remove a request processor.
+     *
+     * @param rp the request processor
+     */
+    public synchronized void removeRequestProcessor(RequestInfo rp) {
+        if (rp != null) {
+            if (deadMaxTime < rp.getMaxTime()) {
                 deadMaxTime = rp.getMaxTime();
+            }
             deadProcessingTime += rp.getProcessingTime();
             deadRequestCount += rp.getRequestCount();
             deadErrorCount += rp.getErrorCount();
             deadBytesReceived += rp.getBytesReceived();
             deadBytesSent += rp.getBytesSent();
 
-            processors.remove( rp );
+            processors.remove(rp);
         }
     }
 
+    /**
+     * Return the maximum request processing time.
+     *
+     * @return the maximum time
+     */
     public synchronized long getMaxTime() {
         long maxTime = deadMaxTime;
         for (RequestInfo rp : processors) {
             if (maxTime < rp.getMaxTime()) {
-                maxTime=rp.getMaxTime();
+                maxTime = rp.getMaxTime();
             }
         }
         return maxTime;
     }
 
-    // Used to reset the times
+    /**
+     * Reset the maximum time.
+     *
+     * @param maxTime the new maximum time
+     */
     public synchronized void setMaxTime(long maxTime) {
         deadMaxTime = maxTime;
         for (RequestInfo rp : processors) {
@@ -70,6 +99,11 @@ public class RequestGroupInfo extends BaseModelMBean {
         }
     }
 
+    /**
+     * Return the total processing time.
+     *
+     * @return the total processing time
+     */
     public synchronized long getProcessingTime() {
         long time = deadProcessingTime;
         for (RequestInfo rp : processors) {
@@ -78,13 +112,23 @@ public class RequestGroupInfo extends BaseModelMBean {
         return time;
     }
 
+    /**
+     * Reset the total processing time.
+     *
+     * @param totalTime the new total processing time
+     */
     public synchronized void setProcessingTime(long totalTime) {
         deadProcessingTime = totalTime;
         for (RequestInfo rp : processors) {
-            rp.setProcessingTime( totalTime );
+            rp.setProcessingTime(totalTime);
         }
     }
 
+    /**
+     * Return the request count.
+     *
+     * @return the request count
+     */
     public synchronized int getRequestCount() {
         int requestCount = deadRequestCount;
         for (RequestInfo rp : processors) {
@@ -93,28 +137,48 @@ public class RequestGroupInfo extends BaseModelMBean {
         return requestCount;
     }
 
+    /**
+     * Reset the request count.
+     *
+     * @param requestCount the new request count
+     */
     public synchronized void setRequestCount(int requestCount) {
         deadRequestCount = requestCount;
         for (RequestInfo rp : processors) {
-            rp.setRequestCount( requestCount );
+            rp.setRequestCount(requestCount);
         }
     }
 
+    /**
+     * Return the error count.
+     *
+     * @return the error count
+     */
     public synchronized int getErrorCount() {
-        int requestCount = deadErrorCount;
+        int errorCount = deadErrorCount;
         for (RequestInfo rp : processors) {
-            requestCount += rp.getErrorCount();
+            errorCount += rp.getErrorCount();
         }
-        return requestCount;
+        return errorCount;
     }
 
+    /**
+     * Reset the error count.
+     *
+     * @param errorCount the new error count
+     */
     public synchronized void setErrorCount(int errorCount) {
         deadErrorCount = errorCount;
         for (RequestInfo rp : processors) {
-            rp.setErrorCount( errorCount);
+            rp.setErrorCount(errorCount);
         }
     }
 
+    /**
+     * Return the total bytes received.
+     *
+     * @return the bytes received
+     */
     public synchronized long getBytesReceived() {
         long bytes = deadBytesReceived;
         for (RequestInfo rp : processors) {
@@ -123,28 +187,46 @@ public class RequestGroupInfo extends BaseModelMBean {
         return bytes;
     }
 
+    /**
+     * Reset the bytes received.
+     *
+     * @param bytesReceived the new bytes received
+     */
     public synchronized void setBytesReceived(long bytesReceived) {
         deadBytesReceived = bytesReceived;
         for (RequestInfo rp : processors) {
-            rp.setBytesReceived( bytesReceived );
+            rp.setBytesReceived(bytesReceived);
         }
     }
 
+    /**
+     * Return the total bytes sent.
+     *
+     * @return the bytes sent
+     */
     public synchronized long getBytesSent() {
-        long bytes=deadBytesSent;
+        long bytes = deadBytesSent;
         for (RequestInfo rp : processors) {
             bytes += rp.getBytesSent();
         }
         return bytes;
     }
 
+    /**
+     * Reset the bytes sent.
+     *
+     * @param bytesSent the new bytes sent
+     */
     public synchronized void setBytesSent(long bytesSent) {
         deadBytesSent = bytesSent;
         for (RequestInfo rp : processors) {
-            rp.setBytesSent( bytesSent );
+            rp.setBytesSent(bytesSent);
         }
     }
 
+    /**
+     * Reset all counters.
+     */
     public void resetCounters() {
         this.setBytesReceived(0);
         this.setBytesSent(0);

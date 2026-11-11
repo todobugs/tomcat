@@ -19,9 +19,9 @@ package org.apache.tomcat.websocket.pojo;
 import java.io.IOException;
 import java.io.StringReader;
 import java.lang.reflect.Method;
-import java.util.ArrayList;
 import java.util.List;
 
+import javax.naming.NamingException;
 import javax.websocket.DecodeException;
 import javax.websocket.Decoder;
 import javax.websocket.Decoder.Text;
@@ -36,28 +36,35 @@ import org.apache.tomcat.websocket.Util;
 /**
  * Text specific concrete implementation for handling whole messages.
  */
-public class PojoMessageHandlerWholeText
-        extends PojoMessageHandlerWholeBase<String> {
+public class PojoMessageHandlerWholeText extends PojoMessageHandlerWholeBase<String> {
 
-    private static final StringManager sm =
-            StringManager.getManager(PojoMessageHandlerWholeText.class);
+    private static final StringManager sm = StringManager.getManager(PojoMessageHandlerWholeText.class);
 
-    private final List<Decoder> decoders = new ArrayList<>();
     private final Class<?> primitiveType;
 
-    public PojoMessageHandlerWholeText(Object pojo, Method method,
-            Session session, EndpointConfig config,
-            List<Class<? extends Decoder>> decoderClazzes, Object[] params,
-            int indexPayload, boolean convert, int indexSession,
-            long maxMessageSize) {
-        super(pojo, method, session, params, indexPayload, convert,
-                indexSession, maxMessageSize);
+    /**
+     * Create a whole text message handler.
+     *
+     * @param pojo            POJO instance
+     * @param method          Method to invoke
+     * @param session         WebSocket session
+     * @param config          Endpoint configuration
+     * @param decoderClazzes  List of decoder classes
+     * @param params          Pre-populated parameter array
+     * @param indexPayload    Index of the payload parameter
+     * @param convert         Convert the message before passing to the method
+     * @param indexSession    Index of the session parameter
+     * @param maxMessageSize  Maximum message size
+     */
+    public PojoMessageHandlerWholeText(Object pojo, Method method, Session session, EndpointConfig config,
+            List<Class<? extends Decoder>> decoderClazzes, Object[] params, int indexPayload, boolean convert,
+            int indexSession, long maxMessageSize) {
+        super(pojo, method, session, params, indexPayload, convert, indexSession, maxMessageSize);
 
         // Update max text size handled by session
         if (maxMessageSize > -1 && maxMessageSize > session.getMaxTextMessageBufferSize()) {
             if (maxMessageSize > Integer.MAX_VALUE) {
-                throw new IllegalArgumentException(sm.getString(
-                        "pojoMessageHandlerWhole.maxBufferSize"));
+                throw new IllegalArgumentException(sm.getString("pojoMessageHandlerWhole.maxBufferSize"));
             }
             session.setMaxTextMessageBufferSize((int) maxMessageSize);
         }
@@ -75,13 +82,11 @@ public class PojoMessageHandlerWholeText
             if (decoderClazzes != null) {
                 for (Class<? extends Decoder> decoderClazz : decoderClazzes) {
                     if (Text.class.isAssignableFrom(decoderClazz)) {
-                        Text<?> decoder = (Text<?>) decoderClazz.getConstructor().newInstance();
+                        Text<?> decoder = (Text<?>) createDecoderInstance(decoderClazz);
                         decoder.init(config);
                         decoders.add(decoder);
-                    } else if (TextStream.class.isAssignableFrom(
-                            decoderClazz)) {
-                        TextStream<?> decoder =
-                                (TextStream<?>) decoderClazz.getConstructor().newInstance();
+                    } else if (TextStream.class.isAssignableFrom(decoderClazz)) {
+                        TextStream<?> decoder = (TextStream<?>) createDecoderInstance(decoderClazz);
                         decoder.init(config);
                         decoders.add(decoder);
                     } else {
@@ -89,7 +94,7 @@ public class PojoMessageHandlerWholeText
                     }
                 }
             }
-        } catch (ReflectiveOperationException e) {
+        } catch (ReflectiveOperationException | NamingException e) {
             throw new IllegalArgumentException(e);
         }
     }
@@ -99,7 +104,13 @@ public class PojoMessageHandlerWholeText
     protected Object decode(String message) throws DecodeException {
         // Handle primitives
         if (primitiveType != null) {
-            return Util.coerceToType(primitiveType, message);
+            try {
+                return Util.coerceToType(primitiveType, message);
+            } catch (Exception e) {
+                throw new DecodeException(message,
+                        sm.getString("pojoMessageHandlerWhole.decodePrimitiveFail", message,
+                                primitiveType.getName()), e);
+            }
         }
         // Handle full decoders
         for (Decoder decoder : decoders) {
@@ -112,8 +123,7 @@ public class PojoMessageHandlerWholeText
                 try {
                     return ((TextStream<?>) decoder).decode(r);
                 } catch (IOException ioe) {
-                    throw new DecodeException(message, sm.getString(
-                            "pojoMessageHandlerWhole.decodeIoFail"), ioe);
+                    throw new DecodeException(message, sm.getString("pojoMessageHandlerWhole.decodeIoFail"), ioe);
                 }
             }
         }
@@ -124,13 +134,5 @@ public class PojoMessageHandlerWholeText
     @Override
     protected Object convert(String message) {
         return new StringReader(message);
-    }
-
-
-    @Override
-    protected void onClose() {
-        for (Decoder decoder : decoders) {
-            decoder.destroy();
-        }
     }
 }

@@ -21,6 +21,7 @@ import java.io.IOException;
 import java.io.ObjectInput;
 import java.io.ObjectOutput;
 import java.lang.reflect.Method;
+import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 
@@ -29,23 +30,25 @@ import javax.el.FunctionMapper;
 import org.apache.el.util.MessageFactory;
 import org.apache.el.util.ReflectionUtil;
 
-
 /**
- * @author Jacob Hookom [jacob@hookom.net]
+ * Thread-safe implementation of FunctionMapper that supports externalization.
  */
-public class FunctionMapperImpl extends FunctionMapper implements
-        Externalizable {
+public class FunctionMapperImpl extends FunctionMapper implements Externalizable {
 
     private static final long serialVersionUID = 1L;
 
-    protected ConcurrentMap<String, Function> functions = new ConcurrentHashMap<>();
-
-    /*
-     * (non-Javadoc)
-     *
-     * @see javax.el.FunctionMapper#resolveFunction(java.lang.String,
-     *      java.lang.String)
+    /**
+     * Map of function keys to their Function instances.
      */
+    protected ConcurrentMap<String,Function> functions = new ConcurrentHashMap<>();
+
+    /**
+     * Creates a new empty function mapper.
+     */
+    public FunctionMapperImpl() {
+        // Default constructor required by Externalizable
+    }
+
     @Override
     public Method resolveFunction(String prefix, String localName) {
         Function f = this.functions.get(prefix + ":" + localName);
@@ -66,37 +69,54 @@ public class FunctionMapperImpl extends FunctionMapper implements
         }
     }
 
-    /*
-     * (non-Javadoc)
-     *
-     * @see java.io.Externalizable#writeExternal(java.io.ObjectOutput)
-     */
     @Override
     public void writeExternal(ObjectOutput out) throws IOException {
         out.writeObject(this.functions);
     }
 
-    /*
-     * (non-Javadoc)
-     *
-     * @see java.io.Externalizable#readExternal(java.io.ObjectInput)
-     */
     @SuppressWarnings("unchecked")
     @Override
-    public void readExternal(ObjectInput in) throws IOException,
-            ClassNotFoundException {
-        this.functions = (ConcurrentMap<String, Function>) in.readObject();
+    public void readExternal(ObjectInput in) throws IOException, ClassNotFoundException {
+        this.functions = (ConcurrentMap<String,Function>) in.readObject();
     }
 
+    /**
+     * Represents a mapped EL function with serialization support.
+     */
     public static class Function implements Externalizable {
 
+        /**
+         * The resolved method, transient as it cannot be serialized directly.
+         */
         protected transient Method m;
+        /**
+         * The declaring class name of the method.
+         */
         protected String owner;
+        /**
+         * The method name.
+         */
         protected String name;
+        /**
+         * The parameter type names of the method.
+         */
         protected String[] types;
+        /**
+         * The function namespace prefix.
+         */
         protected String prefix;
+        /**
+         * The local function name.
+         */
         protected String localName;
 
+        /**
+         * Creates a new function mapping for the given method.
+         *
+         * @param prefix    The namespace prefix
+         * @param localName The local function name
+         * @param m         The method to map
+         */
         public Function(String prefix, String localName, Method m) {
             if (localName == null) {
                 throw new NullPointerException(MessageFactory.get("error.nullLocalName"));
@@ -109,50 +129,46 @@ public class FunctionMapperImpl extends FunctionMapper implements
             this.m = m;
         }
 
+        /**
+         * Default constructor required by Externalizable for deserialization.
+         */
         public Function() {
             // for serialization
         }
 
-        /*
-         * (non-Javadoc)
-         *
-         * @see java.io.Externalizable#writeExternal(java.io.ObjectOutput)
-         */
         @Override
         public void writeExternal(ObjectOutput out) throws IOException {
             out.writeUTF((this.prefix != null) ? this.prefix : "");
             out.writeUTF(this.localName);
-            // make sure m isn't null
-            getMethod();
-            out.writeUTF((this.owner != null) ?
-                     this.owner :
-                     this.m.getDeclaringClass().getName());
-            out.writeUTF((this.name != null) ?
-                     this.name :
-                     this.m.getName());
-            out.writeObject((this.types != null) ?
-                     this.types :
-                     ReflectionUtil.toTypeNameArray(this.m.getParameterTypes()));
-
+            if (this.owner != null && this.name != null && this.types != null) {
+                out.writeUTF(this.owner);
+                out.writeUTF(this.name);
+                out.writeObject(this.types);
+            } else {
+                out.writeUTF(this.m.getDeclaringClass().getName());
+                out.writeUTF(this.m.getName());
+                out.writeObject(ReflectionUtil.toTypeNameArray(this.m.getParameterTypes()));
+            }
         }
 
-        /*
-         * (non-Javadoc)
-         *
-         * @see java.io.Externalizable#readExternal(java.io.ObjectInput)
-         */
         @Override
-        public void readExternal(ObjectInput in) throws IOException,
-                ClassNotFoundException {
+        public void readExternal(ObjectInput in) throws IOException, ClassNotFoundException {
 
             this.prefix = in.readUTF();
-            if ("".equals(this.prefix)) this.prefix = null;
+            if (this.prefix.isEmpty()) {
+                this.prefix = null;
+            }
             this.localName = in.readUTF();
             this.owner = in.readUTF();
             this.name = in.readUTF();
             this.types = (String[]) in.readObject();
         }
 
+        /**
+         * Gets the resolved method, lazily loading it from serialized data if needed.
+         *
+         * @return The resolved method, or {@code null} if it could not be resolved
+         */
         public Method getMethod() {
             if (this.m == null) {
                 try {
@@ -160,29 +176,24 @@ public class FunctionMapperImpl extends FunctionMapper implements
                     Class<?>[] p = ReflectionUtil.toTypeArray(this.types);
                     this.m = t.getMethod(this.name, p);
                 } catch (Exception e) {
-                    e.printStackTrace();
+                    // Ignore: this results in ELException after further resolution
                 }
             }
             return this.m;
         }
 
-        /* (non-Javadoc)
-         * @see java.lang.Object#equals(java.lang.Object)
-         */
         @Override
         public boolean equals(Object obj) {
             if (obj instanceof Function) {
-                return this.hashCode() == obj.hashCode();
+                return Objects.equals(this.prefix, ((Function) obj).prefix) &&
+                        Objects.equals(this.localName, ((Function) obj).localName);
             }
             return false;
         }
 
-        /* (non-Javadoc)
-         * @see java.lang.Object#hashCode()
-         */
         @Override
         public int hashCode() {
-            return (this.prefix + this.localName).hashCode();
+            return Objects.hash(this.prefix, this.localName);
         }
     }
 

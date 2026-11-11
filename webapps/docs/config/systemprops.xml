@@ -40,19 +40,27 @@
 <section name="Property replacements">
   <properties>
     <property name="org.apache.tomcat.util.digester. PROPERTY_SOURCE">
-      <p>Set this to a fully qualified name of a class that implements
+      <p>Set this to a comma separated list of fully qualified name of classes
+         that implement
          <code>org.apache.tomcat.util.IntrospectionUtils.PropertySource</code>.
          Required to have a public constructor with no arguments.</p>
       <p>Use this to add a property source, that will be invoked when
-         <code>${parameter}</code> denoted parameters are found in the XML files
-         that Tomcat parses.</p>
+         <code>${parameter:-default-value}</code> denoted parameters (with
+         optional default values) are found in the XML files that Tomcat
+         parses.</p>
       <p>Property replacement from the specified property source on the JVM
          system properties can also be done using the
          <code>REPLACE_SYSTEM_PROPERTIES</code> system property.</p>
+      <p><code>org.apache.tomcat.util.digester.ServiceBindingPropertySource</code>
+        can be used to replace parameters from any Kubernetes service bindings
+        that follows the <a href="https://servicebinding.io/">servicebinding.io</a> spec</p>
       <p><code>org.apache.tomcat.util.digester.EnvironmentPropertySource</code>
          can be used to replace parameters from the process' environment
          variables, e.g. injected ConfigMaps or Secret objects in container
          based systems like OpenShift or Kubernetes.</p>
+      <p><code>org.apache.tomcat.util.digester.SystemPropertySource</code>
+         does replacement with system properties. It is always enabled,
+         but can also be specified as part of the property value.</p>
     </property>
     <property name="org.apache.tomcat.util.digester. REPLACE_SYSTEM_PROPERTIES">
       <p>Set this boolean system property to <code>true</code> to cause
@@ -67,6 +75,8 @@
   <properties>
 
     <property name="org.apache.catalina. tribes.dns_lookups">
+      <p>This system property is deprecated and will be removed without
+      replacement in Apache Tomcat 10 onwards.</p>
       <p>If <code>true</code>, the clustering module will attempt to use DNS to
       resolve any host names provided in the cluster configuration.</p>
       <p>If not specified, the default value of <code>false</code> will be used.</p>
@@ -78,6 +88,15 @@
 
 <section name="Expression Language">
   <properties>
+
+    <property name="org.apache.el. GET_CLASSLOADER_USE_PRIVILEGED">
+      <p>Controls whether the EL API classes make use of a privileged block to
+      obtain the thread context class loader. When using the EL API within
+      Apache Tomcat this does not need to be set as all calls are already
+      wrapped in a privileged block further up the stack. It may be required if
+      using the EL API under a SecurityManager outside of Apache Tomcat.</p>
+      <p>If not specified, the default of <code>false</code> will be used.</p>
+    </property>
 
     <property name="org.apache.el.BeanELResolver. CACHE_SIZE">
       <p>The number of javax.el.BeanELResolver.BeanProperties objects that will
@@ -265,7 +284,7 @@
     <property name="org.apache.catalina.connector. RECYCLE_FACADES">
       <p>If this is <code>true</code> or if a security manager is in use a new
       facade object will be created for each request.</p>
-      <p>If not specified, the default value of <code>false</code> will be used.</p>
+      <p>If not specified, the default value of <code>true</code> will be used.</p>
     </property>
 
     <property
@@ -277,9 +296,12 @@
 
     <property
     name="org.apache.tomcat.util.buf. UDecoder.ALLOW_ENCODED_SLASH">
-      <p>If this is <code>true</code> '%2F' and '%5C' will be permitted as path
-      delimiters.</p>
-      <p>If not specified, the default value of <code>false</code> will be used.</p>
+      <p>Use of this system property is deprecated. It will be removed from
+      Tomcat 10 onwards.</p>
+      <p>If this system property is set to <code>true</code>, the default for
+      the <code>encodedSolidusHandling</code> attribute of all Connectors will
+      be changed from <code>reject</code> to <code>decode</code>. If decoded, it
+      will be treated a path delimiter.</p>
     </property>
 
   </properties>
@@ -301,9 +323,6 @@
       <li><code>org.apache.catalina.session.<br/>StandardSession.ACTIVITY_CHECK</code></li>
       <li><code>org.apache.catalina.session.<br/>StandardSession.LAST_ACCESS_AT_START</code></li>
       <li><code>org.apache.tomcat.util.http.<br/>ServerCookie.STRICT_NAMING</code></li>
-      <li>The <code>URIEncoding</code> attribute of any
-          <a href="http.html">HTTP connector</a> or
-          <a href="ajp.html">AJP connector</a> element.</li>
       <li>The <code>resourceOnlyServlets</code> attribute of any
           <a href="context.html">Context</a> element.</li>
       <li>The <code>tldValidation</code> attribute of any
@@ -356,6 +375,8 @@
         <li><code>org.apache.tomcat.websocket.server#isEnforceNoAddAfterHandshake</code>
         (default changes from <code>false</code> to <code>true</code>)</li>
       </ul>
+      <p>This system property is deprecated and will be removed in Tomcat
+      10.1.</p>
     </property>
 
     <property name="org.apache.tomcat.util.http. ServerCookie.STRICT_NAMING">
@@ -456,13 +477,6 @@
       <p>The default value is <code>1</code> (drop the newest record in the queue).</p>
     </property>
 
-    <property name="org.apache.juli. AsyncLoggerPollInterval">
-      <p>The poll interval in milliseconds for the asynchronous logger thread.
-         If the log queue is empty, the async thread will issue a poll(poll interval)
-         in order to not wake up too often.</p>
-      <p>The default value is <code>1000</code> milliseconds.</p>
-    </property>
-
     <property name="org.apache.juli.logging. UserDataHelper.CONFIG">
       <p>The type of logging to use for errors generated by invalid input data.
          The options are: <code>DEBUG_ALL</code>, <code>INFO_THEN_DEBUG</code>,
@@ -480,6 +494,7 @@
            <code>maxHeaderCount</code> or <code>maxParameterCount</code> limits
            of a <a href="http.html">connector</a>).</li>
          <li>invalid host names</li>
+         <li>HTTP/2 stream closures</li>
          </ul>
          <p>Other errors triggered by invalid input data may be added to this
          system in later versions.</p>
@@ -506,7 +521,7 @@
 
   <properties>
     <property name="tomcat.util.scan. StandardJarScanFilter.jarsToSkip">
-      <p>A list of comma-separated file name patters that is used as the default
+      <p>A list of comma-separated file name patterns that is used as the default
          value for <code>pluggabilitySkip</code> and <code>tldSkip</code>
          attributes of the standard
          <a href="jar-scan-filter.html">JarScanFilter</a> implementation.</p>
@@ -516,7 +531,7 @@
     </property>
 
     <property name="tomcat.util.scan. StandardJarScanFilter.jarsToScan">
-      <p>A list of comma-separated file name patters that is used as the default
+      <p>A list of comma-separated file name patterns that is used as the default
          value for <code>pluggabilityScan</code> and <code>tldScan</code>
          attributes of the standard
          <a href="jar-scan-filter.html">JarScanFilter</a> implementation.</p>
@@ -537,6 +552,11 @@
       <p>If <code>true</code>, allow unknown extensions to be declared by
       the user.</p>
       <p>The default value is <code>false</code>.</p>
+    </property>
+
+    <property name="org.apache.tomcat. websocket.DEFAULT_BUFFER_SIZE">
+      <p>The default size for buffers used in the Websockets container.</p>
+      <p>The default value is <code>8192</code> which corresponds to 8 KiB.</p>
     </property>
 
     <property name="org.apache.tomcat. websocket.DEFAULT_ORIGIN_HEADER_VALUE">
@@ -587,6 +607,9 @@
     </property>
 
     <property name="jvmRoute">
+      <p>Deprecated. Use the <code>jvmRoute</code> attribute of the
+      <a href="engine.html">Engine</a> element. This will be removed in Tomcat
+      10.1.</p>
       <p>Provides a default value for the <code>jvmRoute</code> attribute of the
       <a href="engine.html">Engine</a> element. It does not override the value
       configured on the <a href="engine.html">Engine</a> element.</p>

@@ -19,17 +19,46 @@ package org.apache.tomcat;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
+/**
+ * Utility class for binding {@link InstanceManager} instances to class loaders.
+ */
 public final class InstanceManagerBindings {
 
-    private static final Map<ClassLoader, InstanceManager> bindings = new ConcurrentHashMap<>();
+    private static final Map<ClassLoader,InstanceManager> bindings = new ConcurrentHashMap<>();
 
-    public static final void bind(ClassLoader classLoader, InstanceManager instanceManager) {
+    /**
+     * Constructs a new InstanceManagerBindings. This constructor is private to prevent instantiation.
+     */
+    private InstanceManagerBindings() {
+        // Hide constructor
+    }
+
+    /**
+     * Bind an InstanceManager to the given class loader.
+     *
+     * @param classLoader the class loader
+     * @param instanceManager the instance manager to bind
+     */
+    public static void bind(ClassLoader classLoader, InstanceManager instanceManager) {
         bindings.put(classLoader, instanceManager);
     }
-    public static final void unbind(ClassLoader classLoader) {
+
+    /**
+     * Unbind the InstanceManager associated with the given class loader.
+     *
+     * @param classLoader the class loader
+     */
+    public static void unbind(ClassLoader classLoader) {
         bindings.remove(classLoader);
     }
-    public static final InstanceManager get(ClassLoader classLoader) {
+
+    /**
+     * Get the InstanceManager bound to the given class loader.
+     *
+     * @param classLoader the class loader
+     * @return the bound InstanceManager, or {@code null} if none
+     */
+    public static InstanceManager get(ClassLoader classLoader) {
         return bindings.get(classLoader);
     }
 }

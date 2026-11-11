@@ -19,7 +19,13 @@ package org.apache.tomcat.util.descriptor.web;
 import java.io.File;
 import java.io.IOException;
 import java.io.StringReader;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
 import java.util.HashSet;
+import java.util.Iterator;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
@@ -30,6 +36,7 @@ import org.apache.tomcat.util.descriptor.DigesterFactory;
 import org.apache.tomcat.util.descriptor.XmlErrorHandler;
 import org.apache.tomcat.util.descriptor.XmlIdentifiers;
 import org.apache.tomcat.util.digester.Digester;
+import org.apache.tomcat.util.http.Method;
 import org.xml.sax.InputSource;
 import org.xml.sax.SAXException;
 
@@ -246,7 +253,7 @@ public class TestWebXml {
 
         FilterMap filterMap = new FilterMap();
         filterMap.setFilterName("Dummy");
-        filterMap.addURLPatternDecoded("/*");
+        filterMap.addURLPattern("/*");
         webXmlDefaultFragment.addFilterMapping(filterMap);
 
         // Listeners were added in 2.3 so should be excluded in 2.2
@@ -291,8 +298,8 @@ public class TestWebXml {
         sc.setDisplayName("dummy");
         SecurityCollection collection = new SecurityCollection();
         collection.setName("dummy");
-        collection.addPatternDecoded("/*");
-        collection.addMethod("DELETE");
+        collection.addPattern("/*");
+        collection.addMethod(Method.DELETE);
         sc.addCollection(collection);
         webXmlDefaultFragment.addSecurityConstraint(sc);
 
@@ -485,5 +492,292 @@ public class TestWebXml {
         webxml.addServletMapping("/foo", "main");
 
         webxml.merge(fragments);
+    }
+
+
+    @SuppressWarnings("deprecation")
+    @Test
+    public void testEncoding() {
+        WebXml webXml = new WebXml();
+        webXml.setCharset(StandardCharsets.ISO_8859_1);
+
+        webXml.addErrorPage(new ErrorPage());
+        Collection<ErrorPage> errorPages = webXml.getErrorPages().values();
+        for (ErrorPage errorPage : errorPages) {
+            Assert.assertEquals(StandardCharsets.ISO_8859_1, errorPage.getCharset());
+        }
+
+        webXml.addFilterMapping(new FilterMap());
+        Set<FilterMap> filterMaps = webXml.getFilterMappings();
+        for (FilterMap filterMap : filterMaps) {
+            Assert.assertEquals(StandardCharsets.ISO_8859_1, filterMap.getCharset());
+        }
+
+        webXml.addJspPropertyGroup(new JspPropertyGroup());
+        Set<JspPropertyGroup> jspPropertyGroups = webXml.getJspPropertyGroups();
+        for (JspPropertyGroup jspPropertyGroup : jspPropertyGroups) {
+            Assert.assertEquals(StandardCharsets.ISO_8859_1, jspPropertyGroup.getCharset());
+        }
+
+        webXml.setLoginConfig(new LoginConfig());
+        LoginConfig loginConfig = webXml.getLoginConfig();
+        Assert.assertEquals(StandardCharsets.ISO_8859_1, loginConfig.getCharset());
+
+        SecurityConstraint constraint = new SecurityConstraint();
+        constraint.addCollection(new SecurityCollection());
+        webXml.addSecurityConstraint(constraint);
+        Set<SecurityConstraint> securityConstraints = webXml.getSecurityConstraints();
+        for (SecurityConstraint securityConstraint : securityConstraints) {
+            Assert.assertEquals(StandardCharsets.ISO_8859_1, securityConstraint.getCharset());
+            for (SecurityCollection securityCollection : securityConstraint.findCollections()) {
+                Assert.assertEquals(StandardCharsets.ISO_8859_1, securityCollection.getCharset());
+            }
+        }
+
+    }
+
+
+    @Test
+    public void testToXml01() throws Exception {
+        // Empty web.xml
+        doTestToXml("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n" +
+                "<web-app xmlns=\"http://xmlns.jcp.org/xml/ns/javaee\"\n" +
+                "         xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\"\n" +
+                "         xsi:schemaLocation=\"http://xmlns.jcp.org/xml/ns/javaee" +
+                " http://xmlns.jcp.org/xml/ns/javaee/web-app_4_0.xsd\"\n" +
+                "         version=\"4.0\"\n" +
+                "         metadata-complete=\"true\">\n" +
+                "\n" +
+                "</web-app>");
+    }
+
+
+    @Test
+    public void testToXml02() throws Exception {
+        // Deny all
+        doTestToXml("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n" +
+                "<web-app xmlns=\"http://xmlns.jcp.org/xml/ns/javaee\"\n" +
+                "         xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\"\n" +
+                "         xsi:schemaLocation=\"http://xmlns.jcp.org/xml/ns/javaee" +
+                " http://xmlns.jcp.org/xml/ns/javaee/web-app_4_0.xsd\"\n" +
+                "         version=\"4.0\"\n" +
+                "         metadata-complete=\"true\">\n" +
+                "\n" +
+                "  <security-constraint>\n" +
+                "    <web-resource-collection>\n" +
+                "      <web-resource-name>Test</web-resource-name>\n" +
+                "      <url-pattern>/deny-all</url-pattern>\n" +
+                "    </web-resource-collection>\n" +
+                "    <auth-constraint/>\n" +
+                "    <user-data-constraint>\n" +
+                "      <transport-guarantee>NONE</transport-guarantee>\n" +
+                "    </user-data-constraint>\n" +
+                "  </security-constraint>\n" +
+                "\n" +
+                "</web-app>");
+    }
+
+
+    @Test
+    public void testToXml03() throws Exception {
+        // other role plus all roles
+        doTestToXml("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n" +
+                "<web-app xmlns=\"http://xmlns.jcp.org/xml/ns/javaee\"\n" +
+                "         xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\"\n" +
+                "         xsi:schemaLocation=\"http://xmlns.jcp.org/xml/ns/javaee" +
+                " http://xmlns.jcp.org/xml/ns/javaee/web-app_4_0.xsd\"\n" +
+                "         version=\"4.0\"\n" +
+                "         metadata-complete=\"true\">\n" +
+                "\n" +
+                "  <security-constraint>\n" +
+                "    <web-resource-collection>\n" +
+                "      <web-resource-name>Test</web-resource-name>\n" +
+                "      <url-pattern>/deny-all</url-pattern>\n" +
+                "    </web-resource-collection>\n" +
+                "    <auth-constraint>\n" +
+                "      <role-name>other</role-name>\n" +
+                "      <role-name>*</role-name>\n" +
+                "    </auth-constraint>\n" +
+                "    <user-data-constraint>\n" +
+                "      <transport-guarantee>NONE</transport-guarantee>\n" +
+                "    </user-data-constraint>\n" +
+                "  </security-constraint>\n" +
+                "\n" +
+                "</web-app>");
+    }
+
+
+    @Test
+    public void testToXml04() throws Exception {
+        // all roles
+        doTestToXml("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n" +
+                "<web-app xmlns=\"http://xmlns.jcp.org/xml/ns/javaee\"\n" +
+                "         xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\"\n" +
+                "         xsi:schemaLocation=\"http://xmlns.jcp.org/xml/ns/javaee" +
+                " http://xmlns.jcp.org/xml/ns/javaee/web-app_4_0.xsd\"\n" +
+                "         version=\"4.0\"\n" +
+                "         metadata-complete=\"true\">\n" +
+                "\n" +
+                "  <security-constraint>\n" +
+                "    <web-resource-collection>\n" +
+                "      <web-resource-name>Test</web-resource-name>\n" +
+                "      <url-pattern>/deny-all</url-pattern>\n" +
+                "    </web-resource-collection>\n" +
+                "    <auth-constraint>\n" +
+                "      <role-name>*</role-name>\n" +
+                "    </auth-constraint>\n" +
+                "    <user-data-constraint>\n" +
+                "      <transport-guarantee>NONE</transport-guarantee>\n" +
+                "    </user-data-constraint>\n" +
+                "  </security-constraint>\n" +
+                "\n" +
+                "</web-app>");
+    }
+
+
+    @Test
+    public void testToXml05() throws Exception {
+        // other role plus authenticated users
+        doTestToXml("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n" +
+                "<web-app xmlns=\"http://xmlns.jcp.org/xml/ns/javaee\"\n" +
+                "         xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\"\n" +
+                "         xsi:schemaLocation=\"http://xmlns.jcp.org/xml/ns/javaee" +
+                " http://xmlns.jcp.org/xml/ns/javaee/web-app_4_0.xsd\"\n" +
+                "         version=\"4.0\"\n" +
+                "         metadata-complete=\"true\">\n" +
+                "\n" +
+                "  <security-constraint>\n" +
+                "    <web-resource-collection>\n" +
+                "      <web-resource-name>Test</web-resource-name>\n" +
+                "      <url-pattern>/deny-all</url-pattern>\n" +
+                "    </web-resource-collection>\n" +
+                "    <auth-constraint>\n" +
+                "      <role-name>other</role-name>\n" +
+                "      <role-name>**</role-name>\n" +
+                "    </auth-constraint>\n" +
+                "    <user-data-constraint>\n" +
+                "      <transport-guarantee>NONE</transport-guarantee>\n" +
+                "    </user-data-constraint>\n" +
+                "  </security-constraint>\n" +
+                "\n" +
+                "</web-app>");
+    }
+
+
+    @Test
+    public void testToXml06() throws Exception {
+        // authenticated users
+        doTestToXml("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n" +
+                "<web-app xmlns=\"http://xmlns.jcp.org/xml/ns/javaee\"\n" +
+                "         xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\"\n" +
+                "         xsi:schemaLocation=\"http://xmlns.jcp.org/xml/ns/javaee" +
+                " http://xmlns.jcp.org/xml/ns/javaee/web-app_4_0.xsd\"\n" +
+                "         version=\"4.0\"\n" +
+                "         metadata-complete=\"true\">\n" +
+                "\n" +
+                "  <security-constraint>\n" +
+                "    <web-resource-collection>\n" +
+                "      <web-resource-name>Test</web-resource-name>\n" +
+                "      <url-pattern>/deny-all</url-pattern>\n" +
+                "    </web-resource-collection>\n" +
+                "    <auth-constraint>\n" +
+                "      <role-name>**</role-name>\n" +
+                "    </auth-constraint>\n" +
+                "    <user-data-constraint>\n" +
+                "      <transport-guarantee>NONE</transport-guarantee>\n" +
+                "    </user-data-constraint>\n" +
+                "  </security-constraint>\n" +
+                "\n" +
+                "</web-app>");
+    }
+
+
+    private void doTestToXml(String input) throws Exception {
+        Digester digester = DigesterFactory.newDigester(true, true, new WebRuleSet(), true);
+
+        XmlErrorHandler handler = new XmlErrorHandler();
+        digester.setErrorHandler(handler);
+
+        InputSource is = new InputSource(new StringReader(input));
+        WebXml webxml = new WebXml();
+        digester.push(webxml);
+        digester.parse(is);
+
+        String output = webxml.toXml();
+
+        Assert.assertEquals(input, output);
+    }
+
+
+    @Test
+    public void testServiceRefMappedNameIsNotAnEndpoint() throws Exception {
+        // The <mapped-name> of a <service-ref> is stored in the generic
+        // properties of ResourceBase. It must not be confused with the
+        // port-component-ref entries which were historically stored in the
+        // same map.
+        String input = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n" +
+                "<web-app xmlns=\"http://xmlns.jcp.org/xml/ns/javaee\"\n" +
+                "         xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\"\n" +
+                "         xsi:schemaLocation=\"http://xmlns.jcp.org/xml/ns/javaee" +
+                " http://xmlns.jcp.org/xml/ns/javaee/web-app_4_0.xsd\"\n" +
+                "         version=\"4.0\"\n" +
+                "         metadata-complete=\"true\">\n" +
+                "\n" +
+                "  <service-ref>\n" +
+                "    <service-ref-name>service/Test</service-ref-name>\n" +
+                "    <service-interface>com.example.TestService</service-interface>\n" +
+                "    <service-qname>test</service-qname>\n" +
+                "    <port-component-ref>\n" +
+                "      <service-endpoint-interface>com.example.Hello</service-endpoint-interface>\n" +
+                "      <port-component-link>HelloLink</port-component-link>\n" +
+                "    </port-component-ref>\n" +
+                "    <mapped-name>service/TestMapped</mapped-name>\n" +
+                "  </service-ref>\n" +
+                "\n" +
+                "</web-app>";
+
+        Digester digester = DigesterFactory.newDigester(true, true, new WebRuleSet(), true);
+        XmlErrorHandler handler = new XmlErrorHandler();
+        digester.setErrorHandler(handler);
+
+        InputSource is = new InputSource(new StringReader(input));
+        WebXml webxml = new WebXml();
+        digester.push(webxml);
+        digester.parse(is);
+
+        Assert.assertEquals(0, handler.getErrors().size());
+        Assert.assertEquals(0, handler.getWarnings().size());
+
+        ContextService service = webxml.getServiceRefs().get("service/Test");
+        Assert.assertNotNull(service);
+
+        // Only the real endpoint must be reported.
+        List<String> endpoints = new ArrayList<>();
+        Iterator<String> iter = service.getServiceendpoints();
+        while (iter.hasNext()) {
+            endpoints.add(iter.next());
+        }
+        Assert.assertEquals(Collections.singletonList("com.example.Hello"), endpoints);
+        Assert.assertEquals("HelloLink", service.getPortlink("com.example.Hello"));
+
+        // The mapped-name remains available as the only generic property.
+        List<String> properties = new ArrayList<>();
+        Iterator<String> propIter = service.listProperties();
+        while (propIter.hasNext()) {
+            properties.add(propIter.next());
+        }
+        Assert.assertEquals(Collections.singletonList("mappedName"), properties);
+        Assert.assertEquals("service/TestMapped", service.getProperty("mappedName"));
+
+        // The effective web.xml serialization must contain exactly the real
+        // port-component-ref and the mapped-name.
+        String output = webxml.toXml();
+        int firstPortComponentRef = output.indexOf("<port-component-ref>");
+        Assert.assertTrue(output, firstPortComponentRef >= 0);
+        Assert.assertTrue(output,
+                output.indexOf("<port-component-ref>", firstPortComponentRef + 1) < 0);
+        Assert.assertFalse(output, output.contains("<service-endpoint-interface>mappedName</service-endpoint-interface>"));
+        Assert.assertTrue(output, output.contains("<port-component-link>HelloLink</port-component-link>"));
+        Assert.assertTrue(output, output.contains("<mapped-name>service/TestMapped</mapped-name>"));
     }
 }

@@ -28,32 +28,39 @@ import org.apache.juli.logging.Log;
 import org.apache.tomcat.util.res.StringManager;
 
 /**
- * Convenience base class for implementations of the <b>Valve</b> interface.
- * A subclass <strong>MUST</strong> implement an <code>invoke()</code>
- * method to provide the required functionality, and <strong>MAY</strong>
- * implement the <code>Lifecycle</code> interface to provide configuration
- * management and lifecycle support.
- *
- * @author Craig R. McClanahan
+ * Convenience base class for implementations of the <b>Valve</b> interface. A subclass <strong>MUST</strong> implement
+ * an <code>invoke()</code> method to provide the required functionality. Configuration management and lifecycle
+ * support are provided by this class.
  */
 public abstract class ValveBase extends LifecycleMBeanBase implements Contained, Valve {
 
+    /**
+     * StringManager for internationalized strings.
+     */
     protected static final StringManager sm = StringManager.getManager(ValveBase.class);
 
 
-    //------------------------------------------------------ Constructor
+    // ------------------------------------------------------ Constructor
 
+    /**
+     * Constructs a new ValveBase with async support disabled.
+     */
     public ValveBase() {
         this(false);
     }
 
 
+    /**
+     * Constructs a new ValveBase.
+     *
+     * @param asyncSupported Whether this valve supports async requests
+     */
     public ValveBase(boolean asyncSupported) {
         this.asyncSupported = asyncSupported;
     }
 
 
-    //------------------------------------------------------ Instance Variables
+    // ------------------------------------------------------ Instance Variables
 
     /**
      * Does this valve support Servlet 3+ async requests?
@@ -79,22 +86,14 @@ public abstract class ValveBase extends LifecycleMBeanBase implements Contained,
     protected Valve next = null;
 
 
-    //-------------------------------------------------------------- Properties
+    // -------------------------------------------------------------- Properties
 
-    /**
-     * Return the Container with which this Valve is associated, if any.
-     */
     @Override
     public Container getContainer() {
         return container;
     }
 
 
-    /**
-     * Set the Container with which this Valve is associated, if any.
-     *
-     * @param container The new associated container
-     */
     @Override
     public void setContainer(Container container) {
         this.container = container;
@@ -107,38 +106,34 @@ public abstract class ValveBase extends LifecycleMBeanBase implements Contained,
     }
 
 
+    /**
+     * Sets whether this valve supports Servlet 3+ async requests.
+     *
+     * @param asyncSupported Whether this valve supports async requests
+     */
     public void setAsyncSupported(boolean asyncSupported) {
         this.asyncSupported = asyncSupported;
     }
 
 
-    /**
-     * Return the next Valve in this pipeline, or <code>null</code> if this
-     * is the last Valve in the pipeline.
-     */
     @Override
     public Valve getNext() {
         return next;
     }
 
 
-    /**
-     * Set the Valve that follows this one in the pipeline it is part of.
-     *
-     * @param valve The new next valve
-     */
     @Override
     public void setNext(Valve valve) {
         this.next = valve;
     }
 
 
-    //---------------------------------------------------------- Public Methods
+    // ---------------------------------------------------------- Public Methods
 
     /**
-     * Execute a periodic task, such as reloading, etc. This method will be
-     * invoked inside the classloading context of this container. Unexpected
-     * throwables will be caught and logged.
+     * {@inheritDoc}
+     * <p>
+     * The default implementation is NO-OP.
      */
     @Override
     public void backgroundProcess() {
@@ -148,47 +143,48 @@ public abstract class ValveBase extends LifecycleMBeanBase implements Contained,
 
     @Override
     protected void initInternal() throws LifecycleException {
+        Container container = getContainer();
+        if (container == null) {
+            throw new IllegalStateException(sm.getString("valveBase.noContainer"));
+        }
         super.initInternal();
-        containerLog = getContainer().getLogger();
+        containerLog = container.getLogger();
     }
 
 
     /**
-     * Start this component and implement the requirements
-     * of {@link org.apache.catalina.util.LifecycleBase#startInternal()}.
+     * Start this component and implement the requirements of
+     * {@link org.apache.catalina.util.LifecycleBase#startInternal()}.
      *
-     * @exception LifecycleException if this component detects a fatal error
-     *  that prevents this component from being used
+     * @exception LifecycleException if this component detects a fatal error that prevents this component from being
+     *                                   used
      */
     @Override
-    protected synchronized void startInternal() throws LifecycleException {
+    protected void startInternal() throws LifecycleException {
         setState(LifecycleState.STARTING);
     }
 
 
     /**
-     * Stop this component and implement the requirements
-     * of {@link org.apache.catalina.util.LifecycleBase#stopInternal()}.
+     * Stop this component and implement the requirements of
+     * {@link org.apache.catalina.util.LifecycleBase#stopInternal()}.
      *
-     * @exception LifecycleException if this component detects a fatal error
-     *  that prevents this component from being used
+     * @exception LifecycleException if this component detects a fatal error that prevents this component from being
+     *                                   used
      */
     @Override
-    protected synchronized void stopInternal() throws LifecycleException {
+    protected void stopInternal() throws LifecycleException {
         setState(LifecycleState.STOPPING);
     }
 
 
-    /**
-     * Return a String rendering of this object.
-     */
     @Override
     public String toString() {
         return ToStringUtil.toString(this);
     }
 
 
-    // -------------------- JMX and Registration  --------------------
+    // -------------------- JMX and Registration --------------------
 
     @Override
     public String getObjectNameKeyProperties() {
@@ -215,7 +211,7 @@ public abstract class ValveBase extends LifecycleMBeanBase implements Contained,
                 if (valve.getClass() == this.getClass()) {
                     // Duplicate valve earlier in pipeline
                     // increment sequence number
-                    seq ++;
+                    seq++;
                 }
             }
         }

@@ -98,8 +98,8 @@ public class TestApplicationMapping extends TomcatBaseTest {
         doTestMapping("", "/foo/bar/*", "/foo/bar/foo2", "foo2", "PATH");
     }
 
-    private void doTestMapping(String contextPath, String mapping, String requestPath,
-            String matchValue, String matchType) throws Exception {
+    private void doTestMapping(String contextPath, String mapping, String requestPath, String matchValue,
+            String matchType) throws Exception {
         doTestMappingDirect(contextPath, mapping, requestPath, matchValue, matchType);
         tearDown();
         setUp();
@@ -118,15 +118,15 @@ public class TestApplicationMapping extends TomcatBaseTest {
         doTestMappingAsync(contextPath, mapping, requestPath, matchValue, matchType);
     }
 
-    private void doTestMappingDirect(String contextPath, String mapping, String requestPath,
-            String matchValue, String matchType) throws Exception {
+    private void doTestMappingDirect(String contextPath, String mapping, String requestPath, String matchValue,
+            String matchType) throws Exception {
         Tomcat tomcat = getTomcatInstance();
 
         // No file system docBase required
         Context ctx = tomcat.addContext(contextPath, null);
 
         Tomcat.addServlet(ctx, "Mapping", new MappingServlet());
-        ctx.addServletMappingDecoded(mapping, "Mapping");
+        ctx.addServletMapping(mapping, "Mapping");
 
         tomcat.start();
 
@@ -139,17 +139,17 @@ public class TestApplicationMapping extends TomcatBaseTest {
         Assert.assertTrue(body, body.contains("ServletName=[Mapping]"));
     }
 
-    private void doTestMappingInclude(String contextPath, String mapping, String requestPath,
-            String matchValue, String matchType) throws Exception {
+    private void doTestMappingInclude(String contextPath, String mapping, String requestPath, String matchValue,
+            String matchType) throws Exception {
         Tomcat tomcat = getTomcatInstance();
 
         // No file system docBase required
         Context ctx = tomcat.addContext(contextPath, null);
 
         Tomcat.addServlet(ctx, "Include", new IncludeServlet());
-        ctx.addServletMappingDecoded(mapping, "Include");
+        ctx.addServletMapping(mapping, "Include");
         Tomcat.addServlet(ctx, "Mapping", new MappingServlet());
-        ctx.addServletMappingDecoded("/mapping", "Mapping");
+        ctx.addServletMapping("/mapping", "Mapping");
 
         tomcat.start();
 
@@ -167,17 +167,17 @@ public class TestApplicationMapping extends TomcatBaseTest {
         Assert.assertTrue(body, body.contains("IncludeServletName=[Mapping]"));
     }
 
-    private void doTestMappingNamedInclude(String contextPath, String mapping, String requestPath,
-            String matchValue, String matchType) throws Exception {
+    private void doTestMappingNamedInclude(String contextPath, String mapping, String requestPath, String matchValue,
+            String matchType) throws Exception {
         Tomcat tomcat = getTomcatInstance();
 
         // No file system docBase required
         Context ctx = tomcat.addContext(contextPath, null);
 
         Tomcat.addServlet(ctx, "Include", new NamedIncludeServlet());
-        ctx.addServletMappingDecoded(mapping, "Include");
+        ctx.addServletMapping(mapping, "Include");
         Tomcat.addServlet(ctx, "Mapping", new MappingServlet());
-        ctx.addServletMappingDecoded("/mapping", "Mapping");
+        ctx.addServletMapping("/mapping", "Mapping");
 
         tomcat.start();
 
@@ -190,17 +190,17 @@ public class TestApplicationMapping extends TomcatBaseTest {
         Assert.assertTrue(body, body.contains("ServletName=[Include]"));
     }
 
-    private void doTestMappingForward(String contextPath, String mapping, String requestPath,
-            String matchValue, String matchType) throws Exception {
+    private void doTestMappingForward(String contextPath, String mapping, String requestPath, String matchValue,
+            String matchType) throws Exception {
         Tomcat tomcat = getTomcatInstance();
 
         // No file system docBase required
         Context ctx = tomcat.addContext(contextPath, null);
 
         Tomcat.addServlet(ctx, "Forward", new ForwardServlet());
-        ctx.addServletMappingDecoded(mapping, "Forward");
+        ctx.addServletMapping(mapping, "Forward");
         Tomcat.addServlet(ctx, "Mapping", new MappingServlet());
-        ctx.addServletMappingDecoded("/mapping", "Mapping");
+        ctx.addServletMapping("/mapping", "Mapping");
 
         tomcat.start();
 
@@ -218,17 +218,17 @@ public class TestApplicationMapping extends TomcatBaseTest {
         Assert.assertTrue(body, body.contains("ForwardServletName=[Forward]"));
     }
 
-    private void doTestMappingNamedForward(String contextPath, String mapping, String requestPath,
-            String matchValue, String matchType) throws Exception {
+    private void doTestMappingNamedForward(String contextPath, String mapping, String requestPath, String matchValue,
+            String matchType) throws Exception {
         Tomcat tomcat = getTomcatInstance();
 
         // No file system docBase required
         Context ctx = tomcat.addContext(contextPath, null);
 
         Tomcat.addServlet(ctx, "Forward", new NamedForwardServlet());
-        ctx.addServletMappingDecoded(mapping, "Forward");
+        ctx.addServletMapping(mapping, "Forward");
         Tomcat.addServlet(ctx, "Mapping", new MappingServlet());
-        ctx.addServletMappingDecoded("/mapping", "Mapping");
+        ctx.addServletMapping("/mapping", "Mapping");
 
         tomcat.start();
 
@@ -241,8 +241,8 @@ public class TestApplicationMapping extends TomcatBaseTest {
         Assert.assertTrue(body, body.contains("ServletName=[Forward]"));
     }
 
-    private void doTestMappingAsync(String contextPath, String mapping, String requestPath,
-            String matchValue, String matchType) throws Exception {
+    private void doTestMappingAsync(String contextPath, String mapping, String requestPath, String matchValue,
+            String matchType) throws Exception {
         Tomcat tomcat = getTomcatInstance();
 
         // No file system docBase required
@@ -250,9 +250,9 @@ public class TestApplicationMapping extends TomcatBaseTest {
 
         Wrapper w = Tomcat.addServlet(ctx, "Async", new AsyncServlet());
         w.setAsyncSupported(true);
-        ctx.addServletMappingDecoded(mapping, "Async");
+        ctx.addServletMapping(mapping, "Async");
         Tomcat.addServlet(ctx, "Mapping", new MappingServlet());
-        ctx.addServletMappingDecoded("/mapping", "Mapping");
+        ctx.addServletMapping("/mapping", "Mapping");
 
         tomcat.start();
 
@@ -275,8 +275,7 @@ public class TestApplicationMapping extends TomcatBaseTest {
         private static final long serialVersionUID = 1L;
 
         @Override
-        protected void doGet(HttpServletRequest req, HttpServletResponse resp)
-                throws ServletException, IOException {
+        protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
             RequestDispatcher rd = req.getRequestDispatcher("/mapping");
             rd.include(req, resp);
         }
@@ -287,8 +286,7 @@ public class TestApplicationMapping extends TomcatBaseTest {
         private static final long serialVersionUID = 1L;
 
         @Override
-        protected void doGet(HttpServletRequest req, HttpServletResponse resp)
-                throws ServletException, IOException {
+        protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
             RequestDispatcher rd = req.getServletContext().getNamedDispatcher("Mapping");
             rd.include(req, resp);
         }
@@ -299,8 +297,7 @@ public class TestApplicationMapping extends TomcatBaseTest {
         private static final long serialVersionUID = 1L;
 
         @Override
-        protected void doGet(HttpServletRequest req, HttpServletResponse resp)
-                throws ServletException, IOException {
+        protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
             RequestDispatcher rd = req.getServletContext().getNamedDispatcher("Mapping");
             rd.forward(req, resp);
         }
@@ -311,8 +308,7 @@ public class TestApplicationMapping extends TomcatBaseTest {
         private static final long serialVersionUID = 1L;
 
         @Override
-        protected void doGet(HttpServletRequest req, HttpServletResponse resp)
-                throws ServletException, IOException {
+        protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
             RequestDispatcher rd = req.getRequestDispatcher("/mapping");
             rd.forward(req, resp);
         }
@@ -323,8 +319,7 @@ public class TestApplicationMapping extends TomcatBaseTest {
         private static final long serialVersionUID = 1L;
 
         @Override
-        protected void doGet(HttpServletRequest req, HttpServletResponse resp)
-                throws ServletException, IOException {
+        protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
             AsyncContext ac = req.startAsync();
             ac.dispatch("/mapping");
         }
@@ -336,8 +331,7 @@ public class TestApplicationMapping extends TomcatBaseTest {
         private static final long serialVersionUID = 1L;
 
         @Override
-        protected void doGet(HttpServletRequest req, HttpServletResponse resp)
-                throws ServletException, IOException {
+        protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
             resp.setContentType("text/plain;charset=UTF-8");
             PrintWriter pw = resp.getWriter();
             HttpServletMapping mapping = req.getHttpServletMapping();
@@ -362,8 +356,7 @@ public class TestApplicationMapping extends TomcatBaseTest {
                 pw.println("ForwardMatchType=[" + forwardMapping.getMappingMatch() + "]");
                 pw.println("ForwardServletName=[" + forwardMapping.getServletName() + "]");
             }
-            HttpServletMapping asyncMapping =
-                    (HttpServletMapping) req.getAttribute(AsyncContext.ASYNC_MAPPING);
+            HttpServletMapping asyncMapping = (HttpServletMapping) req.getAttribute(AsyncContext.ASYNC_MAPPING);
             if (asyncMapping != null) {
                 pw.println("AsyncMatchValue=[" + asyncMapping.getMatchValue() + "]");
                 pw.println("AsyncPattern=[" + asyncMapping.getPattern() + "]");

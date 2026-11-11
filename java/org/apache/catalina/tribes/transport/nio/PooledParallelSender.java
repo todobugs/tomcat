@@ -21,33 +21,57 @@ import java.io.IOException;
 import org.apache.catalina.tribes.ChannelException;
 import org.apache.catalina.tribes.ChannelMessage;
 import org.apache.catalina.tribes.Member;
-import org.apache.catalina.tribes.transport.AbstractSender;
 import org.apache.catalina.tribes.transport.DataSender;
 import org.apache.catalina.tribes.transport.PooledSender;
 import org.apache.catalina.tribes.util.StringManager;
+import org.apache.juli.logging.Log;
+import org.apache.juli.logging.LogFactory;
 
+/**
+ * A pooled sender that uses {@link ParallelNioSender} instances for parallel message delivery.
+ */
 public class PooledParallelSender extends PooledSender implements PooledParallelSenderMBean {
+    private static final Log log = LogFactory.getLog(PooledParallelSender.class);
+    /** StringManager for internationalized log messages. */
     protected static final StringManager sm = StringManager.getManager(PooledParallelSender.class);
+
+    /**
+     * Creates a new PooledParallelSender instance.
+     */
+    public PooledParallelSender() {
+        super();
+    }
 
     @Override
     public void sendMessage(Member[] destination, ChannelMessage message) throws ChannelException {
         if (!isConnected()) {
             throw new ChannelException(sm.getString("pooledParallelSender.sender.disconnected"));
         }
-        ParallelNioSender sender = (ParallelNioSender)getSender();
+        ParallelNioSender sender = (ParallelNioSender) getSender();
         if (sender == null) {
-            ChannelException cx = new ChannelException(sm.getString(
-                    "pooledParallelSender.unable.retrieveSender.timeout",
-                    Long.toString(getMaxWait())));
-            for (int i = 0; i < destination.length; i++)
-                cx.addFaultyMember(destination[i], new NullPointerException(sm.getString("pooledParallelSender.unable.retrieveSender")));
+            // A null sender means either that the wait timed out or that the thread was interrupted while waiting
+            boolean interrupted = Thread.currentThread().isInterrupted();
+            ChannelException cx = new ChannelException(interrupted ?
+                    sm.getString("pooledParallelSender.unable.retrieveSender.interrupted") :
+                    sm.getString("pooledParallelSender.unable.retrieveSender.timeout", Long.toString(getMaxWait())));
+            if (!interrupted) {
+                for (Member member : destination) {
+                    cx.addFaultyMember(member,
+                            new NullPointerException(sm.getString("pooledParallelSender.unable.retrieveSender")));
+                }
+            }
             throw cx;
         } else {
             try {
-                if (!sender.isConnected()) sender.connect();
+                if (!sender.isConnected()) {
+                    sender.connect();
+                }
                 sender.sendMessage(destination, message);
                 sender.keepalive();
             } catch (ChannelException x) {
+                if (log.isDebugEnabled()) {
+                    log.debug(sm.getString("pooledParallelSender.disconnectOnError"), x);
+                }
                 sender.disconnect();
                 throw x;
             } finally {
@@ -60,10 +84,10 @@ public class PooledParallelSender extends PooledSender implements PooledParallel
     public DataSender getNewDataSender() {
         try {
             ParallelNioSender sender = new ParallelNioSender();
-            AbstractSender.transferProperties(this,sender);
+            transferProperties(this, sender);
             return sender;
-        } catch ( IOException x ) {
-            throw new RuntimeException(sm.getString("pooledParallelSender.unable.open"),x);
+        } catch (IOException ioe) {
+            throw new RuntimeException(sm.getString("pooledParallelSender.unable.open"), ioe);
         }
     }
 }

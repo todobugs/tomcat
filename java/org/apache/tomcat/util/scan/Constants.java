@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.tomcat.util.scan;
 
 /**
@@ -22,16 +21,39 @@ package org.apache.tomcat.util.scan;
  */
 public final class Constants {
 
+    /**
+     * Package name for scan utilities.
+     */
     public static final String Package = "org.apache.tomcat.util.scan";
 
     /* System properties */
-    public static final String SKIP_JARS_PROPERTY =
-            "tomcat.util.scan.StandardJarScanFilter.jarsToSkip";
-    public static final String SCAN_JARS_PROPERTY =
-            "tomcat.util.scan.StandardJarScanFilter.jarsToScan";
+    /**
+     * System property for JARs to skip during scanning.
+     */
+    public static final String SKIP_JARS_PROPERTY = "tomcat.util.scan.StandardJarScanFilter.jarsToSkip";
+    /**
+     * System property for JARs to scan explicitly.
+     */
+    public static final String SCAN_JARS_PROPERTY = "tomcat.util.scan.StandardJarScanFilter.jarsToScan";
 
     /* Commons strings */
+    /**
+     * JAR file extension.
+     */
     public static final String JAR_EXT = ".jar";
+    /**
+     * Standard web application library directory path.
+     */
     public static final String WEB_INF_LIB = "/WEB-INF/lib/";
+    /**
+     * Standard web application compiled classes directory path.
+     */
     public static final String WEB_INF_CLASSES = "/WEB-INF/classes";
+
+    /**
+     * Private constructor to prevent instantiation.
+     */
+    private Constants() {
+        // Hide default constructor
+    }
 }

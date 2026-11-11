@@ -14,15 +14,24 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  */
-
 package org.apache.tomcat.util.net.openssl.ciphers;
 
-enum MessageDigest {
+/**
+ * Supported message digest algorithms.
+ */
+public enum MessageDigest {
+    /** MD5 digest. */
     MD5,
+    /** SHA1 digest. */
     SHA1,
+    /** GOST94 digest. */
     GOST94,
+    /** GOST89MAC digest. */
     GOST89MAC,
+    /** SHA256 digest. */
     SHA256,
+    /** SHA384 digest. */
     SHA384,
+    /** AEAD digest. */
     AEAD
 }

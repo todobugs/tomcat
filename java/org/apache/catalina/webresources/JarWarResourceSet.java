@@ -34,41 +34,34 @@ import org.apache.catalina.WebResource;
 import org.apache.catalina.WebResourceRoot;
 import org.apache.tomcat.util.buf.UriUtil;
 import org.apache.tomcat.util.compat.JreCompat;
+import org.apache.tomcat.util.scan.MultiReleaseUtil;
+import org.apache.tomcat.util.scan.MultiReleaseUtil.MultiReleaseInfo;
 
 /**
- * Represents a {@link org.apache.catalina.WebResourceSet} based on a JAR file
- * that is nested inside a packed WAR file. This is only intended for internal
- * use within Tomcat and therefore cannot be created via configuration.
+ * Represents a {@link org.apache.catalina.WebResourceSet} based on a JAR file that is nested inside a packed WAR file.
+ * This is only intended for internal use within Tomcat and therefore cannot be created via configuration.
  */
 public class JarWarResourceSet extends AbstractArchiveResourceSet {
 
     private final String archivePath;
 
     /**
-     * Creates a new {@link org.apache.catalina.WebResourceSet} based on a JAR
-     * file that is nested inside a WAR.
+     * Creates a new {@link org.apache.catalina.WebResourceSet} based on a JAR file that is nested inside a WAR.
      *
-     * @param root          The {@link WebResourceRoot} this new
-     *                          {@link org.apache.catalina.WebResourceSet} will
-     *                          be added to.
-     * @param webAppMount   The path within the web application at which this
-     *                          {@link org.apache.catalina.WebResourceSet} will
-     *                          be mounted.
-     * @param base          The absolute path to the WAR file on the file system
-     *                          in which the JAR is located.
-     * @param archivePath   The path within the WAR file where the JAR file is
-     *                          located.
-     * @param internalPath  The path within this new {@link
-     *                          org.apache.catalina.WebResourceSet} where
-     *                          resources will be served from. E.g. for a
-     *                          resource JAR, this would be "META-INF/resources"
+     * @param root         The {@link WebResourceRoot} this new {@link org.apache.catalina.WebResourceSet} will be added
+     *                         to.
+     * @param webAppMount  The path within the web application at which this {@link org.apache.catalina.WebResourceSet}
+     *                         will be mounted.
+     * @param base         The absolute path to the WAR file on the file system in which the JAR is located.
+     * @param archivePath  The path within the WAR file where the JAR file is located.
+     * @param internalPath The path within this new {@link org.apache.catalina.WebResourceSet} where resources will be
+     *                         served from. E.g. for a resource JAR, this would be "META-INF/resources"
      *
-     * @throws IllegalArgumentException if the webAppMount or internalPath is
-     *         not valid (valid paths must start with '/')
+     * @throws IllegalArgumentException if the webAppMount or internalPath is not valid (valid paths must start with
+     *                                      '/')
      */
-    public JarWarResourceSet(WebResourceRoot root, String webAppMount,
-            String base, String archivePath, String internalPath)
-            throws IllegalArgumentException {
+    public JarWarResourceSet(WebResourceRoot root, String webAppMount, String base, String archivePath,
+            String internalPath) throws IllegalArgumentException {
         setRoot(root);
         setWebAppMount(webAppMount);
         setBase(base);
@@ -79,14 +72,13 @@ public class JarWarResourceSet extends AbstractArchiveResourceSet {
             try {
                 start();
             } catch (LifecycleException e) {
-                throw new IllegalStateException(e);
+                throw new IllegalStateException(sm.getString("jarWarResourceSet.startFail"), e);
             }
         }
     }
 
     @Override
-    protected WebResource createArchiveResource(JarEntry jarEntry,
-            String webAppPath, Manifest manifest) {
+    protected WebResource createArchiveResource(JarEntry jarEntry, String webAppPath, Manifest manifest) {
         return new JarWarResource(this, webAppPath, getBaseUrlString(), jarEntry, archivePath);
     }
 
@@ -94,9 +86,9 @@ public class JarWarResourceSet extends AbstractArchiveResourceSet {
     /**
      * {@inheritDoc}
      * <p>
-     * JarWar can't optimise for a single resource so the Map is always
-     * returned.
+     * JarWar can't optimise for a single resource so the Map is always returned.
      */
+    @SuppressWarnings("deprecation")
     @Override
     protected Map<String,JarEntry> getArchiveEntries(boolean single) {
         synchronized (archiveLock) {
@@ -108,6 +100,12 @@ public class JarWarResourceSet extends AbstractArchiveResourceSet {
                 try {
                     warFile = openJarFile();
                     JarEntry jarFileInWar = warFile.getJarEntry(archivePath);
+                    if (jarFileInWar == null) {
+                        // Should never happen
+                        archiveEntries = null;
+                        throw new IllegalStateException(
+                                sm.getString("jarWarResourceSet.jarNotFound", archivePath, getBase()));
+                    }
                     jarFileIs = warFile.getInputStream(jarFileInWar);
 
                     try (TomcatJarInputStream jarIs = new TomcatJarInputStream(jarFileIs)) {
@@ -145,7 +143,8 @@ public class JarWarResourceSet extends AbstractArchiveResourceSet {
                 } catch (IOException ioe) {
                     // Should never happen
                     archiveEntries = null;
-                    throw new IllegalStateException(ioe);
+                    throw new IllegalStateException(
+                            sm.getString("jarWarResourceSet.archiveEntriesFail", archivePath, getBase()), ioe);
                 } finally {
                     if (warFile != null) {
                         closeJarFile();
@@ -153,17 +152,44 @@ public class JarWarResourceSet extends AbstractArchiveResourceSet {
                     if (jarFileIs != null) {
                         try {
                             jarFileIs.close();
-                        } catch (IOException e) {
+                        } catch (IOException ignore) {
                             // Ignore
                         }
                     }
                 }
+            }
+            WebResourceRoot root = getRoot();
+            if (jarContents == null && (root.getArchiveIndexStrategyEnum().getUsesBloom() ||
+                    root.getContext() != null && root.getContext().getUseBloomFilterForArchives())) {
+                jarContents = new JarContents(archiveEntries.values());
+                retainBloomFilterForArchives = root.getArchiveIndexStrategyEnum().getRetain();
             }
             return archiveEntries;
         }
     }
 
 
+    /**
+     * {@inheritDoc}
+     * <p>
+     * JarWar needs to generate jarContents for the inner JAR, not the outer WAR.
+     */
+    @Override
+    protected JarFile openJarFile() throws IOException {
+        synchronized (archiveLock) {
+            if (archive == null) {
+                archive = JreCompat.getInstance().jarFileNewInstance(getBase());
+                // Don't populate JarContents here. Populate at the end of getArchiveEntries()
+            }
+            archiveUseCount++;
+            return archive;
+        }
+    }
+
+
+    /**
+     * Process archive entries for multi-release JAR support.
+     */
     protected void processArchivesEntriesForMultiRelease() {
 
         int targetVersion = JreCompat.getInstance().jarFileRuntimeMajorVersion();
@@ -173,34 +199,33 @@ public class JarWarResourceSet extends AbstractArchiveResourceSet {
         while (iter.hasNext()) {
             Entry<String,JarEntry> entry = iter.next();
             String name = entry.getKey();
-            if (name.startsWith("META-INF/versions/")) {
+            JarEntry jarEntry = entry.getValue();
+            MultiReleaseInfo multiVersionInfo = MultiReleaseUtil.parseVersion(name);
+            if (multiVersionInfo != null && multiVersionInfo.isValid()) {
                 // Remove the multi-release version
                 iter.remove();
 
-                // Get the base name and version for this versioned entry
-                int i = name.indexOf('/', 18);
-                if (i > 0) {
-                    String baseName = name.substring(i + 1);
-                    int version = Integer.parseInt(name.substring(18, i));
-
-                    // Ignore any entries targeting for a later version than
-                    // the target for this runtime
-                    if (version <= targetVersion) {
-                        VersionedJarEntry versionedJarEntry = versionedEntries.get(baseName);
-                        if (versionedJarEntry == null) {
-                            // No versioned entry found for this name. Create
-                            // one.
+                // Ignore any entries targeting for a later version than
+                // the target for this runtime
+                if (multiVersionInfo.version <= targetVersion) {
+                    String baseName = name.substring(multiVersionInfo.namePos);
+                    if (baseName.isEmpty()) {
+                        // The entry for the version directory itself. There is no resource to expose.
+                        continue;
+                    }
+                    VersionedJarEntry versionedJarEntry = versionedEntries.get(baseName);
+                    if (versionedJarEntry == null) {
+                        // No versioned entry found for this name. Create
+                        // one.
+                        versionedEntries.put(baseName, new VersionedJarEntry(multiVersionInfo.version, jarEntry));
+                    } else {
+                        // Ignore any entry for which we have already found
+                        // a later version
+                        if (multiVersionInfo.version > versionedJarEntry.getVersion()) {
+                            // Replace the entry targeted at an earlier
+                            // version
                             versionedEntries.put(baseName,
-                                    new VersionedJarEntry(version, entry.getValue()));
-                        } else {
-                            // Ignore any entry for which we have already found
-                            // a later version
-                            if (version > versionedJarEntry.getVersion()) {
-                                // Replace the entry targeted at an earlier
-                                // version
-                                versionedEntries.put(baseName,
-                                        new VersionedJarEntry(version, entry.getValue()));
-                            }
+                                    new VersionedJarEntry(multiVersionInfo.version, jarEntry));
                         }
                     }
                 }
@@ -208,8 +233,7 @@ public class JarWarResourceSet extends AbstractArchiveResourceSet {
         }
 
         for (Entry<String,VersionedJarEntry> versionedJarEntry : versionedEntries.entrySet()) {
-            archiveEntries.put(versionedJarEntry.getKey(),
-                    versionedJarEntry.getValue().getJarEntry());
+            archiveEntries.put(versionedJarEntry.getKey(), versionedJarEntry.getValue().getJarEntry());
         }
     }
 
@@ -217,8 +241,7 @@ public class JarWarResourceSet extends AbstractArchiveResourceSet {
     /**
      * {@inheritDoc}
      * <p>
-     * Should never be called since {@link #getArchiveEntries(boolean)} always
-     * returns a Map.
+     * Should never be called since {@link #getArchiveEntries(boolean)} always returns a Map.
      */
     @Override
     protected JarEntry getArchiveEntry(String pathInArchive) {
@@ -234,25 +257,30 @@ public class JarWarResourceSet extends AbstractArchiveResourceSet {
     }
 
 
-    //-------------------------------------------------------- Lifecycle methods
+    // -------------------------------------------------------- Lifecycle methods
     @Override
     protected void initInternal() throws LifecycleException {
 
         try (JarFile warFile = new JarFile(getBase())) {
             JarEntry jarFileInWar = warFile.getJarEntry(archivePath);
+            if (jarFileInWar == null) {
+                throw new LifecycleException(
+                        sm.getString("jarWarResourceSet.jarNotFound", archivePath, getBase()));
+            }
             InputStream jarFileIs = warFile.getInputStream(jarFileInWar);
 
             try (JarInputStream jarIs = new JarInputStream(jarFileIs)) {
                 setManifest(jarIs.getManifest());
             }
         } catch (IOException ioe) {
-            throw new IllegalArgumentException(ioe);
+            throw new LifecycleException(
+                    sm.getString("jarWarResourceSet.manifestFail", archivePath, getBase()), ioe);
         }
 
         try {
             setBaseUrl(UriUtil.buildJarSafeUrl(new File(getBase())));
         } catch (MalformedURLException e) {
-            throw new IllegalArgumentException(e);
+            throw new LifecycleException(sm.getString("jarWarResourceSet.baseUrlFail", getBase()), e);
         }
     }
 
@@ -261,7 +289,7 @@ public class JarWarResourceSet extends AbstractArchiveResourceSet {
         private final int version;
         private final JarEntry jarEntry;
 
-        public VersionedJarEntry(int version, JarEntry jarEntry) {
+        VersionedJarEntry(int version, JarEntry jarEntry) {
             this.version = version;
             this.jarEntry = jarEntry;
         }

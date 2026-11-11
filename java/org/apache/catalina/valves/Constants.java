@@ -18,21 +18,49 @@ package org.apache.catalina.valves;
 
 
 /**
- * Manifest constants for the <code>org.apache.catalina.valves</code>
- * package.
- *
- * @author Craig R. McClanahan
+ * Manifest constants for the <code>org.apache.catalina.valves</code> package.
  */
 
 public final class Constants {
 
+    /**
+     * Prevents instantiation.
+     */
+    private Constants() {
+    }
+
+    /**
+     * The fully qualified name of this package.
+     */
     public static final String Package = "org.apache.catalina.valves";
 
     // Constants for the AccessLogValve class
+
+    /**
+     * Constants specific to the AccessLogValve class.
+     */
     public static final class AccessLog {
+        /**
+         * Prevents instantiation of inner class.
+         */
+        private AccessLog() {
+        }
+
+        /**
+         * Common log format alias name.
+         */
         public static final String COMMON_ALIAS = "common";
+        /**
+         * Common log format pattern.
+         */
         public static final String COMMON_PATTERN = "%h %l %u %t \"%r\" %s %b";
+        /**
+         * Combined log format alias name.
+         */
         public static final String COMBINED_ALIAS = "combined";
+        /**
+         * Combined log format pattern.
+         */
         public static final String COMBINED_PATTERN = "%h %l %u %t \"%r\" %s %b \"%{Referer}i\" \"%{User-Agent}i\"";
     }
 

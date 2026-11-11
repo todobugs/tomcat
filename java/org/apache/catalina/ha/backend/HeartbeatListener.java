@@ -14,8 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
-
 package org.apache.catalina.ha.backend;
 
 import org.apache.catalina.Lifecycle;
@@ -25,25 +23,42 @@ import org.apache.juli.logging.Log;
 import org.apache.juli.logging.LogFactory;
 import org.apache.tomcat.util.res.StringManager;
 
-/*
- * Listener to provider informations to mod_heartbeat.c
- * *msg_format = "v=%u&ready=%u&busy=%u"; (message to send).
- * send the multicast message using the format...
- * what about the bind(IP. port) only IP makes sense (for the moment).
- * BTW:v  = version :-)
+/**
+ * Lifecycle listener that provides heartbeat information to mod_heartbeat for Apache HTTP Server.
+ * Message format: "v=1&amp;ready=%u&amp;busy=%u&amp;port=%u"
  */
 public class HeartbeatListener implements LifecycleListener {
 
+    /**
+     * Logger for this listener.
+     */
     private static final Log log = LogFactory.getLog(HeartbeatListener.class);
+
+    /**
+     * Constructs a new HeartbeatListener.
+     */
+    public HeartbeatListener() {
+    }
+
+    /**
+     * String manager for this listener.
+     */
     private static final StringManager sm = StringManager.getManager(HeartbeatListener.class);
 
-    /* To allow to select the connector */
+    /**
+     * Port of the connector to proxy. Default is 8009.
+     */
     protected int port = 8009;
+
+    /**
+     * Host of the connector to proxy.
+     */
     protected String host = null;
 
     /**
-     * @return the host corresponding to the connector
-     * we want to proxy.
+     * Get the host corresponding to the connector we want to proxy.
+     *
+     * @return the host
      */
     public String getHost() {
         return this.host;
@@ -59,7 +74,9 @@ public class HeartbeatListener implements LifecycleListener {
     }
 
     /**
-     * @return the port of the connector we want to proxy.
+     * Get the port of the connector we want to proxy.
+     *
+     * @return the port
      */
     public int getPort() {
         return this.port;
@@ -74,48 +91,81 @@ public class HeartbeatListener implements LifecycleListener {
         this.port = port;
     }
 
-    /* for multicasting stuff */
-    protected String ip = "224.0.1.105"; /* Multicast IP */
-    protected int multiport = 23364;     /* Multicast Port */
+    /**
+     * Multicast IP address. Default is 224.0.1.105.
+     */
+    protected String ip = "224.0.1.105";
+
+    /**
+     * Multicast port. Default is 23364.
+     */
+    protected int multiport = 23364;
+
+    /**
+     * Time-to-live for multicast packets. Default is 16.
+     */
     protected int ttl = 16;
 
     /* corresponding setters and getters */
 
     /**
-     * @return the Multicast IP we are using for Multicast
+     * Get the multicast IP address used for sending heartbeat messages.
+     *
+     * @return the multicast IP address
      */
-    public String getGroup() { return ip; }
+    public String getGroup() {
+        return ip;
+    }
 
     /**
      * Set the Multicast IP to use for Multicast
      *
      * @param group the multi address to use.
      */
-    public void setGroup(String group) { this.ip = group; }
+    public void setGroup(String group) {
+        this.ip = group;
+    }
 
     /**
-     * @return the Multicast Port we are using for Multicast.
+     * Get the multicast port used for sending heartbeat messages.
+     *
+     * @return the multicast port
      */
-    public int getMultiport() { return multiport; }
+    public int getMultiport() {
+        return multiport;
+    }
 
     /**
      * Set the Port to use for Multicast
      *
      * @param port the port to use.
      */
-    public void setMultiport(int port) { this.multiport=port; }
+    public void setMultiport(int port) {
+        this.multiport = port;
+    }
 
     /**
-     * @return the TTL for Multicast packets.
+     * Get the TTL value used for multicast packets.
+     *
+     * @return the TTL value
      */
-    public int getTtl() { return ttl; }
+    public int getTtl() {
+        return ttl;
+    }
 
     /**
      * Set the TTL for Multicast packets.
      *
      * @param ttl value for TTL.
+     *
+     * @throws IllegalArgumentException if the value is outside the valid range of 0 to 255
      */
-    public void setTtl(int ttl) { this.ttl=ttl; }
+    public void setTtl(int ttl) {
+        if (ttl < 0 || ttl > 255) {
+            throw new IllegalArgumentException(sm.getString("heartbeatListener.invalidTtl", Integer.valueOf(ttl)));
+        }
+        this.ttl = ttl;
+    }
 
     /**
      * Proxy list, format "address:port,address:port".
@@ -123,17 +173,24 @@ public class HeartbeatListener implements LifecycleListener {
     protected String proxyList = null;
 
     /**
-     * @return the list of proxies that send us requests.
+     * Get the list of proxies that send requests to this server.
+     *
+     * @return the proxy list in "address:port,address:port" format
      */
-    public String getProxyList() { return proxyList; }
+    public String getProxyList() {
+        return proxyList;
+    }
 
     /**
-     * Set the list of Proxies that send is requests, when not empty it toogles
-     * the multi to off. A SetHandler heartbeat must be existing in httpd.conf.
+     * Set the list of Proxies that heartbeat requests are sent to. When set, the TCP sender is used instead of the
+     * multicast sender, starting with the first heartbeat sent; the choice is not re-evaluated if the list is
+     * changed later. A SetHandler heartbeat must exist in httpd.conf.
      *
-     * @param proxyList the list of proxy, format "address:port,address:port".
+     * @param proxyList the list of proxies, format "address:port,address:port".
      */
-    public void setProxyList(String proxyList) { this.proxyList = proxyList; }
+    public void setProxyList(String proxyList) {
+        this.proxyList = proxyList;
+    }
 
     /**
      * URL prefix.
@@ -141,22 +198,30 @@ public class HeartbeatListener implements LifecycleListener {
     protected String proxyURL = "/HeartbeatListener";
 
     /**
-     * @return the URL specified in &lt;Location/&gt; for the SetHandler heartbeat.
+     * Get the URL specified in &lt;Location/&gt; for the SetHandler heartbeat in httpd.conf.
+     *
+     * @return the proxy URL
      */
-    public String getProxyURL() { return proxyURL; }
+    public String getProxyURL() {
+        return proxyURL;
+    }
 
     /**
      * Set the URL of receiver in httpd. That is the location used in
+     *
      * <pre>
      * &lt;Location "/HeartbeatListener"&gt;
      *    SetHandler heartbeat
      * &lt;/Location&gt;
      * </pre>
+     *
      * All proxies MUST use the same location.
      *
      * @param proxyURL a String with the URL starting with /
      */
-    public void setProxyURLString(String proxyURL) { this.proxyURL = proxyURL; }
+    public void setProxyURLString(String proxyURL) {
+        this.proxyURL = proxyURL;
+    }
 
     private CollectedInfo coll = null;
 
@@ -167,10 +232,11 @@ public class HeartbeatListener implements LifecycleListener {
 
         if (Lifecycle.PERIODIC_EVENT.equals(event.getType())) {
             if (sender == null) {
-                if (proxyList == null)
+                if (proxyList == null) {
                     sender = new MultiCastSender();
-                else
+                } else {
                     sender = new TcpSender();
+                }
             }
 
             /* Read busy and ready */
@@ -179,8 +245,8 @@ public class HeartbeatListener implements LifecycleListener {
                     coll = new CollectedInfo(host, port);
                     this.port = coll.port;
                     this.host = coll.host;
-                } catch (Exception ex) {
-                    log.error(sm.getString("heartbeatListener.errorCollectingInfo"), ex);
+                } catch (Exception e) {
+                    log.error(sm.getString("heartbeatListener.errorCollectingInfo"), e);
                     coll = null;
                     return;
                 }
@@ -189,8 +255,8 @@ public class HeartbeatListener implements LifecycleListener {
             /* Start or restart sender */
             try {
                 sender.init(this);
-            } catch (Exception ex) {
-                log.error(sm.getString("heartbeatListener.senderInitError"), ex);
+            } catch (Exception e) {
+                log.error(sm.getString("heartbeatListener.senderInitError"), e);
                 sender = null;
                 return;
             }
@@ -198,17 +264,16 @@ public class HeartbeatListener implements LifecycleListener {
             /* refresh the connector information and send it */
             try {
                 coll.refresh();
-            } catch (Exception ex) {
-                log.error(sm.getString("heartbeatListener.refreshError"), ex);
+            } catch (Exception e) {
+                log.error(sm.getString("heartbeatListener.refreshError"), e);
                 coll = null;
                 return;
             }
-            String output = "v=1&ready=" + coll.ready + "&busy=" + coll.busy +
-                    "&port=" + port;
+            String output = "v=1&ready=" + coll.ready + "&busy=" + coll.busy + "&port=" + port;
             try {
                 sender.send(output);
-            } catch (Exception ex) {
-                log.error(sm.getString("heartbeatListener.sendError"), ex);
+            } catch (Exception e) {
+                log.error(sm.getString("heartbeatListener.sendError"), e);
             }
         }
     }

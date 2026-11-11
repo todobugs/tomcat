@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.catalina.tribes.group;
 
 import java.io.Externalizable;
@@ -25,17 +24,46 @@ import java.io.Serializable;
 
 import org.apache.catalina.tribes.util.Arrays;
 
+/**
+ * A message used for RPC communication between group members.
+ */
 public class RpcMessage implements Externalizable {
 
+    /**
+     * The payload of the message.
+     */
     protected Serializable message;
+
+    /**
+     * The unique identifier for this message.
+     */
     protected byte[] uuid;
+
+    /**
+     * The RPC channel identifier.
+     */
     protected byte[] rpcId;
+
+    /**
+     * Whether this message is a reply.
+     */
     protected boolean reply = false;
 
+    /**
+     * Default constructor required by Externalizable.
+     */
     public RpcMessage() {
-        //for serialization
+        // for serialization
     }
 
+    /**
+     * Create a new RpcMessage. A null identifier is serialized as a zero-length
+     * array and deserialized back into one.
+     *
+     * @param rpcId   The RPC channel identifier
+     * @param uuid    The unique identifier for this message
+     * @param message The message payload
+     */
     public RpcMessage(byte[] rpcId, byte[] uuid, Serializable message) {
         this.rpcId = rpcId;
         this.uuid = uuid;
@@ -43,7 +71,7 @@ public class RpcMessage implements Externalizable {
     }
 
     @Override
-    public void readExternal(ObjectInput in) throws IOException,ClassNotFoundException {
+    public void readExternal(ObjectInput in) throws IOException, ClassNotFoundException {
         reply = in.readBoolean();
         int length = in.readInt();
         uuid = new byte[length];
@@ -51,39 +79,48 @@ public class RpcMessage implements Externalizable {
         length = in.readInt();
         rpcId = new byte[length];
         in.readFully(rpcId);
-        message = (Serializable)in.readObject();
+        message = (Serializable) in.readObject();
     }
 
     @Override
     public void writeExternal(ObjectOutput out) throws IOException {
         out.writeBoolean(reply);
-        out.writeInt(uuid.length);
-        out.write(uuid, 0, uuid.length);
-        out.writeInt(rpcId.length);
-        out.write(rpcId, 0, rpcId.length);
+        out.writeInt(uuid != null ? uuid.length : 0);
+        if (uuid != null) {
+            out.write(uuid, 0, uuid.length);
+        }
+        out.writeInt(rpcId != null ? rpcId.length : 0);
+        if (rpcId != null) {
+            out.write(rpcId, 0, rpcId.length);
+        }
         out.writeObject(message);
     }
 
     @Override
     public String toString() {
-        StringBuilder buf = new StringBuilder("RpcMessage[");
-        buf.append(super.toString());
-        buf.append("] rpcId=");
-        buf.append(Arrays.toString(rpcId));
-        buf.append("; uuid=");
-        buf.append(Arrays.toString(uuid));
-        buf.append("; msg=");
-        buf.append(message);
-        return buf.toString();
+        return "RpcMessage[" + super.toString() + "] rpcId=" + Arrays.toString(rpcId) + "; uuid=" +
+                Arrays.toString(uuid) + "; msg=" + message;
     }
 
+    /**
+     * A reply message sent when no RPC channel is found for a given RPC ID.
+     */
     public static class NoRpcChannelReply extends RpcMessage {
+        /**
+         * Default constructor required by Externalizable.
+         */
         public NoRpcChannelReply() {
 
         }
 
+        /**
+         * Create a new NoRpcChannelReply.
+         *
+         * @param rpcid The RPC channel identifier
+         * @param uuid  The unique identifier for this message
+         */
         public NoRpcChannelReply(byte[] rpcid, byte[] uuid) {
-            super(rpcid,uuid,null);
+            super(rpcid, uuid, null);
             reply = true;
         }
 
@@ -100,10 +137,14 @@ public class RpcMessage implements Externalizable {
 
         @Override
         public void writeExternal(ObjectOutput out) throws IOException {
-            out.writeInt(uuid.length);
-            out.write(uuid, 0, uuid.length);
-            out.writeInt(rpcId.length);
-            out.write(rpcId, 0, rpcId.length);
+            out.writeInt(uuid != null ? uuid.length : 0);
+            if (uuid != null) {
+                out.write(uuid, 0, uuid.length);
+            }
+            out.writeInt(rpcId != null ? rpcId.length : 0);
+            if (rpcId != null) {
+                out.write(rpcId, 0, rpcId.length);
+            }
         }
     }
 

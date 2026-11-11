@@ -53,7 +53,7 @@ public class TestMimeHeadersIntegration extends TomcatBaseTest {
                 res.getWriter().write("OK");
             }
         });
-        ctx.addServletMappingDecoded("/", "servlet");
+        ctx.addServletMapping("/", "servlet");
 
         alv = new HeaderCountLogValve();
         tomcat.getHost().getPipeline().addValve(alv);
@@ -95,7 +95,7 @@ public class TestMimeHeadersIntegration extends TomcatBaseTest {
             Assert.assertEquals("OK", client.getResponseBody());
         } else {
             alv.validateAccessLog(1, 400, 0, 3000);
-            // Connection aborted or response 400
+            // Connection cancelled or response 400
             Assert.assertTrue("Response line is: " + client.getResponseLine(),
                     client.getResponseLine() == null || client.isResponse400());
         }
@@ -169,7 +169,7 @@ public class TestMimeHeadersIntegration extends TomcatBaseTest {
     }
 
     private static final class Client extends SimpleHttpClient {
-        public Client(Tomcat tomcat) {
+        Client(Tomcat tomcat) {
             setPort(tomcat.getConnector().getLocalPort());
         }
 

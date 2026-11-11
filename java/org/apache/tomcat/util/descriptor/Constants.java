@@ -16,10 +16,22 @@
  */
 package org.apache.tomcat.util.descriptor;
 
+/**
+ * Constants for descriptor utilities.
+ */
 public class Constants {
 
-    public static final String PACKAGE_NAME =
-            Constants.class.getPackage().getName();
+    /**
+     * Package name for descriptor utilities.
+     */
+    public static final String PACKAGE_NAME = Constants.class.getPackage().getName();
 
     public static final boolean IS_SECURITY_ENABLED = (System.getSecurityManager() != null);
+
+    /**
+     * Private constructor to prevent instantiation.
+     */
+    private Constants() {
+        // Hide default constructor
+    }
 }

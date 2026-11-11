@@ -18,14 +18,19 @@ package org.apache.catalina.util;
 
 import java.util.Locale;
 
+import org.apache.tomcat.util.http.RequestUtil;
+
 /**
- * Utility class to manage context names so there is one place where the
- * conversions between baseName, path and version take place.
+ * Utility class to manage context names so there is one place where the conversions between baseName, path and version
+ * take place.
  */
 public final class ContextName {
+    /**
+     * The name used for the root context.
+     */
     public static final String ROOT_NAME = "ROOT";
     private static final String VERSION_MARKER = "##";
-    private static final String FWD_SLASH_REPLACEMENT = "#";
+    private static final char FWD_SLASH_REPLACEMENT = '#';
 
     private final String baseName;
     private final String path;
@@ -34,13 +39,11 @@ public final class ContextName {
 
 
     /**
-     * Creates an instance from a context name, display name, base name,
-     * directory name, WAR name or context.xml name.
+     * Creates an instance from a context name, display name, base name, directory name, WAR name or context.xml name.
      *
-     * @param name  The name to use as the basis for this object
-     * @param stripFileExtension    If a .war or .xml file extension is present
-     *                              at the end of the provided name should it be
-     *                              removed?
+     * @param name               The name to use as the basis for this object
+     * @param stripFileExtension If a .war or .xml file extension is present at the end of the provided name should it
+     *                               be removed?
      */
     public ContextName(String name, boolean stripFileExtension) {
 
@@ -54,18 +57,17 @@ public final class ContextName {
         }
 
         // Replace any remaining /
-        tmp1 = tmp1.replaceAll("/", FWD_SLASH_REPLACEMENT);
+        tmp1 = tmp1.replace('/', FWD_SLASH_REPLACEMENT);
 
         // Insert the ROOT name if required
-        if (tmp1.startsWith(VERSION_MARKER) || "".equals(tmp1)) {
+        if (tmp1.startsWith(VERSION_MARKER) || tmp1.isEmpty()) {
             tmp1 = ROOT_NAME + tmp1;
         }
 
         // Remove any file extensions
-        if (stripFileExtension &&
-                (tmp1.toLowerCase(Locale.ENGLISH).endsWith(".war") ||
-                        tmp1.toLowerCase(Locale.ENGLISH).endsWith(".xml"))) {
-            tmp1 = tmp1.substring(0, tmp1.length() -4);
+        if (stripFileExtension && (tmp1.toLowerCase(Locale.ENGLISH).endsWith(".war") ||
+                tmp1.toLowerCase(Locale.ENGLISH).endsWith(".xml"))) {
+            tmp1 = tmp1.substring(0, tmp1.length() - 4);
         }
 
         baseName = tmp1;
@@ -84,7 +86,7 @@ public final class ContextName {
         if (ROOT_NAME.equals(tmp2)) {
             path = "";
         } else {
-            path = "/" + tmp2.replaceAll(FWD_SLASH_REPLACEMENT, "/");
+            path = "/" + tmp2.replace(FWD_SLASH_REPLACEMENT, '/');
         }
 
         if (versionIndex > -1) {
@@ -97,15 +99,30 @@ public final class ContextName {
     /**
      * Construct an instance from a path and version.
      *
-     * @param path      Context path to use
-     * @param version   Context version to use
+     * @param path    Context path to use, which must not contain a version marker. May be <code>null</code>,
+     *                 <code>""</code>, <code>"/"</code>, <code>"/ROOT"</code> or <code>"ROOT"</code> to represent the
+     *                 root context. Any other value must start with <code>"/"</code>; if it does not, a leading
+     *                 <code>"/"</code> is prepended, matching the normalisation performed by
+     *                 {@link org.apache.catalina.Context#setPath(String)}. Trailing <code>"/"</code> characters are
+     *                 removed.
+     * @param version Context version to use
      */
     public ContextName(String path, String version) {
-        // Path should never be null, '/' or '/ROOT'
-        if (path == null || "/".equals(path) || "/ROOT".equals(path)) {
+        if (path != null) {
+            while (path.endsWith("/")) {
+                path = path.substring(0, path.length() - 1);
+            }
+        }
+
+        // Path should never be null, '/', '/ROOT' or 'ROOT'. Neither should they end with '/'.
+        if (path == null || "/ROOT".equals(path) || "ROOT".equals(path)) {
             this.path = "";
-        } else {
+        } else if (path.isEmpty() || path.startsWith("/")) {
             this.path = path;
+        } else {
+            // Normalise a malformed path the same way Context.setPath() does by adding the missing
+            // leading slash, so that the conversions below derive the expected name and base name
+            this.path = '/' + path;
         }
 
         // Version should never be null
@@ -116,7 +133,7 @@ public final class ContextName {
         }
 
         // Name is path + version
-        if ("".equals(this.version)) {
+        if (this.version.isEmpty()) {
             name = this.path;
         } else {
             name = this.path + VERSION_MARKER + this.version;
@@ -124,35 +141,59 @@ public final class ContextName {
 
         // Base name is converted path + version
         StringBuilder tmp = new StringBuilder();
-        if ("".equals(this.path)) {
+        if (this.path.isEmpty()) {
             tmp.append(ROOT_NAME);
         } else {
-            tmp.append(this.path.substring(1).replaceAll("/",
-                    FWD_SLASH_REPLACEMENT));
+            tmp.append(this.path.substring(1).replace('/', FWD_SLASH_REPLACEMENT));
         }
-        if (this.version.length() > 0) {
+        if (!this.version.isEmpty()) {
             tmp.append(VERSION_MARKER);
             tmp.append(this.version);
         }
         this.baseName = tmp.toString();
     }
 
+    /**
+     * Returns the base name of this context.
+     *
+     * @return the base name
+     */
     public String getBaseName() {
         return baseName;
     }
 
+    /**
+     * Returns the path of this context.
+     *
+     * @return the context path
+     */
     public String getPath() {
         return path;
     }
 
+    /**
+     * Returns the version of this context.
+     *
+     * @return the context version
+     */
     public String getVersion() {
         return version;
     }
 
+    /**
+     * Returns the name of this context.
+     *
+     * @return the context name
+     */
     public String getName() {
         return name;
     }
 
+    /**
+     * Returns the display name of this context.
+     *
+     * @return the display name
+     */
     public String getDisplayName() {
         StringBuilder tmp = new StringBuilder();
         if ("".equals(path)) {
@@ -161,7 +202,7 @@ public final class ContextName {
             tmp.append(path);
         }
 
-        if (!"".equals(version)) {
+        if (!version.isEmpty()) {
             tmp.append(VERSION_MARKER);
             tmp.append(version);
         }
@@ -176,8 +217,26 @@ public final class ContextName {
 
 
     /**
-     * Extract the final component of the given path which is assumed to be a
-     * base name and generate a {@link ContextName} from that base name.
+     * Checks if the path for this instance is valid.
+     *
+     * @return {@code true} if the path given/calculated for this instance is valid, otherwise {@code false}
+     */
+    public boolean isPathValid() {
+        // No need to test for null since path can never be null (see constructors)
+        //
+        // No need to test for empty or start with / (see constructors)
+        //
+        // Therefore, just need to check:
+        // - normalized and no attempt to escape the root
+        //
+        // Note: Normalize check on empty path would fail
+        return path.isEmpty() || path.equals(RequestUtil.normalize(path));
+    }
+
+
+    /**
+     * Extract the final component of the given path which is assumed to be a base name and generate a
+     * {@link ContextName} from that base name.
      *
      * @param path The path that ends in a base name
      *
@@ -185,7 +244,7 @@ public final class ContextName {
      */
     public static ContextName extractFromPath(String path) {
         // Convert '\' to '/'
-        path = path.replaceAll("\\\\", "/");
+        path = path.replace("\\", "/");
         // Remove trailing '/'. Use while just in case a value ends in ///
         while (path.endsWith("/")) {
             path = path.substring(0, path.length() - 1);

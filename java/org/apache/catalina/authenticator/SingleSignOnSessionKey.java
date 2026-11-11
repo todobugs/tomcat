@@ -22,20 +22,32 @@ import org.apache.catalina.Context;
 import org.apache.catalina.Session;
 
 /**
- * Key used by SSO to identify a session. This key is used rather than the
- * actual session to facilitate the replication of the SSO information
- * across a cluster where replicating the entire session would generate
- * significant, unnecessary overhead.
- *
+ * Key used by SSO to identify a session. This key is used rather than the actual session to facilitate the replication
+ * of the SSO information across a cluster where replicating the entire session would generate significant, unnecessary
+ * overhead.
  */
 public class SingleSignOnSessionKey implements Serializable {
 
     private static final long serialVersionUID = 1L;
 
+    /**
+     * The session ID.
+     */
     private final String sessionId;
+    /**
+     * The context name.
+     */
     private final String contextName;
+    /**
+     * The host name.
+     */
     private final String hostName;
 
+    /**
+     * Creates a session key from the given session, using the session's current ID.
+     *
+     * @param session the session from which to extract the key information
+     */
     public SingleSignOnSessionKey(Session session) {
         this.sessionId = session.getId();
         Context context = session.getManager().getContext();
@@ -43,14 +55,42 @@ public class SingleSignOnSessionKey implements Serializable {
         this.hostName = context.getParent().getName();
     }
 
+    /**
+     * Creates a session key using the given session context and an explicit session ID.
+     *
+     * @param session   the session from which to extract context and host information
+     * @param sessionId the session ID to use for this key
+     */
+    public SingleSignOnSessionKey(Session session, String sessionId) {
+        this.sessionId = sessionId;
+        Context context = session.getManager().getContext();
+        this.contextName = context.getName();
+        this.hostName = context.getParent().getName();
+    }
+
+    /**
+     * Returns the session ID associated with this key.
+     *
+     * @return the session ID
+     */
     public String getSessionId() {
         return sessionId;
     }
 
+    /**
+     * Returns the context name associated with this key.
+     *
+     * @return the context name
+     */
     public String getContextName() {
         return contextName;
     }
 
+    /**
+     * Returns the host name associated with this key.
+     *
+     * @return the host name
+     */
     public String getHostName() {
         return hostName;
     }
@@ -59,12 +99,9 @@ public class SingleSignOnSessionKey implements Serializable {
     public int hashCode() {
         final int prime = 31;
         int result = 1;
-        result = prime * result +
-                ((sessionId == null) ? 0 : sessionId.hashCode());
-        result = prime * result +
-                ((contextName == null) ? 0 : contextName.hashCode());
-        result = prime * result +
-                ((hostName == null) ? 0 : hostName.hashCode());
+        result = prime * result + ((sessionId == null) ? 0 : sessionId.hashCode());
+        result = prime * result + ((contextName == null) ? 0 : contextName.hashCode());
+        result = prime * result + ((hostName == null) ? 0 : hostName.hashCode());
         return result;
     }
 
@@ -95,28 +132,14 @@ public class SingleSignOnSessionKey implements Serializable {
             return false;
         }
         if (hostName == null) {
-            if (other.hostName != null) {
-                return false;
-            }
-        } else if (!hostName.equals(other.hostName)) {
-            return false;
+            return other.hostName == null;
+        } else {
+            return hostName.equals(other.hostName);
         }
-        return true;
     }
 
     @Override
     public String toString() {
-        // Session ID is 32. Standard text is 36. Host could easily be 20+.
-        // Context could be anything from 0 upwards. 128 seems like a reasonable
-        // size to accommodate most cases without being too big.
-        StringBuilder sb = new StringBuilder(128);
-        sb.append("Host: [");
-        sb.append(hostName);
-        sb.append("], Context: [");
-        sb.append(contextName);
-        sb.append("], SessionID: [");
-        sb.append(sessionId);
-        sb.append("]");
-        return sb.toString();
+        return "Host: [" + hostName + "], Context: [" + contextName + "], SessionID: [" + sessionId + ']';
     }
 }

@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.jasper.compiler;
 
 import java.io.IOException;
@@ -39,8 +38,7 @@ public class TestJspDocumentParser extends TomcatBaseTest {
     public void testBug47977() throws Exception {
         getTomcatInstanceTestWebapp(false, true);
 
-        int rc = getUrl("http://localhost:" + getPort() +
-                "/test/bug47977.jspx", new ByteChunk(), null);
+        int rc = getUrl("http://localhost:" + getPort() + "/test/bug47977.jspx", new ByteChunk(), null);
 
         Assert.assertEquals(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, rc);
     }
@@ -65,13 +63,11 @@ public class TestJspDocumentParser extends TomcatBaseTest {
         getTomcatInstanceTestWebapp(false, true);
 
         ByteChunk bc = new ByteChunk();
-        int rc = getUrl("http://localhost:" + getPort() +
-                "/test/bug5nnnn/bug54801a.jspx", bc, null);
+        int rc = getUrl("http://localhost:" + getPort() + "/test/bug5nnnn/bug54801a.jspx", bc, null);
         Assert.assertEquals(HttpServletResponse.SC_OK, rc);
 
         bc.recycle();
-        rc = getUrl("http://localhost:" + getPort() +
-                "/test/bug5nnnn/bug54801b.jspx", bc, null);
+        rc = getUrl("http://localhost:" + getPort() + "/test/bug5nnnn/bug54801b.jspx", bc, null);
         Assert.assertEquals(HttpServletResponse.SC_OK, rc);
     }
 
@@ -80,15 +76,36 @@ public class TestJspDocumentParser extends TomcatBaseTest {
         getTomcatInstanceTestWebapp(false, true);
 
         ByteChunk bc = new ByteChunk();
-        int rc = getUrl("http://localhost:" + getPort() +
-                "/test/bug5nnnn/bug54821a.jspx", bc, null);
+        int rc = getUrl("http://localhost:" + getPort() + "/test/bug5nnnn/bug54821a.jspx", bc, null);
         Assert.assertEquals(HttpServletResponse.SC_OK, rc);
 
         bc.recycle();
-        rc = getUrl("http://localhost:" + getPort() +
-                "/test/bug5nnnn/bug54821b.jspx", bc, null);
+        rc = getUrl("http://localhost:" + getPort() + "/test/bug5nnnn/bug54821b.jspx", bc, null);
         Assert.assertEquals(HttpServletResponse.SC_OK, rc);
-   }
+    }
+
+    @Test
+    public void testNamedAttributeTrimCdata() throws Exception {
+        getTomcatInstanceTestWebapp(false, true);
+
+        ByteChunk bc = new ByteChunk();
+        int rc = getUrl("http://localhost:" + getPort() + "/test/jsp/document/named-attribute-trim.jspx", bc, null);
+
+        Assert.assertEquals(HttpServletResponse.SC_OK, rc);
+
+        String result = bc.toString();
+
+        // White-space only text nodes between the other body elements must be
+        // removed and the final text node must be trimmed
+        Assert.assertTrue(result, result.contains("<e1 a=\"x tail\"/>"));
+        Assert.assertTrue(result, result.contains("<e2 a=\"x\"/>"));
+        Assert.assertTrue(result, result.contains("<e3 a=\"xy\"/>"));
+        Assert.assertTrue(result, result.contains("<e4 a=\"x y\"/>"));
+        // With trim set to false, leading and trailing white-space only text
+        // nodes must be kept verbatim
+        Assert.assertTrue(result, result.contains("<t5 a=\"  \"/>"));
+        Assert.assertTrue(result, result.contains("<t6 a=\"x tail \"/>"));
+    }
 
     @Test
     public void testSchemaValidation() throws Exception {
@@ -119,5 +136,5 @@ public class TestJspDocumentParser extends TomcatBaseTest {
         Document document = db.parse(path);
         Assert.assertEquals("urn:valid", document.getDocumentElement().getNamespaceURI());
         Assert.assertEquals("root", document.getDocumentElement().getLocalName());
-   }
+    }
 }

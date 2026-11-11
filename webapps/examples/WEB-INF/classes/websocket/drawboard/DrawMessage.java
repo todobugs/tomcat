@@ -160,9 +160,12 @@ public final class DrawMessage {
                 y2 = this.y1;
             }
 
-            // TODO: If (x1 == x2 || y1 == y2) draw as line.
+            if (x1 == x2 || y1 == y2) {
+                // Draw axis-aligned shapes as lines to match the behavior in the HTML5 Canvas.
+                Line2D line = new Line2D.Double(x1, y1, x2, y2);
+                g.draw(line);
 
-            if (type == 3) {
+            } else if (type == 3) {
                 // Draw a rectangle.
                 Rectangle2D rect = new Rectangle2D.Double(x1, y1,
                         x2 - x1, y2 - y1);
@@ -204,22 +207,25 @@ public final class DrawMessage {
             String[] elements = str.split(",");
 
             type = Integer.parseInt(elements[0]);
-            if (!(type >= 1 && type <= 4))
+            if (!(type >= 1 && type <= 4)) {
                 throw new ParseException("Invalid type: " + type);
+            }
 
             for (int i = 0; i < colors.length; i++) {
                 colors[i] = (byte) Integer.parseInt(elements[1 + i]);
             }
 
             thickness = Double.parseDouble(elements[5]);
-            if (Double.isNaN(thickness) || thickness < 0 || thickness > 100)
+            if (Double.isNaN(thickness) || thickness < 0 || thickness > 100) {
                 throw new ParseException("Invalid thickness: " + thickness);
+            }
 
             for (int i = 0; i < coords.length; i++) {
                 coords[i] = Double.parseDouble(elements[6 + i]);
-                if (Double.isNaN(coords[i]))
+                if (Double.isNaN(coords[i])) {
                     throw new ParseException("Invalid coordinate: "
                             + coords[i]);
+                }
             }
 
         } catch (RuntimeException ex) {

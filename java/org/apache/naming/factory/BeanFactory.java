@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.naming.factory;
 
 import java.beans.BeanInfo;
@@ -23,10 +22,7 @@ import java.beans.PropertyDescriptor;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.util.Enumeration;
-import java.util.HashMap;
 import java.util.Hashtable;
-import java.util.Locale;
-import java.util.Map;
 
 import javax.naming.Context;
 import javax.naming.Name;
@@ -35,111 +31,77 @@ import javax.naming.RefAddr;
 import javax.naming.Reference;
 import javax.naming.spi.ObjectFactory;
 
+import org.apache.juli.logging.Log;
+import org.apache.juli.logging.LogFactory;
 import org.apache.naming.ResourceRef;
+import org.apache.naming.StringManager;
+import org.apache.tomcat.util.ExceptionUtils;
 
 /**
  * Object factory for any Resource conforming to the JavaBean spec.
+ * <p>
+ * This factory can be configured in a <code>&lt;Context&gt;</code> element in your <code>conf/server.xml</code>
+ * configuration file. An example of factory configuration is:
+ * </p>
  *
- * <p>This factory can be configured in a <code>&lt;Context&gt;</code> element
- * in your <code>conf/server.xml</code>
- * configuration file.  An example of factory configuration is:</p>
  * <pre>
- * &lt;Resource name="jdbc/myDataSource" auth="SERVLET"
- *   type="oracle.jdbc.pool.OracleConnectionCacheImpl"/&gt;
- * &lt;ResourceParams name="jdbc/myDataSource"&gt;
- *   &lt;parameter&gt;
- *     &lt;name&gt;factory&lt;/name&gt;
- *     &lt;value&gt;org.apache.naming.factory.BeanFactory&lt;/value&gt;
- *   &lt;/parameter&gt;
- *   &lt;parameter&gt;
- *     &lt;name&gt;driverType&lt;/name&gt;
- *     &lt;value&gt;thin&lt;/value&gt;
- *   &lt;/parameter&gt;
- *   &lt;parameter&gt;
- *     &lt;name&gt;serverName&lt;/name&gt;
- *     &lt;value&gt;hue&lt;/value&gt;
- *   &lt;/parameter&gt;
- *   &lt;parameter&gt;
- *     &lt;name&gt;networkProtocol&lt;/name&gt;
- *     &lt;value&gt;tcp&lt;/value&gt;
- *   &lt;/parameter&gt;
- *   &lt;parameter&gt;
- *     &lt;name&gt;databaseName&lt;/name&gt;
- *     &lt;value&gt;XXXX&lt;/value&gt;
- *   &lt;/parameter&gt;
- *   &lt;parameter&gt;
- *     &lt;name&gt;portNumber&lt;/name&gt;
- *     &lt;value&gt;NNNN&lt;/value&gt;
- *   &lt;/parameter&gt;
- *   &lt;parameter&gt;
- *     &lt;name&gt;user&lt;/name&gt;
- *     &lt;value&gt;XXXX&lt;/value&gt;
- *   &lt;/parameter&gt;
- *   &lt;parameter&gt;
- *     &lt;name&gt;password&lt;/name&gt;
- *     &lt;value&gt;XXXX&lt;/value&gt;
- *   &lt;/parameter&gt;
- *   &lt;parameter&gt;
- *     &lt;name&gt;maxLimit&lt;/name&gt;
- *     &lt;value&gt;5&lt;/value&gt;
- *   &lt;/parameter&gt;
- * &lt;/ResourceParams&gt;
+ * &lt;Resource name="jdbc/myDataSource"
+ *           auth="SERVLET"
+ *           type="oracle.jdbc.pool.OracleConnectionCacheImpl"
+ *           factory="org.apache.naming.factory.BeanFactory"
+ *           driverType="thin"
+ *           serverName="hue"
+ *           networkProtocol="tcp"
+ *           databaseName="XXXX"
+ *           portNumber="NNNN"
+ *           user="XXXX"
+ *           password="XXXX"
+ *           maxLimit="5"
+ *           /&gt;
  * </pre>
- *
- * @author Aner Perez [aner at ncstech.com]
  */
-public class BeanFactory
-    implements ObjectFactory {
+public class BeanFactory implements ObjectFactory {
 
-    // ----------------------------------------------------------- Constructors
+    /** Default constructor. */
+    public BeanFactory() { }
 
+    private static final StringManager sm = StringManager.getManager(BeanFactory.class);
 
-    // -------------------------------------------------------------- Constants
-
-
-    // ----------------------------------------------------- Instance Variables
-
-
-    // --------------------------------------------------------- Public Methods
-
-
-    // -------------------------------------------------- ObjectFactory Methods
-
+    private final Log log = LogFactory.getLog(BeanFactory.class); // Not static
 
     /**
      * Create a new Bean instance.
      *
-     * @param obj The reference object describing the Bean
+     * @param obj         The reference object describing the Bean
+     * @param name        the bound name
+     * @param nameCtx     unused
+     * @param environment unused
+     *
+     * @return the object instance
+     *
+     * @throws NamingException if an error occur creating the instance
      */
     @Override
-    public Object getObjectInstance(Object obj, Name name, Context nameCtx,
-                                    Hashtable<?,?> environment)
-        throws NamingException {
+    public Object getObjectInstance(Object obj, Name name, Context nameCtx, Hashtable<?,?> environment)
+            throws NamingException {
 
         if (obj instanceof ResourceRef) {
 
             try {
-
                 Reference ref = (Reference) obj;
                 String beanClassName = ref.getClassName();
-                Class<?> beanClass = null;
-                ClassLoader tcl =
-                    Thread.currentThread().getContextClassLoader();
-                if (tcl != null) {
-                    try {
+                Class<?> beanClass;
+                ClassLoader tcl = Thread.currentThread().getContextClassLoader();
+                try {
+                    if (tcl != null) {
                         beanClass = tcl.loadClass(beanClassName);
-                    } catch(ClassNotFoundException e) {
-                    }
-                } else {
-                    try {
+                    } else {
                         beanClass = Class.forName(beanClassName);
-                    } catch(ClassNotFoundException e) {
-                        e.printStackTrace();
                     }
-                }
-                if (beanClass == null) {
-                    throw new NamingException
-                        ("Class not found: " + beanClassName);
+                } catch (ClassNotFoundException cnfe) {
+                    NamingException ne = new NamingException(sm.getString("beanFactory.classNotFound", beanClassName));
+                    ne.initCause(cnfe);
+                    throw ne;
                 }
 
                 BeanInfo bi = Introspector.getBeanInfo(beanClass);
@@ -147,139 +109,110 @@ public class BeanFactory
 
                 Object bean = beanClass.getConstructor().newInstance();
 
-                /* Look for properties with explicitly configured setter */
+                // Look for the removed forceString option
                 RefAddr ra = ref.get("forceString");
-                Map<String, Method> forced = new HashMap<>();
-                String value;
-
                 if (ra != null) {
-                    value = (String)ra.getContent();
-                    Class<?> paramTypes[] = new Class[1];
-                    paramTypes[0] = String.class;
-                    String setterName;
-                    int index;
-
-                    /* Items are given as comma separated list */
-                    for (String param: value.split(",")) {
-                        param = param.trim();
-                        /* A single item can either be of the form name=method
-                         * or just a property name (and we will use a standard
-                         * setter) */
-                        index = param.indexOf('=');
-                        if (index >= 0) {
-                            setterName = param.substring(index + 1).trim();
-                            param = param.substring(0, index).trim();
-                        } else {
-                            setterName = "set" +
-                                         param.substring(0, 1).toUpperCase(Locale.ENGLISH) +
-                                         param.substring(1);
-                        }
-                        try {
-                            forced.put(param,
-                                       beanClass.getMethod(setterName, paramTypes));
-                        } catch (NoSuchMethodException|SecurityException ex) {
-                            throw new NamingException
-                                ("Forced String setter " + setterName +
-                                 " not found for property " + param);
-                        }
-                    }
+                    log.warn(sm.getString("beanFactory.noForceString"));
                 }
 
                 Enumeration<RefAddr> e = ref.getAll();
+                String value;
 
                 while (e.hasMoreElements()) {
 
                     ra = e.nextElement();
                     String propName = ra.getType();
 
-                    if (propName.equals(Constants.FACTORY) ||
-                        propName.equals("scope") || propName.equals("auth") ||
-                        propName.equals("forceString") ||
-                        propName.equals("singleton")) {
+                    if (propName.equals(Constants.FACTORY) || propName.equals("scope") || propName.equals("auth") ||
+                            propName.equals("description") || propName.equals("forceString") ||
+                            propName.equals("singleton")) {
                         continue;
                     }
 
-                    value = (String)ra.getContent();
+                    value = String.valueOf(ra.getContent());
 
                     Object[] valueArray = new Object[1];
 
-                    /* Shortcut for properties with explicitly configured setter */
-                    Method method = forced.get(propName);
-                    if (method != null) {
-                        valueArray[0] = value;
-                        try {
-                            method.invoke(bean, valueArray);
-                        } catch (IllegalAccessException|
-                                 IllegalArgumentException|
-                                 InvocationTargetException ex) {
-                            throw new NamingException
-                                ("Forced String setter " + method.getName() +
-                                 " threw exception for property " + propName);
-                        }
-                        continue;
-                    }
-
-                    int i = 0;
-                    for (i = 0; i<pda.length; i++) {
+                    int i;
+                    for (i = 0; i < pda.length; i++) {
 
                         if (pda[i].getName().equals(propName)) {
 
                             Class<?> propType = pda[i].getPropertyType();
+                            Method setProp = pda[i].getWriteMethod();
 
-                            if (propType.equals(String.class)) {
-                                valueArray[0] = value;
-                            } else if (propType.equals(Character.class)
-                                       || propType.equals(char.class)) {
-                                valueArray[0] =
-                                    Character.valueOf(value.charAt(0));
-                            } else if (propType.equals(Byte.class)
-                                       || propType.equals(byte.class)) {
-                                valueArray[0] = Byte.valueOf(value);
-                            } else if (propType.equals(Short.class)
-                                       || propType.equals(short.class)) {
-                                valueArray[0] = Short.valueOf(value);
-                            } else if (propType.equals(Integer.class)
-                                       || propType.equals(int.class)) {
-                                valueArray[0] = Integer.valueOf(value);
-                            } else if (propType.equals(Long.class)
-                                       || propType.equals(long.class)) {
-                                valueArray[0] = Long.valueOf(value);
-                            } else if (propType.equals(Float.class)
-                                       || propType.equals(float.class)) {
-                                valueArray[0] = Float.valueOf(value);
-                            } else if (propType.equals(Double.class)
-                                       || propType.equals(double.class)) {
-                                valueArray[0] = Double.valueOf(value);
-                            } else if (propType.equals(Boolean.class)
-                                       || propType.equals(boolean.class)) {
-                                valueArray[0] = Boolean.valueOf(value);
-                            } else {
-                                throw new NamingException
-                                    ("String conversion for property " + propName +
-                                     " of type '" + propType.getName() +
-                                     "' not available");
+                            // The conversion methods of the numeric types and
+                            // the reading of the first character report an
+                            // invalid value of a configured property with an
+                            // unchecked exception, which is replaced here by a
+                            // NamingException which names the property, its
+                            // value and its type.
+                            try {
+                                if (propType.equals(String.class)) {
+                                    valueArray[0] = value;
+                                } else if (propType.equals(Character.class) || propType.equals(char.class)) {
+                                    valueArray[0] = Character.valueOf(value.charAt(0));
+                                } else if (propType.equals(Byte.class) || propType.equals(byte.class)) {
+                                    valueArray[0] = Byte.valueOf(value);
+                                } else if (propType.equals(Short.class) || propType.equals(short.class)) {
+                                    valueArray[0] = Short.valueOf(value);
+                                } else if (propType.equals(Integer.class) || propType.equals(int.class)) {
+                                    valueArray[0] = Integer.valueOf(value);
+                                } else if (propType.equals(Long.class) || propType.equals(long.class)) {
+                                    valueArray[0] = Long.valueOf(value);
+                                } else if (propType.equals(Float.class) || propType.equals(float.class)) {
+                                    valueArray[0] = Float.valueOf(value);
+                                } else if (propType.equals(Double.class) || propType.equals(double.class)) {
+                                    valueArray[0] = Double.valueOf(value);
+                                } else if (propType.equals(Boolean.class) || propType.equals(boolean.class)) {
+                                    valueArray[0] = Boolean.valueOf(value);
+                                } else if (setProp != null) {
+                                    // This is a Tomcat specific extension and is not part of the
+                                    // Java Bean specification.
+                                    String setterName = setProp.getName();
+                                    try {
+                                        setProp = bean.getClass().getMethod(setterName, String.class);
+                                        valueArray[0] = value;
+                                    } catch (NoSuchMethodException nsme) {
+                                        throw new NamingException(
+                                                sm.getString("beanFactory.noStringConversion", propName,
+                                                        propType.getName()));
+                                    }
+                                } else {
+                                    throw new NamingException(sm.getString("beanFactory.noStringConversion", propName,
+                                            propType.getName()));
+                                }
+                            } catch (NumberFormatException | StringIndexOutOfBoundsException ex) {
+                                NamingException ne = new NamingException(sm.getString("beanFactory.invalidValue",
+                                        value, propName, propType.getName()));
+                                ne.initCause(ex);
+                                throw ne;
                             }
 
-                            Method setProp = pda[i].getWriteMethod();
                             if (setProp != null) {
-                                setProp.invoke(bean, valueArray);
+                                try {
+                                    setProp.invoke(bean, valueArray);
+                                } catch (InvocationTargetException ite) {
+                                    ExceptionUtils.handleThrowable(ite);
+                                    // The message of the wrapper is always null, so name the property and report
+                                    // the exception thrown by the set method as the cause.
+                                    Throwable cause = ite.getCause() != null ? ite.getCause() : ite;
+                                    NamingException ne = new NamingException(
+                                            sm.getString("beanFactory.setFailed", propName, cause.toString()));
+                                    ne.initCause(cause);
+                                    throw ne;
+                                }
                             } else {
-                                throw new NamingException
-                                    ("Write not allowed for property: "
-                                     + propName);
+                                throw new NamingException(sm.getString("beanFactory.readOnlyProperty", propName));
                             }
 
                             break;
-
                         }
-
                     }
 
                     if (i == pda.length) {
-                        throw new NamingException
-                            ("No set method found for property: " + propName);
+                        throw new NamingException(sm.getString("beanFactory.noSetMethod", propName));
                     }
-
                 }
 
                 return bean;
@@ -288,7 +221,7 @@ public class BeanFactory
                 NamingException ne = new NamingException(ie.getMessage());
                 ne.setRootCause(ie);
                 throw ne;
-            } catch (java.lang.ReflectiveOperationException e) {
+            } catch (ReflectiveOperationException e) {
                 Throwable cause = e.getCause();
                 if (cause instanceof ThreadDeath) {
                     throw (ThreadDeath) cause;
@@ -304,6 +237,5 @@ public class BeanFactory
         } else {
             return null;
         }
-
     }
 }

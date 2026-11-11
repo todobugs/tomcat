@@ -32,6 +32,10 @@ import org.apache.catalina.Context;
 import org.apache.catalina.ha.tcp.SimpleTcpCluster;
 import org.apache.catalina.startup.Tomcat;
 import org.apache.catalina.startup.TomcatBaseTest;
+import org.apache.catalina.tribes.ManagedChannel;
+import org.apache.catalina.tribes.TesterUtil;
+import org.apache.catalina.tribes.group.GroupChannel;
+import org.apache.catalina.tribes.transport.ReceiverBase;
 import org.apache.tomcat.util.buf.ByteChunk;
 
 public class TestStandardSessionIntegration extends TomcatBaseTest {
@@ -54,13 +58,19 @@ public class TestStandardSessionIntegration extends TomcatBaseTest {
         Tomcat tomcat = getTomcatInstance();
 
         // No file system docBase required
-        Context ctx = tomcat.addContext("", null);
+        Context ctx = getProgrammaticRootContext();
 
         Tomcat.addServlet(ctx, "bug56578", new Bug56578Servlet());
-        ctx.addServletMappingDecoded("/bug56578", "bug56578");
+        ctx.addServletMapping("/bug56578", "bug56578");
 
         if (useClustering) {
-            tomcat.getEngine().setCluster(new SimpleTcpCluster());
+            SimpleTcpCluster cluster = new SimpleTcpCluster();
+            GroupChannel channel = (GroupChannel) cluster.getChannel();
+            ((ReceiverBase) channel.getChannelReceiver()).setHost("localhost");
+            ((ReceiverBase) channel.getChannelReceiver()).setPort(0);
+            // Avoid discovering unrelated cluster members and waiting for their session state.
+            TesterUtil.addRandomDomain(new ManagedChannel[] { channel });
+            tomcat.getEngine().setCluster(cluster);
             ctx.setDistributable(true);
             ctx.setManager(ctx.getCluster().createManager(""));
         }

@@ -36,22 +36,18 @@ import org.apache.catalina.security.SecurityUtil;
 import org.apache.tomcat.util.res.StringManager;
 
 /**
- * Facade class that wraps a Coyote response object.
- * All methods are delegated to the wrapped response.
- *
- * @author Remy Maucherat
+ * Facade class that wraps a {@link Response} object. All methods are delegated to the wrapped response.
  */
 @SuppressWarnings("deprecation")
 public class ResponseFacade implements HttpServletResponse {
 
     // ----------------------------------------------------------- DoPrivileged
 
-    private final class SetContentTypePrivilegedAction
-            implements PrivilegedAction<Void> {
+    private final class SetContentTypePrivilegedAction implements PrivilegedAction<Void> {
 
         private final String contentType;
 
-        public SetContentTypePrivilegedAction(String contentType){
+        SetContentTypePrivilegedAction(String contentType) {
             this.contentType = contentType;
         }
 
@@ -62,8 +58,7 @@ public class ResponseFacade implements HttpServletResponse {
         }
     }
 
-    private final class DateHeaderPrivilegedAction
-            implements PrivilegedAction<Void> {
+    private final class DateHeaderPrivilegedAction implements PrivilegedAction<Void> {
 
         private final String name;
         private final long value;
@@ -77,7 +72,7 @@ public class ResponseFacade implements HttpServletResponse {
 
         @Override
         public Void run() {
-            if(add) {
+            if (add) {
                 response.addDateHeader(name, value);
             } else {
                 response.setDateHeader(name, value);
@@ -90,7 +85,7 @@ public class ResponseFacade implements HttpServletResponse {
 
         private final Response response;
 
-        public FlushBufferPrivilegedAction(Response response) {
+        FlushBufferPrivilegedAction(Response response) {
             this.response = response;
         }
 
@@ -111,13 +106,11 @@ public class ResponseFacade implements HttpServletResponse {
      * @param response The response to be wrapped
      */
     public ResponseFacade(Response response) {
-
-         this.response = response;
+        this.response = response;
     }
 
 
     // ----------------------------------------------- Class/Instance Variables
-
 
     /**
      * The string manager for this package.
@@ -128,11 +121,10 @@ public class ResponseFacade implements HttpServletResponse {
     /**
      * The wrapped response.
      */
-    protected Response response = null;
+    protected Response response;
 
 
     // --------------------------------------------------------- Public Methods
-
 
     /**
      * Clear facade.
@@ -146,90 +138,62 @@ public class ResponseFacade implements HttpServletResponse {
      * Prevent cloning the facade.
      */
     @Override
-    protected Object clone()
-        throws CloneNotSupportedException {
+    public Object clone() throws CloneNotSupportedException {
         throw new CloneNotSupportedException();
     }
 
 
+    /**
+     * Finish the response.
+     */
     public void finish() {
-
-        if (response == null) {
-            throw new IllegalStateException(
-                            sm.getString("responseFacade.nullResponse"));
-        }
-
+        checkFacade();
         response.setSuspended(true);
     }
 
 
+    /**
+     * Check if the response is finished.
+     *
+     * @return {@code true} if the response is finished
+     */
     public boolean isFinished() {
-
-        if (response == null) {
-            throw new IllegalStateException(
-                            sm.getString("responseFacade.nullResponse"));
-        }
-
+        checkFacade();
         return response.isSuspended();
     }
 
 
+    /**
+     * Get the number of bytes written.
+     *
+     * @return The number of bytes written
+     */
     public long getContentWritten() {
-
-        if (response == null) {
-            throw new IllegalStateException(
-                            sm.getString("responseFacade.nullResponse"));
-        }
-
+        checkFacade();
         return response.getContentWritten();
     }
 
-    // ------------------------------------------------ ServletResponse Methods
 
+    // ------------------------------------------------ ServletResponse Methods
 
     @Override
     public String getCharacterEncoding() {
-
-        if (response == null) {
-            throw new IllegalStateException(
-                            sm.getString("responseFacade.nullResponse"));
-        }
-
+        checkFacade();
         return response.getCharacterEncoding();
     }
 
 
     @Override
-    public ServletOutputStream getOutputStream()
-        throws IOException {
-
-        //        if (isFinished())
-        //            throw new IllegalStateException
-        //                (/*sm.getString("responseFacade.finished")*/);
-
-        ServletOutputStream sos = response.getOutputStream();
-        if (isFinished()) {
-            response.setSuspended(true);
-        }
-        return sos;
-
+    public ServletOutputStream getOutputStream() throws IOException {
+        checkFacade();
+        return response.getOutputStream();
     }
 
 
     @Override
-    public PrintWriter getWriter()
-        throws IOException {
-
-        //        if (isFinished())
-        //            throw new IllegalStateException
-        //                (/*sm.getString("responseFacade.finished")*/);
-
-        PrintWriter writer = response.getWriter();
-        if (isFinished()) {
-            response.setSuspended(true);
-        }
-        return writer;
-
+    public PrintWriter getWriter() throws IOException {
+        checkFacade();
+        return response.getWriter();
     }
 
 
@@ -253,12 +217,11 @@ public class ResponseFacade implements HttpServletResponse {
 
     @Override
     public void setContentType(String type) {
-
         if (isCommitted()) {
             return;
         }
 
-        if (SecurityUtil.isPackageProtectionEnabled()){
+        if (SecurityUtil.isPackageProtectionEnabled()) {
             AccessController.doPrivileged(new SetContentTypePrivilegedAction(type));
         } else {
             response.setContentType(type);
@@ -268,43 +231,31 @@ public class ResponseFacade implements HttpServletResponse {
 
     @Override
     public void setBufferSize(int size) {
-
-        if (isCommitted()) {
-            throw new IllegalStateException
-                (sm.getString("coyoteResponse.setBufferSize.ise"));
-        }
-
+        checkCommitted("coyoteResponse.setBufferSize.ise");
         response.setBufferSize(size);
-
     }
 
 
     @Override
     public int getBufferSize() {
-
-        if (response == null) {
-            throw new IllegalStateException(
-                            sm.getString("responseFacade.nullResponse"));
-        }
-
+        checkFacade();
         return response.getBufferSize();
     }
 
 
     @Override
     public void flushBuffer() throws IOException {
-
         if (isFinished()) {
             return;
         }
 
         if (SecurityUtil.isPackageProtectionEnabled()) {
-            try{
+            try {
                 AccessController.doPrivileged(new FlushBufferPrivilegedAction(response));
-            } catch(PrivilegedActionException e) {
+            } catch (PrivilegedActionException e) {
                 Exception ex = e.getException();
                 if (ex instanceof IOException) {
-                    throw (IOException)ex;
+                    throw (IOException) ex;
                 }
             }
         } else {
@@ -316,276 +267,212 @@ public class ResponseFacade implements HttpServletResponse {
 
     @Override
     public void resetBuffer() {
-
-        if (isCommitted()) {
-            throw new IllegalStateException
-                (sm.getString("coyoteResponse.resetBuffer.ise"));
-        }
-
+        checkCommitted("coyoteResponse.resetBuffer.ise");
         response.resetBuffer();
-
     }
 
 
     @Override
     public boolean isCommitted() {
-
-        if (response == null) {
-            throw new IllegalStateException(
-                            sm.getString("responseFacade.nullResponse"));
-        }
-
+        checkFacade();
         return response.isAppCommitted();
     }
 
 
     @Override
     public void reset() {
-
-        if (isCommitted()) {
-            throw new IllegalStateException
-                (sm.getString("coyoteResponse.reset.ise"));
-        }
-
+        checkCommitted("coyoteResponse.reset.ise");
         response.reset();
-
     }
 
 
     @Override
     public void setLocale(Locale loc) {
-
         if (isCommitted()) {
             return;
         }
-
         response.setLocale(loc);
     }
 
 
     @Override
     public Locale getLocale() {
-
-        if (response == null) {
-            throw new IllegalStateException(
-                            sm.getString("responseFacade.nullResponse"));
-        }
-
+        checkFacade();
         return response.getLocale();
     }
 
 
     @Override
     public void addCookie(Cookie cookie) {
-
         if (isCommitted()) {
             return;
         }
-
         response.addCookie(cookie);
-
     }
 
 
     @Override
     public boolean containsHeader(String name) {
-
-        if (response == null) {
-            throw new IllegalStateException(
-                            sm.getString("responseFacade.nullResponse"));
-        }
-
+        checkFacade();
         return response.containsHeader(name);
     }
 
 
     @Override
     public String encodeURL(String url) {
-
-        if (response == null) {
-            throw new IllegalStateException(
-                            sm.getString("responseFacade.nullResponse"));
-        }
-
+        checkFacade();
         return response.encodeURL(url);
     }
 
 
     @Override
     public String encodeRedirectURL(String url) {
-
-        if (response == null) {
-            throw new IllegalStateException(
-                            sm.getString("responseFacade.nullResponse"));
-        }
-
+        checkFacade();
         return response.encodeRedirectURL(url);
     }
 
 
+    public void sendEarlyHints() {
+        checkFacade();
+        response.sendEarlyHints();
+    }
+
+    /**
+     * {@inheritDoc}
+     * <p>
+     * Calling <code>sendError</code> with a status code of 103 differs from the usual behavior. Sending 103 will
+     * trigger the container to send a "103 Early Hints" informational response including all current headers. The
+     * application can continue to use the request and response after calling sendError with a 103 status code,
+     * including triggering a more typical response of any type.
+     * <p>
+     * Starting with Tomcat 12, applications should use {@link #sendEarlyHints}.
+     */
     @Override
     public String encodeUrl(String url) {
-
-        if (response == null) {
-            throw new IllegalStateException(
-                            sm.getString("responseFacade.nullResponse"));
-        }
-
+        checkFacade();
         return response.encodeURL(url);
     }
 
 
     @Override
     public String encodeRedirectUrl(String url) {
-
-        if (response == null) {
-            throw new IllegalStateException(
-                            sm.getString("responseFacade.nullResponse"));
-        }
-
+        checkFacade();
         return response.encodeRedirectURL(url);
     }
 
 
     @Override
-    public void sendError(int sc, String msg)
-        throws IOException {
-
-        if (isCommitted()) {
-            throw new IllegalStateException
-                (sm.getString("coyoteResponse.sendError.ise"));
+    public void sendError(int sc, String msg) throws IOException {
+        checkCommitted("coyoteResponse.sendError.ise");
+        if (Response.SC_EARLY_HINTS == sc) {
+            sendEarlyHints();
+        } else {
+            response.setAppCommitted(true);
+            response.sendError(sc, msg);
         }
+    }
 
-        response.setAppCommitted(true);
 
-        response.sendError(sc, msg);
-
+    /**
+     * {@inheritDoc}
+     * <p>
+     * Calling <code>sendError</code> with a status code of 103 differs from the usual behavior. Sending 103 will
+     * trigger the container to send a "103 Early Hints" informational response including all current headers. The
+     * application can continue to use the request and response after calling sendError with a 103 status code,
+     * including triggering a more typical response of any type.
+     * <p>
+     * Starting with Tomcat 12, applications should use {@link #sendEarlyHints}.
+     */
+    @Override
+    public void sendError(int sc) throws IOException {
+        checkCommitted("coyoteResponse.sendError.ise");
+        if (Response.SC_EARLY_HINTS == sc) {
+            sendEarlyHints();
+        } else {
+            response.setAppCommitted(true);
+            response.sendError(sc);
+        }
     }
 
 
     @Override
-    public void sendError(int sc)
-        throws IOException {
-
-        if (isCommitted()) {
-            throw new IllegalStateException
-                (sm.getString("coyoteResponse.sendError.ise"));
-        }
-
+    public void sendRedirect(String location) throws IOException {
+        checkCommitted("coyoteResponse.sendRedirect.ise");
         response.setAppCommitted(true);
-
-        response.sendError(sc);
-
-    }
-
-
-    @Override
-    public void sendRedirect(String location)
-        throws IOException {
-
-        if (isCommitted()) {
-            throw new IllegalStateException
-                (sm.getString("coyoteResponse.sendRedirect.ise"));
-        }
-
-        response.setAppCommitted(true);
-
         response.sendRedirect(location);
-
     }
 
 
     @Override
     public void setDateHeader(String name, long date) {
-
         if (isCommitted()) {
             return;
         }
 
-        if(Globals.IS_SECURITY_ENABLED) {
-            AccessController.doPrivileged(new DateHeaderPrivilegedAction
-                                             (name, date, false));
+        if (Globals.IS_SECURITY_ENABLED) {
+            AccessController.doPrivileged(new DateHeaderPrivilegedAction(name, date, false));
         } else {
             response.setDateHeader(name, date);
         }
-
     }
 
 
     @Override
     public void addDateHeader(String name, long date) {
-
         if (isCommitted()) {
             return;
         }
 
-        if(Globals.IS_SECURITY_ENABLED) {
-            AccessController.doPrivileged(new DateHeaderPrivilegedAction
-                                             (name, date, true));
+        if (Globals.IS_SECURITY_ENABLED) {
+            AccessController.doPrivileged(new DateHeaderPrivilegedAction(name, date, true));
         } else {
             response.addDateHeader(name, date);
         }
-
     }
 
 
     @Override
     public void setHeader(String name, String value) {
-
         if (isCommitted()) {
             return;
         }
-
         response.setHeader(name, value);
-
     }
 
 
     @Override
     public void addHeader(String name, String value) {
-
         if (isCommitted()) {
             return;
         }
-
         response.addHeader(name, value);
-
     }
 
 
     @Override
     public void setIntHeader(String name, int value) {
-
         if (isCommitted()) {
             return;
         }
-
         response.setIntHeader(name, value);
-
     }
 
 
     @Override
     public void addIntHeader(String name, int value) {
-
         if (isCommitted()) {
             return;
         }
-
         response.addIntHeader(name, value);
-
     }
 
 
     @Override
     public void setStatus(int sc) {
-
         if (isCommitted()) {
             return;
         }
-
         response.setStatus(sc);
-
     }
 
 
@@ -602,56 +489,66 @@ public class ResponseFacade implements HttpServletResponse {
 
     @Override
     public String getContentType() {
-
-        if (response == null) {
-            throw new IllegalStateException(
-                            sm.getString("responseFacade.nullResponse"));
-        }
-
+        checkFacade();
         return response.getContentType();
     }
 
 
     @Override
-    public void setCharacterEncoding(String arg0) {
-
-        if (response == null) {
-            throw new IllegalStateException(
-                            sm.getString("responseFacade.nullResponse"));
-        }
-
-        response.setCharacterEncoding(arg0);
+    public void setCharacterEncoding(String encoding) {
+        checkFacade();
+        response.setCharacterEncoding(encoding);
     }
 
     @Override
     public int getStatus() {
+        checkFacade();
         return response.getStatus();
     }
 
     @Override
     public String getHeader(String name) {
+        checkFacade();
         return response.getHeader(name);
     }
 
     @Override
     public Collection<String> getHeaderNames() {
+        checkFacade();
         return response.getHeaderNames();
     }
 
     @Override
     public Collection<String> getHeaders(String name) {
+        checkFacade();
         return response.getHeaders(name);
     }
 
 
     @Override
-    public void setTrailerFields(Supplier<Map<String, String>> supplier) {
+    public void setTrailerFields(Supplier<Map<String,String>> supplier) {
+        checkFacade();
         response.setTrailerFields(supplier);
     }
 
 
     @Override
-    public Supplier<Map<String, String>> getTrailerFields() {
+    public Supplier<Map<String,String>> getTrailerFields() {
+        checkFacade();
         return response.getTrailerFields();
+    }
+
+
+    private void checkFacade() {
+        if (response == null) {
+            throw new IllegalStateException(sm.getString("responseFacade.nullResponse"));
+        }
+    }
+
+
+    private void checkCommitted(String messageKey) {
+        if (isCommitted()) {
+            throw new IllegalStateException(sm.getString(messageKey));
+        }
     }
 }

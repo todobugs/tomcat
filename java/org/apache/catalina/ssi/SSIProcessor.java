@@ -23,30 +23,45 @@ import java.io.Reader;
 import java.io.StringWriter;
 import java.util.HashMap;
 import java.util.Locale;
-import java.util.StringTokenizer;
 
 import org.apache.catalina.util.IOTools;
+import org.apache.tomcat.util.compat.JreCompat;
+
 /**
- * The entry point to SSI processing. This class does the actual parsing,
- * delegating to the SSIMediator, SSICommand, and SSIExternalResolver as
- * necessary[
- *
- * @author Dan Sandberg
- * @author David Becker
+ * The entry point to SSI processing. This class does the actual parsing, delegating to the SSIMediator, SSICommand, and
+ * SSIExternalResolver as necessary.
  */
 public class SSIProcessor {
     /** The start pattern */
     protected static final String COMMAND_START = "<!--#";
     /** The end pattern */
     protected static final String COMMAND_END = "-->";
+    /**
+     * External resolver for file and variable access.
+     */
     protected final SSIExternalResolver ssiExternalResolver;
+    /**
+     * Map of registered SSI command names to their handlers.
+     */
     protected final HashMap<String,SSICommand> commands = new HashMap<>();
+    /**
+     * Debug level for SSI processing.
+     */
     protected final int debug;
+    /**
+     * Whether exec commands are allowed.
+     */
     protected final boolean allowExec;
 
 
-    public SSIProcessor(SSIExternalResolver ssiExternalResolver, int debug,
-            boolean allowExec) {
+    /**
+     * Creates a new SSI processor with the given configuration.
+     *
+     * @param ssiExternalResolver the external resolver for file/variable access
+     * @param debug               the debug level
+     * @param allowExec           whether exec commands are allowed
+     */
+    public SSIProcessor(SSIExternalResolver ssiExternalResolver, int debug, boolean allowExec) {
         this.ssiExternalResolver = ssiExternalResolver;
         this.debug = debug;
         this.allowExec = allowExec;
@@ -54,6 +69,9 @@ public class SSIProcessor {
     }
 
 
+    /**
+     * Registers all built-in SSI commands.
+     */
     protected void addBuiltinCommands() {
         addCommand("config", new SSIConfig());
         addCommand("echo", new SSIEcho());
@@ -73,34 +91,35 @@ public class SSIProcessor {
     }
 
 
+    /**
+     * Registers a custom SSI command handler.
+     *
+     * @param name     the command name
+     * @param command  the command handler
+     */
     public void addCommand(String name, SSICommand command) {
         commands.put(name, command);
     }
 
 
     /**
-     * Process a file with server-side commands, reading from reader and
-     * writing the processed version to writer. NOTE: We really should be doing
-     * this in a streaming way rather than converting it to an array first.
+     * Process a file with server-side commands, reading from reader and writing the processed version to writer. NOTE:
+     * We really should be doing this in a streaming way rather than converting it to an array first.
      *
-     * @param reader
-     *            the reader to read the file containing SSIs from
+     * @param reader           the reader to read the file containing SSIs from
      * @param lastModifiedDate resource last modification date
-     * @param writer
-     *            the writer to write the file with the SSIs processed.
+     * @param writer           the writer to write the file with the SSIs processed.
+     *
      * @return the most current modified date resulting from any SSI commands
-     * @throws IOException
-     *             when things go horribly awry. Should be unlikely since the
-     *             SSICommand usually catches 'normal' IOExceptions.
+     *
+     * @throws IOException when things go horribly awry. Should be unlikely since the SSICommand usually catches
+     *                         'normal' IOExceptions.
      */
-    public long process(Reader reader, long lastModifiedDate,
-            PrintWriter writer) throws IOException {
-        SSIMediator ssiMediator = new SSIMediator(ssiExternalResolver,
-                lastModifiedDate);
+    public long process(Reader reader, long lastModifiedDate, PrintWriter writer) throws IOException {
+        SSIMediator ssiMediator = new SSIMediator(ssiExternalResolver, lastModifiedDate);
         StringWriter stringWriter = new StringWriter();
         IOTools.flow(reader, stringWriter);
         String fileContents = stringWriter.toString();
-        stringWriter = null;
         int index = 0;
         boolean inside = false;
         StringBuilder command = new StringBuilder();
@@ -108,11 +127,10 @@ public class SSIProcessor {
             while (index < fileContents.length()) {
                 char c = fileContents.charAt(index);
                 if (!inside) {
-                    if (c == COMMAND_START.charAt(0)
-                            && charCmp(fileContents, index, COMMAND_START)) {
+                    if (c == COMMAND_START.charAt(0) && charCmp(fileContents, index, COMMAND_START)) {
                         inside = true;
                         index += COMMAND_START.length();
-                        command.setLength(0); //clear the command string
+                        command.setLength(0); // clear the command string
                     } else {
                         if (!ssiMediator.getConditionalState().processConditionalCommandsOnly) {
                             writer.write(c);
@@ -120,43 +138,34 @@ public class SSIProcessor {
                         index++;
                     }
                 } else {
-                    if (c == COMMAND_END.charAt(0)
-                            && charCmp(fileContents, index, COMMAND_END)) {
+                    if (c == COMMAND_END.charAt(0) && charCmp(fileContents, index, COMMAND_END)) {
                         inside = false;
                         index += COMMAND_END.length();
                         String strCmd = parseCmd(command);
                         if (debug > 0) {
-                            ssiExternalResolver.log(
-                                    "SSIProcessor.process -- processing command: "
-                                            + strCmd, null);
+                            ssiExternalResolver.log("SSIProcessor.process -- processing command: " + strCmd, null);
                         }
-                        String[] paramNames = parseParamNames(command, strCmd
-                                .length());
-                        String[] paramValues = parseParamValues(command,
-                                strCmd.length(), paramNames.length);
-                        //We need to fetch this value each time, since it may
-                        // change
-                        // during the loop
+                        String[] paramNames = parseParamNames(command, strCmd.length());
+                        String[] paramValues = parseParamValues(command, strCmd.length(), paramNames.length);
+                        // We need to fetch this value each time, since it may change during the loop
                         String configErrMsg = ssiMediator.getConfigErrMsg();
-                        SSICommand ssiCommand =
-                            commands.get(strCmd.toLowerCase(Locale.ENGLISH));
+                        SSICommand ssiCommand = commands.get(strCmd.toLowerCase(Locale.ENGLISH));
                         String errorMessage = null;
                         if (ssiCommand == null) {
                             errorMessage = "Unknown command: " + strCmd;
                         } else if (paramValues == null) {
                             errorMessage = "Error parsing directive parameters.";
                         } else if (paramNames.length != paramValues.length) {
-                            errorMessage = "Parameter names count does not match parameter values count on command: "
-                                    + strCmd;
+                            errorMessage =
+                                    "Parameter names count does not match parameter values count on command: " + strCmd;
                         } else {
-                            // don't process the command if we are processing
-                            // conditional
-                            // commands only and the
-                            // command is not conditional
-                            if (!ssiMediator.getConditionalState().processConditionalCommandsOnly
-                                    || ssiCommand instanceof SSIConditional) {
-                                long lmd = ssiCommand.process(ssiMediator, strCmd,
-                                               paramNames, paramValues, writer);
+                            /*
+                             * Don't process the command if we are processing conditional commands only and the command
+                             * is not conditional
+                             */
+                            if (!ssiMediator.getConditionalState().processConditionalCommandsOnly ||
+                                    ssiCommand instanceof SSIConditional) {
+                                long lmd = ssiCommand.process(ssiMediator, strCmd, paramNames, paramValues, writer);
                                 if (lmd > lastModifiedDate) {
                                     lastModifiedDate = lmd;
                                 }
@@ -173,72 +182,97 @@ public class SSIProcessor {
                 }
             }
         } catch (SSIStopProcessingException e) {
-            //If we are here, then we have already stopped processing, so all
-            // is good
+            // If we are here, then processing has already been stopped by a command that
+            // reported its own error. Log any wrapped cause so nothing can fail silently,
+            // and log everything when debugging is enabled.
+            if (debug > 0 || e.getCause() != null) {
+                ssiExternalResolver.log("SSI processing stopped", e);
+            }
         }
         return lastModifiedDate;
     }
 
 
     /**
-     * Parse a StringBuilder and take out the param type token. Called from
-     * <code>requestHandler</code>
+     * Parse a StringBuilder and take out the param type token. Called from <code>requestHandler</code>
      *
-     * @param cmd
-     *            a value of type 'StringBuilder'
+     * @param cmd   a value of type 'StringBuilder'
      * @param start index on which parsing will start
+     *
      * @return an array with the parameter names
      */
     protected String[] parseParamNames(StringBuilder cmd, int start) {
+        // Count parameters first
+        int count = 0;
         int bIdx = start;
-        int i = 0;
-        int quotes = 0;
-        boolean inside = false;
-        StringBuilder retBuf = new StringBuilder();
+        // Tracks the quote character that will close any currently quoted text. 0 means not currently quoted.
+        char endQuote = 0;
+        boolean escaped = false;
         while (bIdx < cmd.length()) {
-            if (!inside) {
-                while (bIdx < cmd.length() && isSpace(cmd.charAt(bIdx)))
-                    bIdx++;
-                if (bIdx >= cmd.length()) break;
-                inside = !inside;
-            } else {
-                while (bIdx < cmd.length() && cmd.charAt(bIdx) != '=') {
-                    retBuf.append(cmd.charAt(bIdx));
-                    bIdx++;
-                }
-                retBuf.append('=');
-                inside = !inside;
-                quotes = 0;
-                boolean escaped = false;
-                for (; bIdx < cmd.length() && quotes != 2; bIdx++) {
-                    char c = cmd.charAt(bIdx);
-                    // Need to skip escaped characters
-                    if (c == '\\' && !escaped) {
-                        escaped = true;
-                        continue;
-                    }
-                    if (c == '"' && !escaped) quotes++;
-                    escaped = false;
-                }
+            char c = cmd.charAt(bIdx);
+            if (escaped) {
+                escaped = false;
+            } else if (c == '\\') {
+                escaped = true;
+            } else if (endQuote == 0 && (c == '"' || c == '\'' || c == '`')) {
+                endQuote = c;
+            } else if (endQuote == c) {
+                endQuote = 0;
+            } else if (c == '=' && endQuote == 0) {
+                count++;
             }
+            bIdx++;
         }
-        StringTokenizer str = new StringTokenizer(retBuf.toString(), "=");
-        String[] retString = new String[str.countTokens()];
-        while (str.hasMoreTokens()) {
-            retString[i++] = str.nextToken().trim();
+        String[] retString = new String[count];
+        // Extract parameter names (characters between spaces and the first unquoted '=')
+        bIdx = start;
+        int idx = 0;
+        StringBuilder nameBuf = new StringBuilder();
+        boolean collectingName = false;
+        endQuote = 0;
+        escaped = false;
+        while (bIdx < cmd.length() && idx < count) {
+            char c = cmd.charAt(bIdx);
+            if (escaped) {
+                escaped = false;
+                if (collectingName && endQuote == 0) {
+                    nameBuf.append(c);
+                }
+            } else if (c == '\\') {
+                escaped = true;
+                if (collectingName && endQuote == 0) {
+                    nameBuf.append(c);
+                }
+            } else if (endQuote == 0 && (c == '"' || c == '\'' || c == '`')) {
+                endQuote = c;
+            } else if (endQuote == c) {
+                endQuote = 0;
+            } else if (endQuote == 0 && isSpace(c)) {
+                if (collectingName) {
+                    nameBuf.setLength(0);
+                    collectingName = false;
+                }
+            } else if (endQuote == 0 && c == '=') {
+                retString[idx++] = JreCompat.getInstance().strip(nameBuf.toString());
+                nameBuf.setLength(0);
+                collectingName = false;
+            } else if (endQuote == 0) {
+                collectingName = true;
+                nameBuf.append(c);
+            }
+            bIdx++;
         }
         return retString;
     }
 
 
     /**
-     * Parse a StringBuilder and take out the param token. Called from
-     * <code>requestHandler</code>
+     * Parse a StringBuilder and take out the param token. Called from <code>requestHandler</code>
      *
-     * @param cmd
-     *            a value of type 'StringBuilder'
+     * @param cmd   a value of type 'StringBuilder'
      * @param start index on which parsing will start
      * @param count number of values which should be parsed
+     *
      * @return an array with the parameter values
      */
     protected String[] parseParamValues(StringBuilder cmd, int start, int count) {
@@ -249,10 +283,13 @@ public class SSIProcessor {
         char endQuote = 0;
         for (int bIdx = start; bIdx < cmd.length(); bIdx++) {
             if (!inside) {
-                while (bIdx < cmd.length() && !isQuote(cmd.charAt(bIdx)))
+                while (bIdx < cmd.length() && !isQuote(cmd.charAt(bIdx))) {
                     bIdx++;
-                if (bIdx >= cmd.length()) break;
-                inside = !inside;
+                }
+                if (bIdx >= cmd.length()) {
+                    break;
+                }
+                inside = true;
                 endQuote = cmd.charAt(bIdx);
             } else {
                 boolean escaped = false;
@@ -264,20 +301,26 @@ public class SSIProcessor {
                         continue;
                     }
                     // If we reach the other " then stop
-                    if (c == endQuote && !escaped) break;
-                    // Since parsing of attributes and var
-                    // substitution is done in separate places,
-                    // we need to leave escape in the string
-                    if (c == '$' && escaped) sb.append('\\');
+                    if (c == endQuote && !escaped) {
+                        break;
+                    }
+                    /*
+                     * Since parsing of attributes and var substitution is done in separate places, we need to leave
+                     * escape in the string
+                     */
+                    if (c == '$' && escaped) {
+                        sb.append('\\');
+                    }
                     escaped = false;
                     sb.append(c);
                 }
-                // If we hit the end without seeing a quote
-                // the signal an error
-                if (bIdx == cmd.length()) return null;
+                // If we hit the end without seeing a quote the signal an error
+                if (bIdx == cmd.length()) {
+                    return null;
+                }
                 vals[valIndex++] = sb.toString();
                 sb.delete(0, sb.length()); // clear the buffer
-                inside = !inside;
+                inside = false;
             }
         }
         return vals;
@@ -285,11 +328,10 @@ public class SSIProcessor {
 
 
     /**
-     * Parse a StringBuilder and take out the command token. Called from
-     * <code>requestHandler</code>
+     * Parse a StringBuilder and take out the command token. Called from <code>requestHandler</code>
      *
-     * @param cmd
-     *            a value of type 'StringBuilder'
+     * @param cmd a value of type 'StringBuilder'
+     *
      * @return a value of type 'String', or null if there is none
      */
     private String parseCmd(StringBuilder cmd) {
@@ -318,15 +360,35 @@ public class SSIProcessor {
     }
 
 
+    /**
+     * Compares a substring of the buffer with the given command string.
+     *
+     * @param buf      the buffer to search
+     * @param index    the starting index
+     * @param command  the command string to match
+     * @return true if the substring matches the command
+     */
     protected boolean charCmp(String buf, int index, String command) {
         return buf.regionMatches(index, command, 0, command.length());
     }
 
 
+    /**
+     * Checks if the given character is a whitespace character.
+     *
+     * @param c the character to check
+     * @return true if the character is a space, tab, newline, or carriage return
+     */
     protected boolean isSpace(char c) {
         return c == ' ' || c == '\n' || c == '\t' || c == '\r';
     }
 
+    /**
+     * Checks if the given character is a quote character.
+     *
+     * @param c the character to check
+     * @return true if the character is a single, double, or backtick quote
+     */
     protected boolean isQuote(char c) {
         return c == '\'' || c == '\"' || c == '`';
     }

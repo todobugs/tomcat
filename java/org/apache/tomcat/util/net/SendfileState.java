@@ -16,11 +16,13 @@
  */
 package org.apache.tomcat.util.net;
 
+/**
+ * Defines the progress state of a sendfile operation.
+ */
 public enum SendfileState {
 
     /**
-     * The sending of the file has started but has not completed. Sendfile is
-     * still using the socket.
+     * The sending of the file has started but has not completed. Sendfile is still using the socket.
      */
     PENDING,
 
@@ -30,8 +32,7 @@ public enum SendfileState {
     DONE,
 
     /**
-     * Something went wrong. The file may or may not have been sent. The socket
-     * is in an unknown state.
+     * Something went wrong. The file may or may not have been sent. The socket is in an unknown state.
      */
     ERROR
 }

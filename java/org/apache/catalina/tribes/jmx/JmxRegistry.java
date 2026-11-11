@@ -32,31 +32,52 @@ import org.apache.catalina.tribes.util.StringManager;
 import org.apache.juli.logging.Log;
 import org.apache.juli.logging.LogFactory;
 
+/**
+ * JMX registry for managing MBean registration for a channel.
+ */
 public class JmxRegistry {
 
     private static final Log log = LogFactory.getLog(JmxRegistry.class);
+    /**
+     * String manager for this class.
+     */
     protected static final StringManager sm = StringManager.getManager(JmxRegistry.class);
-    private static ConcurrentHashMap<String, JmxRegistry> registryCache = new ConcurrentHashMap<>();
+    private static final ConcurrentHashMap<String,JmxRegistry> registryCache = new ConcurrentHashMap<>();
 
-    private MBeanServer mbserver = ManagementFactory.getPlatformMBeanServer();
+    private final MBeanServer mbserver = ManagementFactory.getPlatformMBeanServer();
     private ObjectName baseOname = null;
 
     private JmxRegistry() {
     }
 
+    /**
+     * Get the JMX registry for the given channel.
+     *
+     * @param channel the channel
+     * @return the JMX registry, or {@code null} if the channel or its name is null, the channel is not a
+     *             {@link JmxChannel}, JMX is not enabled for the channel, or the base ObjectName cannot be created
+     */
     public static JmxRegistry getRegistry(Channel channel) {
         if (channel == null || channel.getName() == null) {
             return null;
         }
         JmxRegistry registry = registryCache.get(channel.getName());
-        if (registry != null) return registry;
+        if (registry != null) {
+            return registry;
+        }
 
-        if (!(channel instanceof JmxChannel)) return null;
+        if (!(channel instanceof JmxChannel)) {
+            return null;
+        }
         JmxChannel jmxChannel = (JmxChannel) channel;
-        if (!jmxChannel.isJmxEnabled()) return null;
-        ObjectName baseOn = createBaseObjectName(jmxChannel.getJmxDomain(),
-                jmxChannel.getJmxPrefix(), channel.getName());
-        if (baseOn == null) return null;
+        if (!jmxChannel.isJmxEnabled()) {
+            return null;
+        }
+        ObjectName baseOn =
+                createBaseObjectName(jmxChannel.getJmxDomain(), jmxChannel.getJmxPrefix(), channel.getName());
+        if (baseOn == null) {
+            return null;
+        }
         // create registry
         registry = new JmxRegistry();
         registry.baseOname = baseOn;
@@ -67,9 +88,21 @@ public class JmxRegistry {
         return registry;
     }
 
+    /**
+     * Remove the JMX registry for the given channel. Does nothing if the channel or its name is
+     * {@code null}.
+     *
+     * @param channel the channel
+     * @param clear whether to clear the MBeans
+     */
     public static void removeRegistry(Channel channel, boolean clear) {
+        if (channel == null || channel.getName() == null) {
+            return;
+        }
         JmxRegistry registry = registryCache.get(channel.getName());
-        if (registry == null) return;
+        if (registry == null) {
+            return;
+        }
         if (clear) {
             registry.clearMBeans();
         }
@@ -95,12 +128,19 @@ public class JmxRegistry {
         return on;
     }
 
+    /**
+     * Register an MBean with the JMX server.
+     *
+     * @param keyprop the key property
+     * @param bean the MBean to register
+     * @return the registered object name, or {@code null} on failure
+     */
     public ObjectName registerJmx(String keyprop, Object bean) {
         if (mbserver == null) {
             return null;
         }
         String oNameStr = baseOname.toString() + keyprop;
-        ObjectName oName = null;
+        ObjectName oName;
         try {
             oName = new ObjectName(oNameStr);
             if (mbserver.isRegistered(oName)) {
@@ -120,8 +160,15 @@ public class JmxRegistry {
         return oName;
     }
 
+    /**
+     * Unregister an MBean from the JMX server.
+     *
+     * @param oname the object name to unregister
+     */
     public void unregisterJmx(ObjectName oname) {
-        if (oname ==null) return;
+        if (oname == null) {
+            return;
+        }
         try {
             mbserver.unregisterMBean(oname);
         } catch (InstanceNotFoundException e) {

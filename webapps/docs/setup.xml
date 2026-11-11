@@ -23,7 +23,6 @@
   &project;
 
   <properties>
-    <author email="remm@apache.org">Remy Maucherat</author>
     <title>Tomcat Setup</title>
   </properties>
 
@@ -158,10 +157,12 @@ cd $CATALINA_HOME
     org.apache.catalina.startup.Bootstrap</source>
 
     <p>When running on Java 9 you will need to additionally specify the
-    following when starting jsvc to avoid warnings on shutdown.</p>
+    following when starting jsvc.</p>
 <source>...
 --add-opens=java.base/java.lang=ALL-UNNAMED \
 --add-opens=java.base/java.io=ALL-UNNAMED \
+--add-opens=java.base/java.util=ALL-UNNAMED \
+--add-opens=java.base/java.util.concurrent=ALL-UNNAMED \
 --add-opens=java.rmi/sun.rmi.transport=ALL-UNNAMED \
 ...
 </source>

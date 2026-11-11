@@ -14,18 +14,34 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
-
 package org.apache.catalina.ha.backend;
 
 import java.net.InetAddress;
 
-/*
+/**
  * This class represents a front-end httpd server.
- *
  */
 public class Proxy {
 
-  public InetAddress address = null;
-  public int port = 80;
+    /**
+     * The host name or address of the front-end proxy server as configured. Retained so that the address can be
+     * re-resolved if the proxy's DNS entry changes.
+     */
+    public String host = null;
+
+    /**
+     * The IP address of the front-end proxy server.
+     */
+    public InetAddress address = null;
+
+    /**
+     * The port on which the front-end proxy server listens.
+     */
+    public int port = 80;
+
+    /**
+     * Default constructor.
+     */
+    public Proxy() {
+    }
 }

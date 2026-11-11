@@ -20,6 +20,7 @@ import org.apache.tools.ant.BuildException;
 
 /**
  * <b>Definition</b>:
+ *
  * <pre>
  *   &lt;path id="catalina_ant"&gt;
  *       &lt;fileset dir="${catalina.home}/server/lib"&gt;
@@ -38,6 +39,7 @@ import org.apache.tools.ant.BuildException;
  * </pre>
  *
  * <b>Usage</b>: Wait for start backup node
+ *
  * <pre>
  *     &lt;target name="wait"&gt;
  *       &lt;jmxOpen
@@ -61,28 +63,34 @@ import org.apache.tools.ant.BuildException;
  *       &lt;fail if="server.timeout" message="Server ${url} don't answer inside ${maxwait} sec" /&gt;
  *       &lt;echo message="Server ${url} alive" /&gt;
  *   &lt;/target&gt;
- *
  * </pre>
+ *
  * Allowed operation between jmx attribute and reference value:
  * <ul>
- * <li>==  equals</li>
- * <li>!=  not equals</li>
+ * <li>== equals</li>
+ * <li>!= not equals</li>
  * <li>&gt; greater than (&amp;gt;)</li>
  * <li>&gt;= greater than or equals (&amp;gt;=)</li>
  * <li>&lt; lesser than (&amp;lt;)</li>
  * <li>&lt;= lesser than or equals (&amp;lt;=)</li>
  * </ul>
- * <b>NOTE</b>:  For numeric expressions the type must be set and use xml entities as operations.<br>
+ * <b>NOTE</b>: For numeric expressions the type must be set and use xml entities as operations.<br>
  * As type we currently support <em>long</em> and <em>double</em>.
- * @author Peter Rossbach
+ *
  * @since 5.5.10
  */
 public class JMXAccessorCondition extends JMXAccessorConditionBase {
 
+    /**
+     * Constructs a new JMXAccessorCondition.
+     */
+    public JMXAccessorCondition() {
+    }
+
     // ----------------------------------------------------- Instance Variables
 
-    private String operation = "==" ;
-    private String type = "long" ;
+    private String operation = "==";
+    private String type = "long";
     private String unlessCondition;
     private String ifCondition;
 
@@ -90,54 +98,71 @@ public class JMXAccessorCondition extends JMXAccessorConditionBase {
     // ----------------------------------------------------- Properties
 
     /**
-     * @return Returns the operation.
+     * Get the comparison operation.
+     *
+     * @return the operation
      */
     public String getOperation() {
         return operation;
     }
+
     /**
-     * @param operation The operation to set.
+     * Set the comparison operation.
+     *
+     * @param operation the operation to set
      */
     public void setOperation(String operation) {
         this.operation = operation;
     }
 
     /**
-     * @return Returns the type.
+     * Get the data type for comparison.
+     *
+     * @return the type
      */
     public String getType() {
         return type;
     }
+
     /**
-     * @param type The type to set.
+     * Set the data type for comparison.
+     *
+     * @param type the type to set
      */
     public void setType(String type) {
         this.type = type;
     }
 
     /**
-     * @return Returns the ifCondition.
+     * Get the if condition property name.
+     *
+     * @return the if condition property name
      */
     public String getIf() {
         return ifCondition;
     }
+
     /**
      * Only execute if a property of the given name exists in the current project.
+     *
      * @param c property name
      */
     public void setIf(String c) {
         ifCondition = c;
     }
 
-   /**
-     * @return Returns the unlessCondition.
+    /**
+     * Get the unless condition property name.
+     *
+     * @return the unless condition property name
      */
     public String getUnless() {
         return unlessCondition;
     }
+
     /**
-     * Only execute if a property of the given name does not
-     * exist in the current project.
+     * Only execute if a property of the given name does not exist in the current project.
+     *
      * @param c property name
      */
     public void setUnless(String c) {
@@ -146,10 +171,11 @@ public class JMXAccessorCondition extends JMXAccessorConditionBase {
 
     /**
      * test the if condition
+     *
      * @return true if there is no if condition, or the named property exists
      */
     protected boolean testIfCondition() {
-        if (ifCondition == null || "".equals(ifCondition)) {
+        if (ifCondition == null || ifCondition.isEmpty()) {
             return true;
         }
         return getProject().getProperty(ifCondition) != null;
@@ -157,19 +183,20 @@ public class JMXAccessorCondition extends JMXAccessorConditionBase {
 
     /**
      * test the unless condition
-     * @return true if there is no unless condition,
-     *  or there is a named property but it doesn't exist
+     *
+     * @return true if there is no unless condition, or there is a named property but it doesn't exist
      */
     protected boolean testUnlessCondition() {
-        if (unlessCondition == null || "".equals(unlessCondition)) {
+        if (unlessCondition == null || unlessCondition.isEmpty()) {
             return true;
         }
         return getProject().getProperty(unlessCondition) == null;
     }
 
     /**
-     * This method evaluates the condition
-     * It support for operation "&gt;,&gt;=,&lt;,&lt;=" the types <code>long</code> and <code>double</code>.
+     * This method evaluates the condition It support for operation "&gt;,&gt;=,&lt;,&lt;=" the types <code>long</code>
+     * and <code>double</code>.
+     *
      * @return expression <em>jmxValue</em> <em>operation</em> <em>value</em>
      */
     @Override
@@ -182,42 +209,68 @@ public class JMXAccessorCondition extends JMXAccessorConditionBase {
             throw new BuildException("value attribute is not set");
         }
         if ((getName() == null || getAttribute() == null)) {
-            throw new BuildException(
-                    "Must specify an MBean name and attribute for condition");
+            throw new BuildException("Must specify an MBean name and attribute for condition");
         }
         if (testIfCondition() && testUnlessCondition()) {
+            String op = getOperation();
+            boolean equals = "==".equals(op);
+            boolean notEquals = "!=".equals(op);
+            boolean greater = ">".equals(op);
+            boolean greaterOrEquals = ">=".equals(op);
+            boolean lesser = "<".equals(op);
+            boolean lesserOrEquals = "<=".equals(op);
+            if (!equals && !notEquals && !greater && !greaterOrEquals && !lesser && !lesserOrEquals) {
+                throw new BuildException("Unsupported operation '" + op +
+                        "'. Supported operations are ==, !=, >, >=, < and <=.");
+            }
+            boolean relational = !equals && !notEquals;
+            if (relational && !"long".equals(type) && !"double".equals(type)) {
+                throw new BuildException("Unsupported type '" + type + "' for operation '" + op +
+                        "'. Supported types for relational operations are long and double.");
+            }
             String jmxValue = accessJMXValue();
             if (jmxValue != null) {
-                String op = getOperation();
-                if ("==".equals(op)) {
+                if (equals) {
                     return jmxValue.equals(value);
-                } else if ("!=".equals(op)) {
+                } else if (notEquals) {
                     return !jmxValue.equals(value);
+                } else if ("double".equals(type)) {
+                    double jvalue;
+                    double dvalue;
+                    try {
+                        jvalue = Double.parseDouble(jmxValue);
+                        dvalue = Double.parseDouble(value);
+                    } catch (NumberFormatException e) {
+                        throw new BuildException("Unable to compare the JMX attribute value '" + jmxValue +
+                                "' with the expected value '" + value + "' as a double", e);
+                    }
+                    if (greater) {
+                        return jvalue > dvalue;
+                    } else if (greaterOrEquals) {
+                        return jvalue >= dvalue;
+                    } else if (lesser) {
+                        return jvalue < dvalue;
+                    } else {
+                        return jvalue <= dvalue;
+                    }
                 } else {
-                    if ("long".equals(type)) {
-                        long jvalue = Long.parseLong(jmxValue);
-                        long lvalue = Long.parseLong(value);
-                        if (">".equals(op)) {
-                            return jvalue > lvalue;
-                        } else if (">=".equals(op)) {
-                            return jvalue >= lvalue;
-                        } else if ("<".equals(op)) {
-                            return jvalue < lvalue;
-                        } else if ("<=".equals(op)) {
-                            return jvalue <= lvalue;
-                        }
-                    } else if ("double".equals(type)) {
-                        double jvalue = Double.parseDouble(jmxValue);
-                        double dvalue = Double.parseDouble(value);
-                        if (">".equals(op)) {
-                            return jvalue > dvalue;
-                        } else if (">=".equals(op)) {
-                            return jvalue >= dvalue;
-                        } else if ("<".equals(op)) {
-                            return jvalue < dvalue;
-                        } else if ("<=".equals(op)) {
-                            return jvalue <= dvalue;
-                        }
+                    long jvalue;
+                    long lvalue;
+                    try {
+                        jvalue = Long.parseLong(jmxValue);
+                        lvalue = Long.parseLong(value);
+                    } catch (NumberFormatException e) {
+                        throw new BuildException("Unable to compare the JMX attribute value '" + jmxValue +
+                                "' with the expected value '" + value + "' as a long", e);
+                    }
+                    if (greater) {
+                        return jvalue > lvalue;
+                    } else if (greaterOrEquals) {
+                        return jvalue >= lvalue;
+                    } else if (lesser) {
+                        return jvalue < lvalue;
+                    } else {
+                        return jvalue <= lvalue;
                     }
                 }
             }
@@ -225,5 +278,5 @@ public class JMXAccessorCondition extends JMXAccessorConditionBase {
         }
         return true;
     }
- }
+}
 

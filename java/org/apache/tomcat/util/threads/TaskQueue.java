@@ -24,68 +24,116 @@ import java.util.concurrent.TimeUnit;
 import org.apache.tomcat.util.res.StringManager;
 
 /**
- * As task queue specifically designed to run with a thread pool executor. The
- * task queue is optimised to properly utilize threads within a thread pool
- * executor. If you use a normal queue, the executor will spawn threads when
- * there are idle threads and you wont be able to force items onto the queue
- * itself.
+ * A task queue specifically designed to run with a thread pool executor. The task queue is optimised to properly
+ * utilize threads within a thread pool executor. A normal queue causes the executor to queue tasks first and only
+ * create new threads once the queue is full. This queue instead refuses to queue a task while all existing threads
+ * are busy and the pool size is below its maximum, so the executor creates a new thread for the task instead. It also
+ * supports forcing items onto the queue via {@link #force(Runnable)}.
  */
-public class TaskQueue extends LinkedBlockingQueue<Runnable> {
+public class TaskQueue extends LinkedBlockingQueue<Runnable> implements RetryableQueue<Runnable> {
 
     private static final long serialVersionUID = 1L;
-    protected static final StringManager sm = StringManager
-            .getManager("org.apache.tomcat.util.threads.res");
+    /**
+     * The string manager for this package.
+     */
+    protected static final StringManager sm = StringManager.getManager(TaskQueue.class);
 
+    /**
+     * The parent thread pool executor.
+     */
     private transient volatile ThreadPoolExecutor parent = null;
 
-    // No need to be volatile. This is written and read in a single thread
-    // (when stopping a context and firing the  listeners)
-    private Integer forcedRemainingCapacity = null;
-
+    /**
+     * Constructs a new TaskQueue with default capacity.
+     */
     public TaskQueue() {
         super();
     }
 
+    /**
+     * Constructs a new TaskQueue with the given capacity.
+     *
+     * @param capacity the queue capacity
+     */
     public TaskQueue(int capacity) {
         super(capacity);
     }
 
+    /**
+     * Constructs a new TaskQueue containing the elements in the given collection.
+     *
+     * @param c the collection of initial elements
+     */
     public TaskQueue(Collection<? extends Runnable> c) {
         super(c);
     }
 
+    /**
+     * Sets the parent thread pool executor for this queue.
+     *
+     * @param tp the parent executor
+     */
     public void setParent(ThreadPoolExecutor tp) {
         parent = tp;
     }
 
+
+    @Override
     public boolean force(Runnable o) {
-        if (parent == null || parent.isShutdown()) throw new RejectedExecutionException(sm.getString("taskQueue.notRunning"));
-        return super.offer(o); //forces the item onto the queue, to be used if the task is rejected
+        if (parent == null || parent.isShutdown()) {
+            throw new RejectedExecutionException(sm.getString("taskQueue.notRunning"));
+        }
+        return super.offer(o); // forces the item onto the queue, to be used if the task is rejected
     }
 
+
+    @Override
+    @Deprecated
     public boolean force(Runnable o, long timeout, TimeUnit unit) throws InterruptedException {
-        if (parent == null || parent.isShutdown()) throw new RejectedExecutionException(sm.getString("taskQueue.notRunning"));
-        return super.offer(o,timeout,unit); //forces the item onto the queue, to be used if the task is rejected
+        if (parent == null || parent.isShutdown()) {
+            throw new RejectedExecutionException(sm.getString("taskQueue.notRunning"));
+        }
+        return super.offer(o, timeout, unit); // forces the item onto the queue, to be used if the task is rejected
     }
+
 
     @Override
     public boolean offer(Runnable o) {
-      //we can't do any checks
-        if (parent==null) return super.offer(o);
-        //we are maxed out on threads, simply queue the object
-        if (parent.getPoolSize() == parent.getMaximumPoolSize()) return super.offer(o);
-        //we have idle threads, just add it to the queue
-        if (parent.getSubmittedCount()<=(parent.getPoolSize())) return super.offer(o);
-        //if we have less threads than maximum force creation of a new thread
-        if (parent.getPoolSize()<parent.getMaximumPoolSize()) return false;
-        //if we reached here, we need to add it to the queue
+        // we can't do any checks
+        if (parent == null) {
+            return super.offer(o);
+        }
+        // we are maxed out on threads, simply queue the object
+        if (parent.getPoolSizeNoLock() == parent.getMaximumPoolSize()) {
+            return super.offer(o);
+        }
+        // we have idle threads, just add it to the queue
+        if (parent.getSubmittedCount() <= parent.getPoolSizeNoLock()) {
+            return super.offer(o);
+        }
+        // if we have less threads than maximum force creation of a new thread
+        if (parent.getPoolSizeNoLock() < parent.getMaximumPoolSize()) {
+            return false;
+        }
+        // if we reached here, we need to add it to the queue
         return super.offer(o);
     }
 
 
+    /**
+     * Removes and returns the head of this queue, waiting up to the specified wait time if necessary for an element to
+     * become available.
+     *
+     * @param timeout the maximum time to wait
+     * @param unit    the time unit of the timeout argument
+     *
+     * @return the head of this queue, or {@code null} if the specified waiting time elapses before an element becomes
+     *             available
+     * @throws InterruptedException if interrupted while waiting
+     * @throws StopPooledThreadException if the current thread is due to be stopped by the parent executor
+     */
     @Override
-    public Runnable poll(long timeout, TimeUnit unit)
-            throws InterruptedException {
+    public Runnable poll(long timeout, TimeUnit unit) throws InterruptedException {
         Runnable runnable = super.poll(timeout, unit);
         if (runnable == null && parent != null) {
             // the poll timed out, it gives an opportunity to stop the current
@@ -98,29 +146,20 @@ public class TaskQueue extends LinkedBlockingQueue<Runnable> {
     @Override
     public Runnable take() throws InterruptedException {
         if (parent != null && parent.currentThreadShouldBeStopped()) {
-            return poll(parent.getKeepAliveTime(TimeUnit.MILLISECONDS),
-                    TimeUnit.MILLISECONDS);
+            long timeout = parent.getKeepAliveTime(TimeUnit.MILLISECONDS);
+            if (timeout <= 0) {
+                /*
+                 * A timed wait with a zero timeout can not block. Waiting for the thread renewal delay instead keeps
+                 * the check for whether the thread should stop at a bounded interval without consuming CPU while the
+                 * queue is empty.
+                 */
+                timeout = Math.max(1, parent.getThreadRenewalDelay());
+            }
+            return poll(timeout, TimeUnit.MILLISECONDS);
             // yes, this may return null (in case of timeout) which normally
             // does not occur with take()
             // but the ThreadPoolExecutor implementation allows this
         }
         return super.take();
     }
-
-    @Override
-    public int remainingCapacity() {
-        if (forcedRemainingCapacity != null) {
-            // ThreadPoolExecutor.setCorePoolSize checks that
-            // remainingCapacity==0 to allow to interrupt idle threads
-            // I don't see why, but this hack allows to conform to this
-            // "requirement"
-            return forcedRemainingCapacity.intValue();
-        }
-        return super.remainingCapacity();
-    }
-
-    public void setForcedRemainingCapacity(Integer forcedRemainingCapacity) {
-        this.forcedRemainingCapacity = forcedRemainingCapacity;
-    }
-
 }

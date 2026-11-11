@@ -21,40 +21,38 @@ import javax.servlet.ServletContext;
 import org.apache.jasper.JspCompilationContext;
 
 /**
- * Provides {@link ELInterpreter} instances for JSP compilation.
- *
- * The search order is as follows:
+ * Provides {@link ELInterpreter} instances for JSP compilation. The search order is as follows:
  * <ol>
- * <li>ELInterpreter instance or implementation class name provided as a
- *     ServletContext attribute</li>
- * <li>Implementation class named in a ServletContext initialisation parameter
- *     </li>
+ * <li>ELInterpreter instance or implementation class name provided as a ServletContext attribute</li>
+ * <li>Implementation class named in a ServletContext initialisation parameter</li>
  * <li>Default implementation</li>
  * </ol>
  */
 public class ELInterpreterFactory {
 
-    public static final String EL_INTERPRETER_CLASS_NAME =
-            ELInterpreter.class.getName();
+    /**
+     * The name of the EL interpreter class used as a ServletContext attribute and init parameter key.
+     */
+    public static final String EL_INTERPRETER_CLASS_NAME = ELInterpreter.class.getName();
 
-    private static final ELInterpreter DEFAULT_INSTANCE =
-            new DefaultELInterpreter();
+    private static final ELInterpreter DEFAULT_INSTANCE = new DefaultELInterpreter();
 
 
     /**
      * Obtain the correct EL Interpreter for the given web application.
+     *
      * @param context The Servlet context
+     *
      * @return the EL interpreter
+     *
      * @throws Exception If an error occurs creating the interpreter
      */
-    public static ELInterpreter getELInterpreter(ServletContext context)
-            throws Exception {
+    public static ELInterpreter getELInterpreter(ServletContext context) throws Exception {
 
         ELInterpreter result = null;
 
         // Search for an implementation
-        // 1. ServletContext attribute (set by application or cached by a
-        //    previous call to this method).
+        // 1. ServletContext attribute (set by application or cached by a previous call to this method).
         Object attribute = context.getAttribute(EL_INTERPRETER_CLASS_NAME);
         if (attribute instanceof ELInterpreter) {
             return (ELInterpreter) attribute;
@@ -64,8 +62,7 @@ public class ELInterpreterFactory {
 
         // 2. ServletContext init parameter
         if (result == null) {
-            String className =
-                    context.getInitParameter(EL_INTERPRETER_CLASS_NAME);
+            String className = context.getInitParameter(EL_INTERPRETER_CLASS_NAME);
             if (className != null) {
                 result = createInstance(context, className);
             }
@@ -82,10 +79,8 @@ public class ELInterpreterFactory {
     }
 
 
-    private static ELInterpreter createInstance(ServletContext context,
-            String className) throws Exception {
-        return (ELInterpreter) context.getClassLoader().loadClass(
-                    className).getConstructor().newInstance();
+    private static ELInterpreter createInstance(ServletContext context, String className) throws Exception {
+        return (ELInterpreter) context.getClassLoader().loadClass(className).getConstructor().newInstance();
     }
 
 
@@ -94,14 +89,21 @@ public class ELInterpreterFactory {
     }
 
 
+    /**
+     * Default implementation of {@link ELInterpreter} that delegates to {@link JspUtil#interpreterCall}.
+     */
     public static class DefaultELInterpreter implements ELInterpreter {
 
+        /**
+         * Creates a new DefaultELInterpreter instance.
+         */
+        public DefaultELInterpreter() {
+        }
+
         @Override
-        public String interpreterCall(JspCompilationContext context,
-                boolean isTagFile, String expression,
+        public String interpreterCall(JspCompilationContext context, boolean isTagFile, String expression,
                 Class<?> expectedType, String fnmapvar) {
-            return JspUtil.interpreterCall(isTagFile, expression, expectedType,
-                    fnmapvar);
+            return JspUtil.interpreterCall(isTagFile, expression, expectedType, fnmapvar);
         }
     }
 }

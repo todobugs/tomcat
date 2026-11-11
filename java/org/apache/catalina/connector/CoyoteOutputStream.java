@@ -18,6 +18,7 @@ package org.apache.catalina.connector;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.util.Objects;
 
 import javax.servlet.ServletOutputStream;
 import javax.servlet.WriteListener;
@@ -26,23 +27,31 @@ import org.apache.tomcat.util.res.StringManager;
 
 /**
  * Coyote implementation of the servlet output stream.
- *
- * @author Costin Manolache
- * @author Remy Maucherat
  */
 public class CoyoteOutputStream extends ServletOutputStream {
 
+    /**
+     * The string manager for this class.
+     */
     protected static final StringManager sm = StringManager.getManager(CoyoteOutputStream.class);
 
 
     // ----------------------------------------------------- Instance Variables
 
+    /**
+     * The underlying output buffer.
+     */
     protected OutputBuffer ob;
 
 
     // ----------------------------------------------------------- Constructors
 
 
+    /**
+     * Construct a new CoyoteOutputStream.
+     *
+     * @param ob The underlying output buffer
+     */
     protected CoyoteOutputStream(OutputBuffer ob) {
         this.ob = ob;
     }
@@ -55,7 +64,7 @@ public class CoyoteOutputStream extends ServletOutputStream {
      * Prevent cloning the facade.
      */
     @Override
-    protected Object clone() throws CloneNotSupportedException {
+    public Object clone() throws CloneNotSupportedException {
         throw new CloneNotSupportedException();
     }
 
@@ -77,7 +86,11 @@ public class CoyoteOutputStream extends ServletOutputStream {
     @Override
     public void write(int i) throws IOException {
         boolean nonBlocking = checkNonBlockingWrite();
-        ob.writeByte(i);
+        try {
+            ob.writeByte(i);
+        } catch (IOException ioe) {
+            handleIOException(ioe);
+        }
         if (nonBlocking) {
             checkRegisterForWrite();
         }
@@ -93,7 +106,11 @@ public class CoyoteOutputStream extends ServletOutputStream {
     @Override
     public void write(byte[] b, int off, int len) throws IOException {
         boolean nonBlocking = checkNonBlockingWrite();
-        ob.write(b, off, len);
+        try {
+            ob.write(b, off, len);
+        } catch (IOException ioe) {
+            handleIOException(ioe);
+        }
         if (nonBlocking) {
             checkRegisterForWrite();
         }
@@ -101,8 +118,13 @@ public class CoyoteOutputStream extends ServletOutputStream {
 
 
     public void write(ByteBuffer from) throws IOException {
+        Objects.requireNonNull(from);
         boolean nonBlocking = checkNonBlockingWrite();
-        ob.write(from);
+        try {
+            ob.write(from);
+        } catch (IOException ioe) {
+            handleIOException(ioe);
+        }
         if (nonBlocking) {
             checkRegisterForWrite();
         }
@@ -115,7 +137,11 @@ public class CoyoteOutputStream extends ServletOutputStream {
     @Override
     public void flush() throws IOException {
         boolean nonBlocking = checkNonBlockingWrite();
-        ob.flush();
+        try {
+            ob.flush();
+        } catch (IOException ioe) {
+            handleIOException(ioe);
+        }
         if (nonBlocking) {
             checkRegisterForWrite();
         }
@@ -123,12 +149,9 @@ public class CoyoteOutputStream extends ServletOutputStream {
 
 
     /**
-     * Checks for concurrent writes which are not permitted. This object has no
-     * state information so the call chain is
-     * CoyoteOutputStream->OutputBuffer->CoyoteResponse.
+     * Checks that the underlying output buffer is ready for writing when this OutputStream is in non-blocking mode.
      *
-     * @return <code>true</code> if this OutputStream is currently in
-     *         non-blocking mode.
+     * @return <code>true</code> if this OutputStream is currently in non-blocking mode.
      */
     private boolean checkNonBlockingWrite() {
         boolean nonBlocking = !ob.isBlocking();
@@ -140,12 +163,10 @@ public class CoyoteOutputStream extends ServletOutputStream {
 
 
     /**
-     * Checks to see if there is data left in the Coyote output buffers (NOT the
-     * servlet output buffer) and if so registers the associated socket for
-     * write so the buffers will be emptied. The container will take care of
-     * this. As far as the app is concerned, there is a non-blocking write in
-     * progress. It doesn't have visibility of whether the data is buffered in
-     * the socket buffer or the Coyote buffers.
+     * Checks to see if there is data left in the Coyote output buffers (NOT the servlet output buffer) and if so
+     * registers the associated socket for write so the buffers will be emptied. The container will take care of this.
+     * As far as the app is concerned, there is a non-blocking write in progress. It doesn't have visibility of whether
+     * the data is buffered in the socket buffer or the Coyote buffers.
      */
     private void checkRegisterForWrite() {
         ob.checkRegisterForWrite();
@@ -154,11 +175,18 @@ public class CoyoteOutputStream extends ServletOutputStream {
 
     @Override
     public void close() throws IOException {
-        ob.close();
+        try {
+            ob.close();
+        } catch (IOException ioe) {
+            handleIOException(ioe);
+        }
     }
 
     @Override
     public boolean isReady() {
+        if (ob == null) {
+            throw new IllegalStateException(sm.getString("coyoteOutputStream.null"));
+        }
         return ob.isReady();
     }
 
@@ -166,6 +194,30 @@ public class CoyoteOutputStream extends ServletOutputStream {
     @Override
     public void setWriteListener(WriteListener listener) {
         ob.setWriteListener(listener);
+    }
+
+
+    private void handleIOException(IOException ioe) throws IOException {
+        try {
+            ob.setErrorException(ioe);
+        } catch (NullPointerException npe) {
+            /*
+             * Ignore.
+             *
+             * An IOException on a non-container thread during asynchronous Servlet processing will trigger a dispatch
+             * to a container thread that will complete the asynchronous processing and recycle the request, response
+             * and associated objects including the OutputBuffer. Depending on timing it is possible that the
+             * OutputBuffer will have been cleared by the time the call above is made - resulting in an NPE.
+             *
+             * If the OutputBuffer is null then there is no need to call setErrorException(). Catching and ignoring the
+             * NPE is (for now at least) a simpler solution than adding locking to OutputBuffer to ensure it is non-null
+             * and remains non-null while setErrorException() is called.
+             *
+             * The longer term solution is likely a refactoring and clean-up of error handling for asynchronous requests
+             * but that is potentially a significant piece of work.
+             */
+        }
+        throw ioe;
     }
 }
 

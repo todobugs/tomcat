@@ -25,8 +25,8 @@ import org.junit.Test;
  * Basic tests for Cookie in default configuration.
  */
 public class TestCookie {
-    public static final BitSet CHAR;  // <any US-ASCII character (octets 0 - 127)>
-    public static final BitSet CTL;   // <any US-ASCII control character (octets 0 - 31) and DEL (127)>
+    public static final BitSet CHAR; // <any US-ASCII character (octets 0 - 127)>
+    public static final BitSet CTL; // <any US-ASCII control character (octets 0 - 31) and DEL (127)>
     public static final BitSet SEPARATORS;
     public static final BitSet TOKEN; // 1*<any CHAR except CTLs or separators>
 
@@ -56,6 +56,8 @@ public class TestCookie {
         Assert.assertNull(cookie.getValue());
         Assert.assertEquals(0, cookie.getVersion());
         Assert.assertEquals(-1, cookie.getMaxAge());
+        Assert.assertFalse(cookie.isHttpOnly());
+        Assert.assertFalse(cookie.getSecure());
     }
 
     @Test
@@ -133,6 +135,57 @@ public class TestCookie {
         @SuppressWarnings("unused")
         Cookie cookie = new Cookie("$Foo", null);
     }
+
+    @Test
+    public void testHttpOnlySet() {
+        Cookie cookie = new Cookie("name", "value");
+        cookie.setHttpOnly(true);
+        Assert.assertTrue(cookie.isHttpOnly());
+    }
+
+    @Test
+    public void testHttpOnlyUnset() {
+        Cookie cookie = new Cookie("name", "value");
+        cookie.setHttpOnly(false);
+        Assert.assertFalse(cookie.isHttpOnly());
+    }
+
+    @Test
+    public void testSecureSet() {
+        Cookie cookie = new Cookie("name", "value");
+        cookie.setSecure(true);
+        Assert.assertTrue(cookie.getSecure());
+    }
+
+    @Test
+    public void testSecureUnset() {
+        Cookie cookie = new Cookie("name", "value");
+        cookie.setSecure(false);
+        Assert.assertFalse(cookie.getSecure());
+    }
+
+    @Test
+    public void testClone() {
+        Cookie a = new Cookie("a", "a");
+        a.setComment("comment");
+        a.setDomain("domain");
+        a.setHttpOnly(true);
+        a.setMaxAge(123);
+        a.setPath("/path");
+        a.setSecure(true);
+
+        Cookie b = (Cookie) a.clone();
+
+        Assert.assertEquals("a", b.getName());
+        Assert.assertEquals("a", b.getValue());
+        Assert.assertEquals("comment", b.getComment());
+        Assert.assertEquals("domain", b.getDomain());
+        Assert.assertTrue(b.isHttpOnly());
+        Assert.assertEquals(123, b.getMaxAge());
+        Assert.assertEquals("/path", b.getPath());
+        Assert.assertTrue(b.getSecure());
+    }
+
 
     public static void checkCharInName(CookieNameValidator validator, BitSet allowed) {
         for (char ch = 0; ch < allowed.size(); ch++) {

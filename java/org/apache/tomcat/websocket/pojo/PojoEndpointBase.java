@@ -22,6 +22,7 @@ import java.util.Map;
 import java.util.Set;
 
 import javax.websocket.CloseReason;
+import javax.websocket.CloseReason.CloseCodes;
 import javax.websocket.Endpoint;
 import javax.websocket.EndpointConfig;
 import javax.websocket.MessageHandler;
@@ -33,9 +34,8 @@ import org.apache.tomcat.util.ExceptionUtils;
 import org.apache.tomcat.util.res.StringManager;
 
 /**
- * Base implementation (client and server have different concrete
- * implementations) of the wrapper that converts a POJO instance into a
- * WebSocket endpoint instance.
+ * Base implementation (client and server have different concrete implementations) of the wrapper that converts a POJO
+ * instance into a WebSocket endpoint instance.
  */
 public abstract class PojoEndpointBase extends Endpoint {
 
@@ -43,34 +43,44 @@ public abstract class PojoEndpointBase extends Endpoint {
     private static final StringManager sm = StringManager.getManager(PojoEndpointBase.class);
 
     private Object pojo;
-    private Map<String,String> pathParameters;
+    private final Map<String,String> pathParameters;
     private PojoMethodMapping methodMapping;
 
 
+    /**
+     * Constructs a new PojoEndpointBase.
+     *
+     * @param pathParameters the path parameters for the endpoint
+     */
+    protected PojoEndpointBase(Map<String,String> pathParameters) {
+        this.pathParameters = pathParameters;
+    }
+
+
+    /**
+     * Handles the WebSocket session open event by adding message handlers and invoking the onOpen method.
+     *
+     * @param session the WebSocket session
+     * @param config the endpoint configuration
+     */
     protected final void doOnOpen(Session session, EndpointConfig config) {
         PojoMethodMapping methodMapping = getMethodMapping();
         Object pojo = getPojo();
-        Map<String,String> pathParameters = getPathParameters();
 
         // Add message handlers before calling onOpen since that may trigger a
         // message which in turn could trigger a response and/or close the
         // session
-        for (MessageHandler mh : methodMapping.getMessageHandlers(pojo,
-                pathParameters, session, config)) {
+        for (MessageHandler mh : methodMapping.getMessageHandlers(pojo, pathParameters, session, config)) {
             session.addMessageHandler(mh);
         }
 
         if (methodMapping.getOnOpen() != null) {
             try {
-                methodMapping.getOnOpen().invoke(pojo,
-                        methodMapping.getOnOpenArgs(
-                                pathParameters, session, config));
+                methodMapping.getOnOpen().invoke(pojo, methodMapping.getOnOpenArgs(pathParameters, session, config));
 
             } catch (IllegalAccessException e) {
                 // Reflection related problems
-                log.error(sm.getString(
-                        "pojoEndpointBase.onOpenFail",
-                        pojo.getClass().getName()), e);
+                log.error(sm.getString("pojoEndpointBase.onOpenFail", pojo.getClass().getName()), e);
                 handleOnOpenOrCloseError(session, e);
             } catch (InvocationTargetException e) {
                 Throwable cause = e.getCause();
@@ -89,7 +99,8 @@ public abstract class PojoEndpointBase extends Endpoint {
         // Trigger the error handler and close the session
         onError(session, t);
         try {
-            session.close();
+            CloseReason cr = new CloseReason(CloseCodes.CLOSED_ABNORMALLY, t.getMessage());
+            session.close(cr);
         } catch (IOException ioe) {
             log.warn(sm.getString("pojoEndpointBase.closeSessionFail"), ioe);
         }
@@ -103,8 +114,7 @@ public abstract class PojoEndpointBase extends Endpoint {
                 methodMapping.getOnClose().invoke(pojo,
                         methodMapping.getOnCloseArgs(pathParameters, session, closeReason));
             } catch (Throwable t) {
-                log.error(sm.getString("pojoEndpointBase.onCloseFail",
-                        pojo.getClass().getName()), t);
+                log.error(sm.getString("pojoEndpointBase.onCloseFail", pojo.getClass().getName()), t);
                 handleOnOpenOrCloseError(session, t);
             }
         }
@@ -123,33 +133,52 @@ public abstract class PojoEndpointBase extends Endpoint {
     public final void onError(Session session, Throwable throwable) {
 
         if (methodMapping.getOnError() == null) {
-            log.error(sm.getString("pojoEndpointBase.onError",
-                    pojo.getClass().getName()), throwable);
+            log.error(sm.getString("pojoEndpointBase.onError", pojo.getClass().getName()), throwable);
         } else {
             try {
-                methodMapping.getOnError().invoke(
-                        pojo,
-                        methodMapping.getOnErrorArgs(pathParameters, session,
-                                throwable));
+                methodMapping.getOnError().invoke(pojo,
+                        methodMapping.getOnErrorArgs(pathParameters, session, throwable));
             } catch (Throwable t) {
                 ExceptionUtils.handleThrowable(t);
-                log.error(sm.getString("pojoEndpointBase.onErrorFail",
-                        pojo.getClass().getName()), t);
+                log.error(sm.getString("pojoEndpointBase.onErrorFail", pojo.getClass().getName()), t);
             }
         }
     }
 
-    protected Object getPojo() { return pojo; }
-    protected void setPojo(Object pojo) { this.pojo = pojo; }
-
-
-    protected Map<String,String> getPathParameters() { return pathParameters; }
-    protected void setPathParameters(Map<String,String> pathParameters) {
-        this.pathParameters = pathParameters;
+    /**
+     * Returns the POJO instance wrapped by this endpoint. This is the instance that the container's instance manager
+     * created (or registered) so, when the session using this endpoint closes, it is this instance and not the wrapper
+     * that must be passed to the instance manager to destroy it.
+     *
+     * @return the POJO instance
+     */
+    public Object getPojo() {
+        return pojo;
     }
 
+    /**
+     * Sets the POJO instance wrapped by this endpoint.
+     *
+     * @param pojo the POJO instance
+     */
+    protected void setPojo(Object pojo) {
+        this.pojo = pojo;
+    }
 
-    protected PojoMethodMapping getMethodMapping() { return methodMapping; }
+    /**
+     * Returns the method mapping for this endpoint.
+     *
+     * @return the method mapping
+     */
+    protected PojoMethodMapping getMethodMapping() {
+        return methodMapping;
+    }
+
+    /**
+     * Sets the method mapping for this endpoint.
+     *
+     * @param methodMapping the method mapping
+     */
     protected void setMethodMapping(PojoMethodMapping methodMapping) {
         this.methodMapping = methodMapping;
     }

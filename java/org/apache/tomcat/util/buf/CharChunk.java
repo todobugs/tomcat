@@ -19,14 +19,8 @@ package org.apache.tomcat.util.buf;
 import java.io.IOException;
 
 /**
- * Utilities to manipulate char chunks. While String is the easiest way to
- * manipulate chars ( search, substrings, etc), it is known to not be the most
- * efficient solution - Strings are designed as immutable and secure objects.
- *
- * @author dac@sun.com
- * @author James Todd [gonzo@sun.com]
- * @author Costin Manolache
- * @author Remy Maucherat
+ * Utilities to manipulate char chunks. While String is the easiest way to manipulate chars ( search, substrings, etc),
+ * it is known to not be the most efficient solution - Strings are designed as immutable and secure objects.
  */
 public final class CharChunk extends AbstractChunk implements CharSequence {
 
@@ -35,7 +29,7 @@ public final class CharChunk extends AbstractChunk implements CharSequence {
     /**
      * Input interface, used when the buffer is empty.
      */
-    public static interface CharInputChannel {
+    public interface CharInputChannel {
 
         /**
          * Read new characters.
@@ -44,30 +38,32 @@ public final class CharChunk extends AbstractChunk implements CharSequence {
          *
          * @throws IOException If an I/O error occurs during reading
          */
-        public int realReadChars() throws IOException;
+        int realReadChars() throws IOException;
     }
 
     /**
-     * When we need more space we'll either grow the buffer ( up to the limit )
-     * or send it to a channel.
+     * When we need more space we'll either grow the buffer ( up to the limit ) or send it to a channel.
      */
-    public static interface CharOutputChannel {
+    public interface CharOutputChannel {
 
         /**
-         * Send the bytes ( usually the internal conversion buffer ). Expect 8k
-         * output if the buffer is full.
+         * Send the characters ( usually the internal conversion buffer ). Expect 8k output if the buffer is full.
          *
          * @param buf characters that will be written
          * @param off offset in the characters array
          * @param len length that will be written
+         *
          * @throws IOException If an I/O occurs while writing the characters
          */
-        public void realWriteChars(char buf[], int off, int len) throws IOException;
+        void realWriteChars(char[] buf, int off, int len) throws IOException;
     }
 
     // --------------------
 
     // char[]
+    /**
+     * The underlying character buffer.
+     */
     private char[] buff;
 
     // transient as serialization is primarily for values via, e.g. JMX
@@ -82,21 +78,36 @@ public final class CharChunk extends AbstractChunk implements CharSequence {
     }
 
 
+    /**
+     * Creates a new CharChunk with the specified initial buffer size.
+     *
+     * @param initial the initial buffer size
+     */
     public CharChunk(int initial) {
         allocate(initial, -1);
     }
 
 
-    // --------------------
-
     @Override
-    public Object clone() throws CloneNotSupportedException {
-        return super.clone();
+    public CharChunk clone() throws CloneNotSupportedException {
+        CharChunk result = (CharChunk) super.clone();
+        if (buff != null) {
+            result.buff = buff.clone();
+        }
+        result.in = null;
+        result.out = null;
+        return result;
     }
 
 
     // -------------------- Setup --------------------
 
+    /**
+     * Allocates a buffer of the specified size.
+     *
+     * @param initial the initial buffer size
+     * @param limit the maximum buffer size
+     */
     public void allocate(int initial, int limit) {
         if (buff == null || buff.length < initial) {
             buff = new char[initial];
@@ -110,9 +121,9 @@ public final class CharChunk extends AbstractChunk implements CharSequence {
 
 
     /**
-     * Sets the buffer to the specified subarray of characters.
+     * Sets the buffer to the specified sub array of characters.
      *
-     * @param c the characters
+     * @param c   the characters
      * @param off the start offset of the characters
      * @param len the length of the characters
      */
@@ -126,7 +137,9 @@ public final class CharChunk extends AbstractChunk implements CharSequence {
 
 
     /**
-     * @return the buffer.
+     * Returns the character buffer.
+     *
+     * @return the character buffer
      */
     public char[] getChars() {
         return getBuffer();
@@ -134,7 +147,9 @@ public final class CharChunk extends AbstractChunk implements CharSequence {
 
 
     /**
-     * @return the buffer.
+     * Returns the underlying character buffer.
+     *
+     * @return the underlying character buffer
      */
     public char[] getBuffer() {
         return buff;
@@ -152,9 +167,8 @@ public final class CharChunk extends AbstractChunk implements CharSequence {
 
 
     /**
-     * When the buffer is full, write the data to the output channel. Also used
-     * when large amount of data is appended. If not set, the buffer will grow
-     * to the limit.
+     * When the buffer is full, write the data to the output channel. Also used when large amount of data is appended.
+     * If not set, the buffer will grow to the limit.
      *
      * @param out The output channel
      */
@@ -165,6 +179,13 @@ public final class CharChunk extends AbstractChunk implements CharSequence {
 
     // -------------------- Adding data to the buffer --------------------
 
+    /**
+     * Appends a single character to the buffer.
+     *
+     * @param c the character to append
+     *
+     * @throws IOException Writing overflow data to the output channel failed
+     */
     public void append(char c) throws IOException {
         makeSpace(1);
         int limit = getLimitInternal();
@@ -177,8 +198,15 @@ public final class CharChunk extends AbstractChunk implements CharSequence {
     }
 
 
+    /**
+     * Appends the contents of the source CharChunk to this buffer.
+     *
+     * @param src the source CharChunk
+     *
+     * @throws IOException Writing overflow data to the output channel failed
+     */
     public void append(CharChunk src) throws IOException {
-        append(src.getBuffer(), src.getOffset(), src.getLength());
+        append(src.getBuffer(), src.getStart(), src.getLength());
     }
 
 
@@ -188,9 +216,10 @@ public final class CharChunk extends AbstractChunk implements CharSequence {
      * @param src Char array
      * @param off Offset
      * @param len Length
+     *
      * @throws IOException Writing overflow data to the output channel failed
      */
-    public void append(char src[], int off, int len) throws IOException {
+    public void append(char[] src, int off, int len) throws IOException {
         // will grow, up to limit
         makeSpace(len);
         int limit = getLimitInternal();
@@ -213,7 +242,7 @@ public final class CharChunk extends AbstractChunk implements CharSequence {
 
         // Need more space than we can afford, need to flush buffer.
 
-        // The buffer is already at (or bigger than) limit.
+        // The buffer is below the limit but does not have enough contiguous space for the data to append.
 
         // Optimization:
         // If len-avail < length (i.e. after we fill the buffer with what we
@@ -223,9 +252,8 @@ public final class CharChunk extends AbstractChunk implements CharSequence {
 
         if (len + end < 2 * limit) {
             /*
-             * If the request length exceeds the size of the output buffer,
-             * flush the output buffer and then write the data directly. We
-             * can't avoid 2 writes, but we can write more on the second
+             * If the request length exceeds the size of the output buffer, flush the output buffer and then write the
+             * data directly. We can't avoid 2 writes, but we can write more on the second
              */
             int avail = limit - end;
             System.arraycopy(src, off, buff, end, avail);
@@ -250,6 +278,7 @@ public final class CharChunk extends AbstractChunk implements CharSequence {
      * Append a string to the buffer.
      *
      * @param s The string
+     *
      * @throws IOException Writing overflow data to the output channel failed
      */
     public void append(String s) throws IOException {
@@ -260,9 +289,10 @@ public final class CharChunk extends AbstractChunk implements CharSequence {
     /**
      * Append a string to the buffer.
      *
-     * @param s The string
+     * @param s   The string
      * @param off Offset
      * @param len Length
+     *
      * @throws IOException Writing overflow data to the output channel failed
      */
     public void append(String s, int off, int len) throws IOException {
@@ -277,7 +307,7 @@ public final class CharChunk extends AbstractChunk implements CharSequence {
         int sOff = off;
         int sEnd = off + len;
         while (sOff < sEnd) {
-            int d = min(limit - end, sEnd - sOff);
+            int d = Math.min(limit - end, sEnd - sOff);
             s.getChars(sOff, sOff + d, buff, end);
             sOff += d;
             end += d;
@@ -291,14 +321,20 @@ public final class CharChunk extends AbstractChunk implements CharSequence {
     // -------------------- Removing data from the buffer --------------------
 
     /*
-     * @deprecated Use {@link #subtract()}.
-     *             This method will be removed in Tomcat 10
+     * @deprecated Use {@link #subtract()}. This method will be removed in Tomcat 10
      */
     @Deprecated
     public int substract() throws IOException {
         return subtract();
     }
 
+    /**
+     * Subtracts a single character from the buffer.
+     *
+     * @return the character or -1 if end of stream
+     *
+     * @throws IOException If an I/O error occurs
+     */
     public int subtract() throws IOException {
         if (checkEof()) {
             return -1;
@@ -308,22 +344,29 @@ public final class CharChunk extends AbstractChunk implements CharSequence {
 
 
     /*
-     * @deprecated Use {@link #subtract(char[],int,int)}.
-     *             This method will be removed in Tomcat 10
+     * @deprecated Use {@link #subtract(char[],int,int)}. This method will be removed in Tomcat 10
      */
     @Deprecated
     public int substract(char dest[], int off, int len) throws IOException {
         return subtract(dest, off, len);
     }
 
+    /**
+     * Subtracts characters from the buffer into the destination array.
+     *
+     * @param dest the destination array
+     * @param off the offset in the destination array
+     * @param len the maximum number of characters to read
+     *
+     * @return the number of characters read or -1 if end of stream
+     *
+     * @throws IOException If an I/O error occurs
+     */
     public int subtract(char dest[], int off, int len) throws IOException {
         if (checkEof()) {
             return -1;
         }
-        int n = len;
-        if (len > getLength()) {
-            n = getLength();
-        }
+        int n = Math.min(len, getLength());
         System.arraycopy(buff, start, dest, off, n);
         start += n;
         return n;
@@ -335,26 +378,23 @@ public final class CharChunk extends AbstractChunk implements CharSequence {
             if (in == null) {
                 return true;
             }
-            int n = in.realReadChars();
-            if (n < 0) {
-                return true;
-            }
+            return in.realReadChars() < 0;
         }
         return false;
     }
 
 
     /**
-     * Send the buffer to the sink. Called by append() when the limit is
-     * reached. You can also call it explicitly to force the data to be written.
+     * Send the buffer to the sink. Called by append() when the limit is reached. You can also call it explicitly to
+     * force the data to be written.
      *
      * @throws IOException Writing overflow data to the output channel failed
      */
     public void flushBuffer() throws IOException {
         // assert out!=null
         if (out == null) {
-            throw new IOException(sm.getString("chunk.overflow",
-                    Integer.valueOf(getLimit()), Integer.valueOf(buff.length)));
+            throw new IOException(
+                    sm.getString("chunk.overflow", Integer.valueOf(getLimit()), Integer.valueOf(buff.length)));
         }
         out.realWriteChars(buff, start, end - start);
         end = start;
@@ -362,14 +402,12 @@ public final class CharChunk extends AbstractChunk implements CharSequence {
 
 
     /**
-     * Make space for len chars. If len is small, allocate a reserve space too.
-     * Never grow bigger than the limit or {@link AbstractChunk#ARRAY_MAX_SIZE}.
+     * Make space for len chars. If len is small, allocate a reserve space too. Never grow bigger than the limit or
+     * {@link AbstractChunk#ARRAY_MAX_SIZE}.
      *
      * @param count The size
      */
     public void makeSpace(int count) {
-        char[] tmp = null;
-
         int limit = getLimitInternal();
 
         long newSize;
@@ -388,7 +426,7 @@ public final class CharChunk extends AbstractChunk implements CharSequence {
         }
 
         // limit < buf.length (the buffer is already big)
-        // or we already have space XXX
+        // or we already have space
         if (desiredSize <= buff.length) {
             return;
         }
@@ -402,12 +440,11 @@ public final class CharChunk extends AbstractChunk implements CharSequence {
         if (newSize > limit) {
             newSize = limit;
         }
-        tmp = new char[(int) newSize];
+        char[] tmp = new char[(int) newSize];
 
         // Some calling code assumes buffer will not be compacted
         System.arraycopy(buff, 0, tmp, 0, end);
         buff = tmp;
-        tmp = null;
     }
 
 
@@ -424,6 +461,11 @@ public final class CharChunk extends AbstractChunk implements CharSequence {
     }
 
 
+    /**
+     * Returns the string representation of the chunk contents.
+     *
+     * @return the string representation
+     */
     public String toStringInternal() {
         return new String(buff, start, end - start);
     }
@@ -441,11 +483,11 @@ public final class CharChunk extends AbstractChunk implements CharSequence {
 
 
     /**
-     * Compares the message bytes to the specified String object.
+     * Compares the characters in this CharChunk to the specified String object.
      *
      * @param s the String to compare
-     * @return <code>true</code> if the comparison succeeded, <code>false</code>
-     *         otherwise
+     *
+     * @return <code>true</code> if the comparison succeeded, <code>false</code> otherwise
      */
     public boolean equals(String s) {
         char[] c = buff;
@@ -464,11 +506,11 @@ public final class CharChunk extends AbstractChunk implements CharSequence {
 
 
     /**
-     * Compares the message bytes to the specified String object.
+     * Compares the characters in this CharChunk to the specified String object, ignoring case.
      *
      * @param s the String to compare
-     * @return <code>true</code> if the comparison succeeded, <code>false</code>
-     *         otherwise
+     *
+     * @return <code>true</code> if the comparison succeeded, <code>false</code> otherwise
      */
     public boolean equalsIgnoreCase(String s) {
         char[] c = buff;
@@ -478,7 +520,14 @@ public final class CharChunk extends AbstractChunk implements CharSequence {
         }
         int off = start;
         for (int i = 0; i < len; i++) {
-            if (Ascii.toLower(c[off++]) != Ascii.toLower(s.charAt(i))) {
+            char c1 = c[off++];
+            char c2 = s.charAt(i);
+            // Use ASCII short-cut if possible
+            if (c1 > 0xFF || c2 > 0xFF) {
+                if (Character.toLowerCase(c1) != Character.toLowerCase(c2)) {
+                    return false;
+                }
+            } else if (Ascii.toLower(c1) != Ascii.toLower(c2)) {
                 return false;
             }
         }
@@ -486,13 +535,29 @@ public final class CharChunk extends AbstractChunk implements CharSequence {
     }
 
 
+    /**
+     * Compares this CharChunk to another CharChunk.
+     *
+     * @param cc the CharChunk to compare to
+     *
+     * @return true if the CharChunks are equal
+     */
     public boolean equals(CharChunk cc) {
-        return equals(cc.getChars(), cc.getOffset(), cc.getLength());
+        return equals(cc.getChars(), cc.getStart(), cc.getLength());
     }
 
 
-    public boolean equals(char b2[], int off2, int len2) {
-        char b1[] = buff;
+    /**
+     * Compares this CharChunk to a character array.
+     *
+     * @param b2 the character array to compare to
+     * @param off2 the offset in the character array
+     * @param len2 the length of the character array
+     *
+     * @return true if the contents are equal
+     */
+    public boolean equals(char[] b2, int off2, int len2) {
+        char[] b1 = buff;
         if (b1 == null && b2 == null) {
             return true;
         }
@@ -514,9 +579,11 @@ public final class CharChunk extends AbstractChunk implements CharSequence {
 
 
     /**
-     * @return <code>true</code> if the message bytes starts with the specified
-     *         string.
-     * @param s The string
+     * Checks if the buffer starts with the specified string.
+     *
+     * @param s the string to check
+     *
+     * @return true if the buffer starts with the specified string
      */
     public boolean startsWith(String s) {
         char[] c = buff;
@@ -537,7 +604,7 @@ public final class CharChunk extends AbstractChunk implements CharSequence {
     /**
      * Returns true if the buffer starts with the specified string.
      *
-     * @param s the string
+     * @param s   the string
      * @param pos The position
      *
      * @return <code>true</code> if the start matches
@@ -550,7 +617,14 @@ public final class CharChunk extends AbstractChunk implements CharSequence {
         }
         int off = start + pos;
         for (int i = 0; i < len; i++) {
-            if (Ascii.toLower(c[off++]) != Ascii.toLower(s.charAt(i))) {
+            char c1 = c[off++];
+            char c2 = s.charAt(i);
+            // Use ASCII short-cut if possible
+            if (c1 > 0xFF || c2 > 0xFF) {
+                if (Character.toLowerCase(c1) != Character.toLowerCase(c2)) {
+                    return false;
+                }
+            } else if (Ascii.toLower(c1) != Ascii.toLower(c2)) {
                 return false;
             }
         }
@@ -559,9 +633,11 @@ public final class CharChunk extends AbstractChunk implements CharSequence {
 
 
     /**
-     * @return <code>true</code> if the message bytes end with the specified
-     *         string.
-     * @param s The string
+     * Checks if the buffer ends with the specified string.
+     *
+     * @param s the string to check
+     *
+     * @return true if the buffer ends with the specified string
      */
     public boolean endsWith(String s) {
         char[] c = buff;
@@ -585,20 +661,26 @@ public final class CharChunk extends AbstractChunk implements CharSequence {
     }
 
 
+    /**
+     * Returns the index of the first occurrence of the given character.
+     *
+     * @param c the character to find
+     *
+     * @return the index of the character, or -1 if not found
+     */
     public int indexOf(char c) {
-        return indexOf(c, start);
+        return indexOf(c, 0);
     }
 
 
     /**
-     * Returns the first instance of the given character in this CharChunk
-     * starting at the specified char. If the character is not found, -1 is
-     * returned. <br>
+     * Returns the first instance of the given character in this CharChunk starting at the specified position. If the
+     * character is not found, -1 is returned. <br>
      *
-     * @param c The character
+     * @param c        The character
      * @param starting The start position
-     * @return The position of the first instance of the character or -1 if the
-     *         character is not found.
+     *
+     * @return The position of the first instance of the character or -1 if the character is not found.
      */
     public int indexOf(char c, int starting) {
         int ret = indexOf(buff, start + starting, end, c);
@@ -607,17 +689,17 @@ public final class CharChunk extends AbstractChunk implements CharSequence {
 
 
     /**
-     * Returns the first instance of the given character in the given char array
-     * between the specified start and end. <br>
+     * Returns the first instance of the given character in the given char array between the specified start and end.
+     * <br>
      *
      * @param chars The array to search
      * @param start The point to start searching from in the array
-     * @param end The point to stop searching in the array
-     * @param s The character to search for
-     * @return The position of the first instance of the character or -1 if the
-     *         character is not found.
+     * @param end   The point to stop searching in the array
+     * @param s     The character to search for
+     *
+     * @return The position of the first instance of the character or -1 if the character is not found.
      */
-    public static int indexOf(char chars[], int start, int end, char s) {
+    public static int indexOf(char[] chars, int start, int end, char s) {
         int offset = start;
 
         while (offset < end) {
@@ -632,13 +714,6 @@ public final class CharChunk extends AbstractChunk implements CharSequence {
 
 
     // -------------------- utils
-    private int min(int a, int b) {
-        if (a < b) {
-            return a;
-        }
-        return b;
-    }
-
 
     // Char sequence impl
 
@@ -651,8 +726,8 @@ public final class CharChunk extends AbstractChunk implements CharSequence {
     @Override
     public CharSequence subSequence(int start, int end) {
         try {
-            CharChunk result = (CharChunk) this.clone();
-            result.setOffset(this.start + start);
+            CharChunk result = this.clone();
+            result.setStart(this.start + start);
             result.setEnd(this.start + end);
             return result;
         } catch (CloneNotSupportedException e) {
@@ -672,8 +747,7 @@ public final class CharChunk extends AbstractChunk implements CharSequence {
      *
      * @param optimizedWrite Ignored
      *
-     * @deprecated Unused code. This is now a NO-OP and will be removed without
-     *             replacement in Tomcat 10.
+     * @deprecated Unused code. This is now a NO-OP and will be removed without replacement in Tomcat 10.
      */
     @Deprecated
     public void setOptimizedWrite(boolean optimizedWrite) {

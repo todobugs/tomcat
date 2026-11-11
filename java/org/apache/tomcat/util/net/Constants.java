@@ -16,26 +16,91 @@
  */
 package org.apache.tomcat.util.net;
 
+/**
+ * Constants for network utilities.
+ */
 public class Constants {
 
     /**
-     * Name of the system property containing
-     * the tomcat instance installation path
+     * Name of the system property containing the tomcat instance installation path
      */
     public static final String CATALINA_BASE_PROP = "catalina.base";
 
     /**
      * JSSE and OpenSSL protocol names
      */
-    public static final String SSL_PROTO_ALL        = "all";
-    public static final String SSL_PROTO_TLS        = "TLS";
-    public static final String SSL_PROTO_TLSv1_3    = "TLSv1.3";
-    public static final String SSL_PROTO_TLSv1_2    = "TLSv1.2";
-    public static final String SSL_PROTO_TLSv1_1    = "TLSv1.1";
+    public static final String SSL_PROTO_ALL = "all";
+    /**
+     * TLS protocol identifier.
+     */
+    public static final String SSL_PROTO_TLS = "TLS";
+    /**
+     * TLS 1.3 protocol identifier.
+     */
+    public static final String SSL_PROTO_TLSv1_3 = "TLSv1.3";
+    /**
+     * TLS 1.2 protocol identifier.
+     */
+    public static final String SSL_PROTO_TLSv1_2 = "TLSv1.2";
+    /**
+     * TLS 1.1 protocol identifier.
+     */
+    public static final String SSL_PROTO_TLSv1_1 = "TLSv1.1";
     // Two different forms for TLS 1.0
-    public static final String SSL_PROTO_TLSv1_0    = "TLSv1.0";
-    public static final String SSL_PROTO_TLSv1      = "TLSv1";
-    public static final String SSL_PROTO_SSLv3      = "SSLv3";
-    public static final String SSL_PROTO_SSLv2      = "SSLv2";
+    /**
+     * TLS 1.0 protocol identifier (with dot notation).
+     */
+    public static final String SSL_PROTO_TLSv1_0 = "TLSv1.0";
+    /**
+     * TLS 1.0 protocol identifier (without dot notation).
+     */
+    public static final String SSL_PROTO_TLSv1 = "TLSv1";
+    /**
+     * SSL 3.0 protocol identifier.
+     */
+    public static final String SSL_PROTO_SSLv3 = "SSLv3";
+    /**
+     * SSL 2.0 protocol identifier.
+     */
+    public static final String SSL_PROTO_SSLv2 = "SSLv2";
+    /**
+     * SSL 2.0 Hello protocol identifier.
+     */
     public static final String SSL_PROTO_SSLv2Hello = "SSLv2Hello";
+
+    public static final boolean IS_SECURITY_ENABLED = (System.getSecurityManager() != null);
+
+    /**
+     * Server authentication EKU OID.
+     */
+    public static final String SERVER_AUTH_EXTENDED_KEY_USAGE_OID = "1.3.6.1.5.5.7.3.1";
+    /**
+     * Any extended key usage OID.
+     */
+    public static final String ANY_EXTENDED_KEY_USAGE_OID = "2.5.29.37.0";
+
+    /**
+     * SunMSCAPI provider name.
+     */
+    public static final String SUNMSCAPI_PROVIDER_NAME = "SunMSCAPI";
+
+    /**
+     * Windows-MY key store type.
+     */
+    public static final String WINDOWS_MY_KEYSTORE_TYPE = "WINDOWS-MY";
+    /**
+     * Windows-MY key store type for the current user.
+     */
+    public static final String WINDOWS_MY_CURRENTUSER_KEYSTORE_TYPE = "WINDOWS-MY-CURRENTUSER";
+    /**
+     * Windows-MY key store type for the local machine.
+     */
+    public static final String WINDOWS_MY_LOCALMACHINE_KEYSTORE_TYPE = "WINDOWS-MY-LOCALMACHINE";
+
+    /**
+     * Private constructor to prevent instantiation.
+     */
+    private Constants() {
+        // Hide default constructor
+    }
 }

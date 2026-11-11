@@ -23,9 +23,6 @@
   &project;
 
   <properties>
-    <author email="craigmcc@apache.org">Craig R. McClanahan</author>
-    <author email="remm@apache.org">Remy Maucherat</author>
-    <author email="yoavs@apache.org">Yoav Shapira</author>
     <title>The Host Container</title>
   </properties>
 
@@ -90,7 +87,8 @@
         This is the pathname of a directory that may contain web applications
         to be deployed on this virtual host.  You may specify an
         absolute pathname, or a pathname that is relative to the
-        <code>$CATALINA_BASE</code> directory.  See
+        <code>$CATALINA_BASE</code> directory. Relative path names must be under
+        the <code>$CATALINA_BASE</code> directory. See
         <a href="#Automatic_Application_Deployment">Automatic Application
         Deployment</a> for more information on automatic recognition and
         deployment of web applications. If not specified, the default of
@@ -110,21 +108,22 @@
       </attribute>
 
       <attribute name="createDirs" required="false">
-        <p>If set to true, Tomcat will attempt to create the directories defined
-        by the  attributes <code>appBase</code> and <code>xmlBase</code> during
-        the startup phase. The default value is <code>true</code>. If set to
-        true, and directory creation fails, an error message will be printed out
-        but will not halt the startup sequence.</p>
+        <p>If set to <code>true</code>, Tomcat will attempt to create the
+        directories defined by the  attributes <code>appBase</code> and
+        <code>xmlBase</code> during the startup phase. The default value is
+        <code>true</code>. If set to <code>true</code>, and directory creation
+        fails, an error message will be printed out but will not halt the
+        startup sequence.</p>
       </attribute>
 
       <attribute name="autoDeploy" required="false">
         <p>This flag value indicates if Tomcat should check periodically for new
-        or updated web applications while Tomcat is running. If true, Tomcat
-        periodically checks the <code>appBase</code> and <code>xmlBase</code>
-        directories and deploys any new web applications or context XML
-        descriptors found. Updated web applications or context XML descriptors
-        will trigger a reload of the web application. The flag's value defaults
-        to true.  See
+        or updated web applications while Tomcat is running. If
+        <code>true</code>, Tomcat periodically checks the <code>appBase</code>
+        and <code>xmlBase</code> directories and deploys any new web
+        applications or context XML descriptors found. Updated web applications
+        or context XML descriptors will trigger a reload of the web application.
+        The default is <code>true</code>. See
         <a href="#Automatic_Application_Deployment">Automatic Application
         Deployment</a> for more information.</p>
       </attribute>
@@ -155,7 +154,8 @@
         <p>A regular expression defining paths to ignore when
         <code>autoDeploy</code> and <code>deployOnStartup</code> are set. This
         allows you to keep your configuration in a version control system, for
-        example, and not deploy a .svn or CVS folder that happens to be in the
+        example, and not deploy a <code>.svn</code>, <code>.git</code> or other
+        configuration control system folder that happens to be in the
         <code>appBase</code>.</p>
         <p>This regular expression is relative to <code>appBase</code>. It is
         also <em>anchored</em>, meaning the match is performed against the
@@ -169,8 +169,8 @@
 
       <attribute name="deployOnStartup" required="false">
         <p>This flag value indicates if web applications from this host should
-        be automatically deployed when Tomcat starts. The flag's value defaults
-        to true.  See
+        be automatically deployed when Tomcat starts. The default is
+        <code>true</code>.  See
         <a href="#Automatic_Application_Deployment">Automatic Application
         Deployment</a> for more information.</p>
       </attribute>
@@ -192,10 +192,8 @@
         have a name that matches the <code>defaultHost</code> setting for that
         Engine.  See <a href="#Host_Name_Aliases">Host Name Aliases</a> for
         information on how to assign more than one network name to the same
-        virtual host. If the name takes the form of <code>*.domainname</code>
-        (e.g. <code>*.apache.org</code>) then it will be treated as a match for
-        any host in that domain unless a host that has an exactly matching name
-        is found.</p>
+        virtual host. The name can not contain a wildcard, this is only
+        valid in an Alias.</p>
       </attribute>
 
       <attribute name="startStopThreads" required="false">
@@ -216,8 +214,9 @@
         <p>This flag determines if Tomcat, as part of the auto deployment
         process, will check for old, unused versions of web applications
         deployed using parallel deployment and, if any are found, remove them.
-        This flag only applies if <code>autoDeploy</code> is true. If not
-        specified the default value of false will be used.</p>
+        This flag only applies if <code>autoDeploy</code> is <code>true</code>.
+        If not specified the default value of <code>false</code> will be used.
+        </p>
       </attribute>
 
     </attributes>
@@ -241,9 +240,9 @@
         when the application is deployed. On subsequent starts, the copied
         context XML descriptor will be used in preference to any context XML
         descriptor embedded inside the application even if the descriptor
-        embedded inside the application is more recent. The flag's value
-        defaults to <code>false</code>.  Note if <strong>deployXML</strong>
-        is <code>false</code>, this attribute will have no effect.</p>
+        embedded inside the application is more recent. The default is
+        <code>false</code>.  Note if <strong>deployXML</strong> is
+        <code>false</code>, this attribute will have no effect.</p>
       </attribute>
 
       <attribute name="deployXML" required="false">
@@ -258,11 +257,11 @@
         a descriptor is located at <code>/META-INF/context.xml</code> and no
         descriptor is present in <strong>xmlBase</strong> then the context will
         fail to start in case the descriptor contains necessary configuration
-        for secure deployment (such as a RemoteAddrValve) which should not be
-        ignored. The flag's value defaults to <code>true</code> unless a
-        security manager is enabled when the default is <code>false</code>.
-        When running under a security manager this may be enabled on a per web
-        application basis by granting the
+        for secure deployment (such as a RemoteCIDRValve) which should not be
+        ignored. The default is <code>true</code> unless a security manager is
+        enabled when the default is <code>false</code>. When running under a
+        security manager this may be enabled on a per web application basis by
+        granting the
         <code>org.apache.catalina.security.DeployXmlPermission</code> to the web
         application. The Manager and Host Manager applications are granted this
         permission by default so that they continue to work when running under a
@@ -277,7 +276,8 @@
         implement the
         <code>org.apache.catalina.Valve</code> interface. If none is specified,
         the value <code>org.apache.catalina.valves.ErrorReportValve</code>
-        will be used by default.</p>
+        will be used by default. if set to an empty string, the error report
+        will be disabled.</p>
       </attribute>
 
       <attribute name="unpackWARs" required="false">
@@ -285,11 +285,11 @@
         placed in the <code>appBase</code> directory as web application
         archive (WAR) files to be unpacked into a corresponding disk directory
         structure, <code>false</code> to run such web applications directly
-        from a WAR file. See
+        from a WAR file. The default is <code>true</code>. See
         <a href="#Automatic_Application_Deployment">Automatic Application
         Deployment</a> for more information.</p>
         <p>Note: If Tomcat expands the WAR file then it will add a file
-        (<code>/META-INF/war-tracking</code>) to the unpacked directory
+        (<code>/META-INF/war-tracker</code>) to the unpacked directory
         structure which it uses to detect changes in the WAR file while Tomcat
         is not running. Any such change will trigger the deletion of the
         expanded directory and the deployment of the updated WAR file when
@@ -492,12 +492,23 @@
     involved must be registered in your DNS server to resolve to the
     same computer that is running this instance of Catalina.</p>
 
-    <p>Aliases may also use the wildcard form (<code>*.domainname</code>)
-       permitted for the <strong>name</strong> attribute of a
-       <strong>Host</strong>.</p>
-
+    <p>Aliases may also use the wildcard form (<code>*.domainname</code>),
+    unlike for the <strong>name</strong> attribute of a <strong>Host</strong>.
+    </p>
   </subsection>
 
+  <subsection name="Virtual Hosting and TLS">
+
+    <p>Using name-based virtual hosts on a secured connection requires careful
+    configuration of the names specified in a single certificate or the use of
+    SNI. SNI allows multiple certificates with different names to be associated
+    with a single TLS connector. Administrators should be aware that virtual
+    host matching using the HTTP host name header and TLS configuration
+    (including certificate) matching using SNI are completely separate processes
+    and that it is likely that they will want to keep the two configurations
+    synchronized.</p>
+
+  </subsection>
 
   <subsection name="Lifecycle Listeners">
 
@@ -539,8 +550,8 @@
   ...
   <Valve className="org.apache.catalina.valves.RemoteHostValve"
          allow=".*\.mycompany\.com|www\.yourcompany\.com"/>
-  <Valve className="org.apache.catalina.valves.RemoteAddrValve"
-         deny="192\.168\.1\.\d+"/>
+  <Valve className="org.apache.catalina.valves.RemoteCIDRValve"
+         deny="192.168.1.0/24"/>
   ...
 </Host>]]></source>
 

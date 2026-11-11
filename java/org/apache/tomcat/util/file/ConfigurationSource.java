@@ -25,30 +25,39 @@ import java.net.MalformedURLException;
 import java.net.URI;
 import java.net.URL;
 
+import org.apache.tomcat.util.buf.CloseableURLConnection;
+import org.apache.tomcat.util.buf.UriUtil;
+
 /**
- * Abstracts configuration file storage. Allows Tomcat embedding using the regular
- * configuration style.
- * This abstraction aims to be very simple and does not cover resource listing,
- * which is usually used for dynamic deployments that are usually not used when
- * embedding, as well as resource writing.
+ * Abstracts configuration file storage. Allows Tomcat embedding using the regular configuration style. This abstraction
+ * aims to be very simple and does not cover resource listing, which is usually used for dynamic deployments that are
+ * usually not used when embedding, as well as resource writing.
  */
 public interface ConfigurationSource {
 
-    public static final ConfigurationSource DEFAULT = new ConfigurationSource() {
-        protected final File userDir = new File(System.getProperty("user.dir"));
-        protected final URI userDirUri = userDir.toURI();
+    /**
+     * The default implementation that resolves resources relative to the
+     * current working directory.
+     */
+    ConfigurationSource DEFAULT = new ConfigurationSource() {
+        private final File userDir = new File(System.getProperty("user.dir"));
+        private final URI userDirUri = userDir.toURI();
+
         @Override
         public Resource getResource(String name) throws IOException {
-            File f = new File(name);
-            if (!f.isAbsolute()) {
-                f = new File(userDir, name);
+            if (!UriUtil.isAbsoluteURI(name)) {
+                File f = new File(name);
+                if (!f.isAbsolute()) {
+                    f = new File(userDir, name);
+                }
+                if (f.isFile()) {
+                    FileInputStream fis = new FileInputStream(f);
+                    return new Resource(fis, f.toURI());
+                }
             }
-            if (f.isFile()) {
-                return new Resource(new FileInputStream(f), f.toURI());
-            }
-            URI uri = null;
+            URI uri;
             try {
-                uri = getURI(name);
+                uri = userDirUri.resolve(name);
             } catch (IllegalArgumentException e) {
                 throw new FileNotFoundException(name);
             }
@@ -59,40 +68,81 @@ public interface ConfigurationSource {
                 throw new FileNotFoundException(name);
             }
         }
+
         @Override
         public URI getURI(String name) {
-            File f = new File(name);
-            if (!f.isAbsolute()) {
-                f = new File(userDir, name);
-            }
-            if (f.isFile()) {
-                return f.toURI();
+            if (!UriUtil.isAbsoluteURI(name)) {
+                File f = new File(name);
+                if (!f.isAbsolute()) {
+                    f = new File(userDir, name);
+                }
+                if (f.isFile()) {
+                    return f.toURI();
+                }
+                try {
+                    return userDirUri.resolve(name);
+                } catch (IllegalArgumentException e) {
+                    // URI.resolve() rejects names that contain characters
+                    // which are not valid in a URI, such as a space. The
+                    // contract requires a URI to be returned even when no
+                    // resource exists, so fall back to the file based form
+                    // which encodes the name correctly.
+                    return f.toURI();
+                }
             }
             return userDirUri.resolve(name);
         }
     };
 
     /**
-     * Represents a resource: a stream to the resource associated with
-     * its URI.
+     * Represents a resource: a stream to the resource associated with its URI.
      */
-    public class Resource implements AutoCloseable {
+    class Resource implements AutoCloseable {
         private final InputStream inputStream;
         private final URI uri;
+
+        /**
+         * Creates a new resource with the given input stream and URI.
+         *
+         * @param inputStream the input stream for the resource content
+         * @param uri the URI identifying the resource location
+         */
         public Resource(InputStream inputStream, URI uri) {
             this.inputStream = inputStream;
             this.uri = uri;
         }
+
+        /**
+         * Returns the input stream for reading the resource content.
+         *
+         * @return the input stream
+         */
         public InputStream getInputStream() {
             return inputStream;
         }
+
+        /**
+         * Returns the URI that identifies the resource location.
+         *
+         * @return the resource URI
+         */
         public URI getURI() {
             return uri;
         }
-        public long getLastModified()
-                throws MalformedURLException, IOException {
-            return uri.toURL().openConnection().getLastModified();
+
+        /**
+         * Returns the last modified time of the resource in milliseconds since the epoch.
+         *
+         * @return the last modified time in milliseconds
+         * @throws MalformedURLException if the resource URI cannot be converted to a URL
+         * @throws IOException if an I/O error occurs while fetching the last modified time
+         */
+        public long getLastModified() throws MalformedURLException, IOException {
+            try (CloseableURLConnection connection = new CloseableURLConnection(uri.toURL())) {
+                return connection.getLastModified();
+            }
         }
+
         @Override
         public void close() throws IOException {
             if (inputStream != null) {
@@ -103,52 +153,60 @@ public interface ConfigurationSource {
 
     /**
      * Returns the contents of the main conf/server.xml file.
+     *
      * @return the server.xml as an InputStream
+     *
      * @throws IOException if an error occurs or if the resource does not exist
      */
-    public default Resource getServerXml()
-            throws IOException {
+    default Resource getServerXml() throws IOException {
         return getConfResource("server.xml");
     }
 
     /**
-     * Returns the contents of the shared conf/web.xml file. This usually
-     * contains the declaration of the default and JSP servlets.
+     * Returns the contents of the shared conf/web.xml file. This usually contains the declaration of the default and
+     * JSP servlets.
+     *
      * @return the web.xml as an InputStream
+     *
      * @throws IOException if an error occurs or if the resource does not exist
      */
-    public default Resource getSharedWebXml()
-            throws IOException {
+    default Resource getSharedWebXml() throws IOException {
         return getConfResource("web.xml");
     }
 
     /**
      * Get a resource, based on the conf path.
+     *
      * @param name The resource name
+     *
      * @return the resource as an InputStream
+     *
      * @throws IOException if an error occurs or if the resource does not exist
      */
-    public default Resource getConfResource(String name)
-            throws IOException {
+    default Resource getConfResource(String name) throws IOException {
         String fullName = "conf/" + name;
         return getResource(fullName);
     }
 
     /**
      * Get a resource, not based on the conf path.
+     *
      * @param name The resource name
+     *
      * @return the resource
+     *
      * @throws IOException if an error occurs or if the resource does not exist
      */
-    public Resource getResource(String name)
-            throws IOException;
+    Resource getResource(String name) throws IOException;
 
     /**
-     * Get a URI to the given resource. Unlike getResource, this will also
-     * return URIs to locations where no resource exists.
+     * Get a URI to the given resource. Unlike getResource, this will also return URIs to locations where no resource
+     * exists.
+     *
      * @param name The resource name
+     *
      * @return a URI representing the resource location
      */
-    public URI getURI(String name);
+    URI getURI(String name);
 
 }

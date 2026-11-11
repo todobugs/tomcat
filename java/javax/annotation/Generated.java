@@ -23,15 +23,28 @@ import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 
 /**
+ * Used to identify generated code.
+ *
  * @since Common Annotations 1.0
  */
 @Documented
-@Target({ElementType.ANNOTATION_TYPE, ElementType.CONSTRUCTOR,
-    ElementType.FIELD, ElementType.LOCAL_VARIABLE, ElementType.METHOD,
-    ElementType.PACKAGE, ElementType.PARAMETER, ElementType.TYPE})
+@Target({ ElementType.ANNOTATION_TYPE, ElementType.CONSTRUCTOR, ElementType.FIELD, ElementType.LOCAL_VARIABLE,
+        ElementType.METHOD, ElementType.PACKAGE, ElementType.PARAMETER, ElementType.TYPE })
 @Retention(RetentionPolicy.SOURCE)
 public @interface Generated {
-    public String[] value();
-    public String date() default "";
-    public String comments() default "";
+    /**
+     * @return The name of the code generator. It is recommended that the fully qualified name of the code generator is
+     *             used.
+     */
+    String[] value();
+
+    /**
+     * @return The date the code was generated
+     */
+    String date() default "";
+
+    /**
+     * @return Additional comments (if any) related to the code generation
+     */
+    String comments() default "";
 }

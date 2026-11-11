@@ -21,17 +21,25 @@ import java.util.Collections;
 import java.util.List;
 
 /**
- * Wraps a list of throwables as a single throwable. This is intended to be used
- * when multiple actions are taken where each may throw an exception but all
- * actions are taken before any errors are reported.
+ * Wraps a list of throwables as a single throwable. This is intended to be used when multiple actions are taken where
+ * each may throw an exception but all actions are taken before any errors are reported.
  * <p>
  * This class is <b>NOT</b> threadsafe.
  */
 public class MultiThrowable extends Throwable {
 
+    /**
+     * Default constructor.
+     */
+    public MultiThrowable() {
+    }
+
     private static final long serialVersionUID = 1L;
 
-    private List<Throwable> throwables = new ArrayList<>();
+    /**
+     * The list of wrapped throwables.
+     */
+    private final List<Throwable> throwables = new ArrayList<>();
 
     /**
      * Add a throwable to the list of wrapped throwables.
@@ -44,7 +52,9 @@ public class MultiThrowable extends Throwable {
 
 
     /**
-     * @return A read-only list of the wrapped throwables.
+     * Return a read-only list of the wrapped throwables.
+     *
+     * @return A read-only list of the wrapped throwables
      */
     public List<Throwable> getThrowables() {
         return Collections.unmodifiableList(throwables);
@@ -52,9 +62,10 @@ public class MultiThrowable extends Throwable {
 
 
     /**
-     * @return {@code null} if there are no wrapped throwables, the Throwable if
-     *         there is a single wrapped throwable or the current instance of
-     *         there are multiple wrapped throwables
+     * Return the wrapped throwable.
+     *
+     * @return {@code null} if there are no wrapped throwables, the Throwable if there is a single wrapped throwable or
+     *             the current instance if there are multiple wrapped throwables
      */
     public Throwable getThrowable() {
         if (size() == 0) {
@@ -68,7 +79,9 @@ public class MultiThrowable extends Throwable {
 
 
     /**
-     * @return The number of throwables currently wrapped by this instance.
+     * Return the number of throwables currently wrapped by this instance.
+     *
+     * @return The number of throwables currently wrapped by this instance
      */
     public int size() {
         return throwables.size();
@@ -76,10 +89,9 @@ public class MultiThrowable extends Throwable {
 
 
     /**
-     * Overrides the default implementation to provide a concatenation of the
-     * messages associated with each of the wrapped throwables. Note that the
-     * format of the returned String is not guaranteed to be fixed and may
-     * change in a future release.
+     * Overrides the default implementation to provide a concatenation of the messages associated with each of the
+     * wrapped throwables. Note that the format of the returned String is not guaranteed to be fixed and may change in a
+     * future release.
      */
     @Override
     public String toString() {
@@ -89,9 +101,9 @@ public class MultiThrowable extends Throwable {
         sb.append(size());
         sb.append(" wrapped Throwables: ");
         for (Throwable t : throwables) {
-            sb.append("[");
+            sb.append('[');
             sb.append(t.getMessage());
-            sb.append("]");
+            sb.append(']');
         }
 
         return sb.toString();

@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.catalina.ha;
 
 import java.io.Serializable;
@@ -26,80 +25,90 @@ import org.apache.juli.logging.LogFactory;
 
 
 /**
- * Receive SessionID cluster change from other backup node after primary session
- * node is failed.
- *
- * @author Peter Rossbach
+ * Receive SessionID cluster change from other backup node after primary session node is failed.
  */
 public abstract class ClusterListener implements ChannelListener {
 
     private static final Log log = LogFactory.getLog(ClusterListener.class);
 
-    //--Instance Variables--------------------------------------
+    // --Instance Variables--------------------------------------
 
     /**
-     * The string manager for this package.
+     * The cluster associated with this listener.
      */
-
     protected CatalinaCluster cluster = null;
 
-    //--Constructor---------------------------------------------
+    // --Constructor---------------------------------------------
 
+    /**
+     * Default constructor for ClusterListener.
+     */
     public ClusterListener() {
         // NO-OP
     }
 
-    //--Instance Getters/Setters--------------------------------
+    // --Instance Getters/Setters--------------------------------
 
+    /**
+     * Returns the cluster associated with this listener.
+     *
+     * @return the cluster
+     */
     public CatalinaCluster getCluster() {
         return cluster;
     }
 
+    /**
+     * Sets the cluster associated with this listener.
+     *
+     * @param cluster the cluster
+     */
     public void setCluster(CatalinaCluster cluster) {
-        if (log.isDebugEnabled()) {
-            if (cluster != null)
-                log.debug("add ClusterListener " + this.toString() +
-                        " to cluster" + cluster);
-            else
-                log.debug("remove ClusterListener " + this.toString() +
-                        " from cluster");
+        if (log.isTraceEnabled()) {
+            if (cluster != null) {
+                log.trace("add ClusterListener " + this.toString() + " to cluster" + cluster);
+            } else {
+                log.trace("remove ClusterListener " + this.toString() + " from cluster");
+            }
         }
         this.cluster = cluster;
     }
 
-    //--Logic---------------------------------------------------
+    // --Logic---------------------------------------------------
 
     @Override
     public final void messageReceived(Serializable msg, Member member) {
-        if ( msg instanceof ClusterMessage ) messageReceived((ClusterMessage)msg);
+        if (msg instanceof ClusterMessage) {
+            messageReceived((ClusterMessage) msg);
+        }
     }
+
     @Override
     public final boolean accept(Serializable msg, Member member) {
-        if ( msg instanceof ClusterMessage ) return true;
+        if (msg instanceof ClusterMessage) {
+            return accept((ClusterMessage) msg);
+        }
         return false;
     }
 
 
-
     /**
-     * Callback from the cluster, when a message is received, The cluster will
-     * broadcast it invoking the messageReceived on the receiver.
+     * Callback from the cluster, when a message is received, The cluster will broadcast it invoking the messageReceived
+     * on the receiver.
      *
-     * @param msg
-     *            ClusterMessage - the message received from the cluster
+     * @param msg the message received from the cluster
      */
-    public abstract void messageReceived(ClusterMessage msg) ;
+    public abstract void messageReceived(ClusterMessage msg);
 
 
     /**
-     * Accept only SessionIDMessages
+     * Accept only a certain type of messages.
      *
-     * @param msg
-     *            ClusterMessage
-     * @return boolean - returns true to indicate that messageReceived should be
-     *         invoked. If false is returned, the messageReceived method will
-     *         not be invoked.
+     * @param msg the message
+     *
+     * @return {@code true} to indicate that messageReceived should be invoked. If {@code false} is returned, the
+     *             messageReceived method will not be invoked.
      */
-    public abstract boolean accept(ClusterMessage msg) ;
+    public abstract boolean accept(ClusterMessage msg);
 
 }

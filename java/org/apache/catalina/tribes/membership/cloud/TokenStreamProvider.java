@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.catalina.tribes.membership.cloud;
 
 import java.io.IOException;
@@ -25,11 +24,29 @@ import javax.net.ssl.SSLContext;
 import javax.net.ssl.SSLSocketFactory;
 import javax.net.ssl.TrustManager;
 
+/**
+ * Stream provider that authenticates using a bearer token.
+ */
 public class TokenStreamProvider extends AbstractStreamProvider {
 
+    /**
+     * The bearer token for authentication.
+     */
     private String token;
-    private SSLSocketFactory factory;
 
+    /**
+     * The SSL socket factory.
+     */
+    private final SSLSocketFactory factory;
+
+
+    /**
+     * Creates a new TokenStreamProvider.
+     *
+     * @param token the bearer token
+     * @param caCertFile the CA certificate file path
+     * @throws Exception if initialization fails
+     */
     TokenStreamProvider(String token, String caCertFile) throws Exception {
         this.token = token;
         TrustManager[] trustManagers = configureCaCert(caCertFile);
@@ -38,13 +55,25 @@ public class TokenStreamProvider extends AbstractStreamProvider {
         this.factory = context.getSocketFactory();
     }
 
+
     @Override
     protected SSLSocketFactory getSocketFactory() {
         return factory;
     }
 
+
+    /**
+     * Sets the bearer token for authentication.
+     *
+     * @param token the bearer token
+     */
+    protected void setToken(String token) {
+        this.token = token;
+    }
+
+
     @Override
-    public InputStream openStream(String url, Map<String, String> headers, int connectTimeout, int readTimeout)
+    public InputStream openStream(String url, Map<String,String> headers, int connectTimeout, int readTimeout)
             throws IOException {
         // Set token header
         if (token != null) {
@@ -52,10 +81,9 @@ public class TokenStreamProvider extends AbstractStreamProvider {
         }
         try {
             return super.openStream(url, headers, connectTimeout, readTimeout);
-        } catch (IOException e) {
+        } catch (IOException ioe) {
             // Add debug information
-            throw new IOException(sm.getString("tokenStream.failedConnection", url, token), e);
+            throw new IOException(sm.getString("tokenStream.failedConnection", url), ioe);
         }
     }
-
 }

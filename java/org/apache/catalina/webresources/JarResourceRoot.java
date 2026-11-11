@@ -19,32 +19,64 @@ package org.apache.catalina.webresources;
 import java.io.File;
 import java.io.InputStream;
 import java.net.MalformedURLException;
+import java.net.URI;
+import java.net.URISyntaxException;
 import java.net.URL;
+import java.nio.charset.StandardCharsets;
 import java.security.cert.Certificate;
 import java.util.jar.Manifest;
 
 import org.apache.catalina.WebResourceRoot;
+import org.apache.catalina.util.URLEncoder;
 import org.apache.juli.logging.Log;
 import org.apache.juli.logging.LogFactory;
 
+/**
+ * Represents a JAR file as a resource root within a web application.
+ */
 public class JarResourceRoot extends AbstractResource {
 
     private static final Log log = LogFactory.getLog(JarResourceRoot.class);
 
     private final File base;
     private final String baseUrl;
+    private final String internalPath;
     private final String name;
 
-    public JarResourceRoot(WebResourceRoot root, File base, String baseUrl,
-            String webAppPath) {
+    /**
+     * Constructs a new JarResourceRoot.
+     *
+     * @param root the resource root
+     * @param base the base file
+     * @param baseUrl the base URL
+     * @param webAppPath the web application path
+     *
+     * @deprecated Unused. Will be removed in Tomcat 12
+     */
+    @Deprecated
+    public JarResourceRoot(WebResourceRoot root, File base, String baseUrl, String webAppPath) {
+        this(root, base, baseUrl, webAppPath, "");
+    }
+
+    /**
+     * Constructs a new JarResourceRoot.
+     *
+     * @param root the resource root
+     * @param base the base file
+     * @param baseUrl the base URL
+     * @param webAppPath the web application path
+     * @param internalPath the internal path that has been mounted
+     */
+    public JarResourceRoot(WebResourceRoot root, File base, String baseUrl, String webAppPath,
+            String internalPath) {
         super(root, webAppPath);
         // Validate the webAppPath before going any further
         if (!webAppPath.endsWith("/")) {
-            throw new IllegalArgumentException(sm.getString(
-                    "jarResourceRoot.invalidWebAppPath", webAppPath));
+            throw new IllegalArgumentException(sm.getString("jarResourceRoot.invalidWebAppPath", webAppPath));
         }
         this.base = base;
         this.baseUrl = "jar:" + baseUrl;
+        this.internalPath = internalPath;
         // Extract the name from the webAppPath
         // Strip the trailing '/' character
         String resourceName = webAppPath.substring(0, webAppPath.length() - 1);
@@ -117,15 +149,20 @@ public class JarResourceRoot extends AbstractResource {
 
     @Override
     public long getCreation() {
-        return base.lastModified();
+        return getCreation(base);
     }
 
     @Override
     public URL getURL() {
-        String url = baseUrl + "!/";
+        String url;
+        if (internalPath.isEmpty()) {
+            url = baseUrl + "!/";
+        } else {
+            url = baseUrl + "!" + URLEncoder.DEFAULT.encode(internalPath, StandardCharsets.UTF_8) + "/";
+        }
         try {
-            return new URL(url);
-        } catch (MalformedURLException e) {
+            return new URI(url).toURL();
+        } catch (MalformedURLException | URISyntaxException | IllegalArgumentException e) {
             if (log.isDebugEnabled()) {
                 log.debug(sm.getString("fileResource.getUrlFail", url), e);
             }
@@ -136,14 +173,15 @@ public class JarResourceRoot extends AbstractResource {
     @Override
     public URL getCodeBase() {
         try {
-            return new URL(baseUrl);
-        } catch (MalformedURLException e) {
+            return new URI(baseUrl).toURL();
+        } catch (MalformedURLException | URISyntaxException e) {
             if (getLog().isDebugEnabled()) {
                 getLog().debug(sm.getString("fileResource.getUrlFail", baseUrl), e);
             }
             return null;
         }
     }
+
     @Override
     protected Log getLog() {
         return log;

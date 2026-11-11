@@ -157,6 +157,14 @@ public class TestAstLambdaExpression {
 
 
     @Test
+    public void testNested08() {
+        ELProcessor processor = new ELProcessor();
+        Object result = processor.getValue("(x -> (x -> x)(null))(42)", Integer.class);
+        Assert.assertNull(result);
+    }
+
+
+    @Test
     public void testLambdaAsFunction01() {
         ELProcessor processor = new ELProcessor();
         Object result =
@@ -225,12 +233,42 @@ public class TestAstLambdaExpression {
     }
 
 
-    @Test(expected=javax.el.ELException.class)
+    @Test(expected=ELException.class)
     public void testLambdaAsFunction08() {
         // Using a name space for the function is not allowed
         ELProcessor processor = new ELProcessor();
         Object result =
                 processor.getValue("foo:v = (x)->x+1; foo:v(0)", Integer.class);
         Assert.assertEquals(Integer.valueOf(1), result);
+    }
+
+
+    @Test
+    public void testSiblings01() {
+        ELProcessor processor = new ELProcessor();
+        // The second sibling lambda expression must not be checked against the
+        // nested state created by the first sibling
+        Object result = processor.getValue("(c->c)(3) + (a->b->b)(1)(2)", Integer.class);
+        Assert.assertEquals(Integer.valueOf(5), result);
+    }
+
+
+    @Test(expected=ELException.class)
+    public void testSiblings02() {
+        ELProcessor processor = new ELProcessor();
+        // The second sibling lambda expression has more sets of method
+        // parameters than it has nested lambda expressions. The nested state
+        // created by the first sibling must not mask the error.
+        processor.getValue("(a->b->b)(1)(2) + (c->c)(3)(4)", Integer.class);
+    }
+
+
+    @Test
+    public void testSiblings03() {
+        ELProcessor processor = new ELProcessor();
+        // The second sibling lambda expression must be auto-invoked. The
+        // nested state created by the first sibling must not block it.
+        Object result = processor.getValue("(c->c)(3) + (()->21)", Integer.class);
+        Assert.assertEquals(Integer.valueOf(24), result);
     }
 }

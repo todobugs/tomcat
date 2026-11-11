@@ -38,11 +38,29 @@ import org.apache.juli.logging.LogFactory;
  */
 public class RpcChannel implements ChannelListener {
     private static final Log log = LogFactory.getLog(RpcChannel.class);
+    /**
+     * String manager for this class.
+     */
     protected static final StringManager sm = StringManager.getManager(RpcChannel.class);
 
+    /**
+     * Return the first reply received.
+     */
     public static final int FIRST_REPLY = 1;
+
+    /**
+     * Return replies from at least half of the destination members.
+     */
     public static final int MAJORITY_REPLY = 2;
+
+    /**
+     * Return replies from all members.
+     */
     public static final int ALL_REPLY = 3;
+
+    /**
+     * Do not wait for any reply.
+     */
     public static final int NO_REPLY = 4;
 
     private Channel channel;
@@ -50,13 +68,13 @@ public class RpcChannel implements ChannelListener {
     private byte[] rpcId;
     private int replyMessageOptions = 0;
 
-    private final ConcurrentMap<RpcCollectorKey, RpcCollector> responseMap = new ConcurrentHashMap<>();
+    private final ConcurrentMap<RpcCollectorKey,RpcCollector> responseMap = new ConcurrentHashMap<>();
 
     /**
-     * Create an RPC channel. You can have several RPC channels attached to a group
-     * all separated out by the uniqueness
-     * @param rpcId - the unique Id for this RPC group
-     * @param channel Channel
+     * Create an RPC channel. You can have several RPC channels attached to a group all separated out by the uniqueness
+     *
+     * @param rpcId    - the unique Id for this RPC group
+     * @param channel  Channel
      * @param callback RpcCallback
      */
     public RpcChannel(byte[] rpcId, Channel channel, RpcCallback callback) {
@@ -69,36 +87,46 @@ public class RpcChannel implements ChannelListener {
 
     /**
      * Send a message and wait for the response.
-     * @param destination Member[] - the destination for the message, and the members you request a reply from
-     * @param message Serializable - the message you are sending out
-     * @param rpcOptions int - FIRST_REPLY, MAJORITY_REPLY or ALL_REPLY
+     *
+     * @param destination    Member[] - the destination for the message, and the members you request a reply from
+     * @param message        Serializable - the message you are sending out
+     * @param rpcOptions     int - FIRST_REPLY, MAJORITY_REPLY or ALL_REPLY
      * @param channelOptions channel sender options
-     * @param timeout long - timeout in milliseconds, if no reply is received within this time null is returned
+     * @param timeout        long - timeout in milliseconds, if the requested replies are not received within this time
+     *                         the replies received so far (possibly none) are returned
+     *
      * @return Response[] - an array of response objects.
+     *
      * @throws ChannelException Error sending message
      */
-    public Response[] send(Member[] destination,
-                           Serializable message,
-                           int rpcOptions,
-                           int channelOptions,
-                           long timeout) throws ChannelException {
+    public Response[] send(Member[] destination, Serializable message, int rpcOptions, int channelOptions, long timeout)
+            throws ChannelException {
 
-        if ( destination==null || destination.length == 0 ) return new Response[0];
+        if (destination == null || destination.length == 0) {
+            return new Response[0];
+        }
 
-        //avoid dead lock
-        int sendOptions =
-            channelOptions & ~Channel.SEND_OPTIONS_SYNCHRONIZED_ACK;
+        // avoid deadlock
+        int sendOptions = channelOptions & ~Channel.SEND_OPTIONS_SYNCHRONIZED_ACK;
 
         RpcCollectorKey key = new RpcCollectorKey(UUIDGenerator.randomUUID(false));
-        RpcCollector collector = new RpcCollector(key,rpcOptions,destination.length);
+        RpcCollector collector = new RpcCollector(key, rpcOptions, destination.length);
         try {
             synchronized (collector) {
-                if ( rpcOptions != NO_REPLY ) responseMap.put(key, collector);
+                if (rpcOptions != NO_REPLY) {
+                    responseMap.put(key, collector);
+                }
                 RpcMessage rmsg = new RpcMessage(rpcId, key.id, message);
                 channel.send(destination, rmsg, sendOptions);
-                if ( rpcOptions != NO_REPLY ) collector.wait(timeout);
+                if (rpcOptions != NO_REPLY) {
+                    long timeoutExpiry = System.nanoTime() + timeout * 1_000_000;
+                    while (!collector.isComplete() && timeout > 0) {
+                        collector.wait(timeout);
+                        timeout = (timeoutExpiry - System.nanoTime()) / 1_000_000;
+                    }
+                }
             }
-        } catch ( InterruptedException ix ) {
+        } catch (InterruptedException ix) {
             Thread.currentThread().interrupt();
         } finally {
             responseMap.remove(key);
@@ -108,43 +136,93 @@ public class RpcChannel implements ChannelListener {
 
     @Override
     public void messageReceived(Serializable msg, Member sender) {
-        RpcMessage rmsg = (RpcMessage)msg;
+        RpcMessage rmsg = (RpcMessage) msg;
         RpcCollectorKey key = new RpcCollectorKey(rmsg.uuid);
-        if ( rmsg.reply ) {
+        if (rmsg.reply) {
             RpcCollector collector = responseMap.get(key);
             if (collector == null) {
-                if (!(rmsg instanceof RpcMessage.NoRpcChannelReply))
+                if (!(rmsg instanceof RpcMessage.NoRpcChannelReply)) {
                     callback.leftOver(rmsg.message, sender);
+                }
             } else {
                 synchronized (collector) {
-                    //make sure it hasn't been removed
-                    if ( responseMap.containsKey(key) ) {
-                        if ( (rmsg instanceof RpcMessage.NoRpcChannelReply) )
+                    // make sure it hasn't been removed
+                    if (responseMap.containsKey(key)) {
+                        if ((rmsg instanceof RpcMessage.NoRpcChannelReply)) {
                             collector.destcnt--;
-                        else
+                        } else {
                             collector.addResponse(rmsg.message, sender);
-                        if (collector.isComplete()) collector.notifyAll();
+                        }
+                        if (collector.isComplete()) {
+                            collector.notifyAll();
+                        }
                     } else {
-                        if (! (rmsg instanceof RpcMessage.NoRpcChannelReply) )
+                        if (!(rmsg instanceof RpcMessage.NoRpcChannelReply)) {
                             callback.leftOver(rmsg.message, sender);
+                        }
                     }
-                }//synchronized
-            }//end if
+                } // synchronized
+            } // end if
         } else {
             boolean finished = false;
-            final ExtendedRpcCallback excallback = (callback instanceof ExtendedRpcCallback)?((ExtendedRpcCallback)callback) : null;
-            boolean asyncReply = ((replyMessageOptions & Channel.SEND_OPTIONS_ASYNCHRONOUS) == Channel.SEND_OPTIONS_ASYNCHRONOUS);
-            Serializable reply = callback.replyRequest(rmsg.message,sender);
+            final ExtendedRpcCallback excallback =
+                    (callback instanceof ExtendedRpcCallback) ? ((ExtendedRpcCallback) callback) : null;
+            boolean asyncReply =
+                    ((replyMessageOptions & Channel.SEND_OPTIONS_ASYNCHRONOUS) == Channel.SEND_OPTIONS_ASYNCHRONOUS);
+            Serializable reply = callback.replyRequest(rmsg.message, sender);
+            if (reply == null) {
+                // The callback is documented to return null when no reply should be sent. Tell the requester so that
+                // it stops waiting for this member rather than running into its timeout.
+                boolean noReplySent = false;
+                RpcMessage noReply = new RpcMessage.NoRpcChannelReply(rmsg.rpcId, rmsg.uuid);
+                ErrorHandler handler = null;
+                if (excallback != null && asyncReply) {
+                    final Serializable request = msg;
+                    final Member fsender = sender;
+                    handler = new ErrorHandler() {
+                        @Override
+                        public void handleError(ChannelException x, UniqueId id) {
+                            excallback.replyFailed(request, null, fsender, x);
+                        }
+
+                        @Override
+                        public void handleCompletion(UniqueId id) {
+                            excallback.replySucceeded(request, null, fsender);
+                        }
+                    };
+                }
+                try {
+                    if (handler != null) {
+                        channel.send(new Member[] { sender }, noReply,
+                                replyMessageOptions & ~Channel.SEND_OPTIONS_SYNCHRONIZED_ACK, handler);
+                    } else {
+                        channel.send(new Member[] { sender }, noReply,
+                                replyMessageOptions & ~Channel.SEND_OPTIONS_SYNCHRONIZED_ACK);
+                    }
+                    noReplySent = true;
+                } catch (Exception e) {
+                    if (excallback != null && !asyncReply) {
+                        excallback.replyFailed(msg, null, sender, e);
+                    } else {
+                        log.error(sm.getString("rpcChannel.replyFailed"), e);
+                    }
+                }
+                if (noReplySent && excallback != null && !asyncReply) {
+                    excallback.replySucceeded(msg, null, sender);
+                }
+                return;
+            }
             ErrorHandler handler = null;
             final Serializable request = msg;
             final Serializable response = reply;
             final Member fsender = sender;
-            if (excallback!=null && asyncReply) {
+            if (excallback != null && asyncReply) {
                 handler = new ErrorHandler() {
                     @Override
                     public void handleError(ChannelException x, UniqueId id) {
                         excallback.replyFailed(request, response, fsender, x);
                     }
+
                     @Override
                     public void handleCompletion(UniqueId id) {
                         excallback.replySucceeded(request, response, fsender);
@@ -154,107 +232,181 @@ public class RpcChannel implements ChannelListener {
             rmsg.reply = true;
             rmsg.message = reply;
             try {
-                if (handler!=null) {
-                    channel.send(new Member[] {sender}, rmsg,replyMessageOptions & ~Channel.SEND_OPTIONS_SYNCHRONIZED_ACK, handler);
+                if (handler != null) {
+                    channel.send(new Member[] { sender }, rmsg,
+                            replyMessageOptions & ~Channel.SEND_OPTIONS_SYNCHRONIZED_ACK, handler);
                 } else {
-                    channel.send(new Member[] {sender}, rmsg,replyMessageOptions & ~Channel.SEND_OPTIONS_SYNCHRONIZED_ACK);
+                    channel.send(new Member[] { sender }, rmsg,
+                            replyMessageOptions & ~Channel.SEND_OPTIONS_SYNCHRONIZED_ACK);
                 }
                 finished = true;
-            } catch ( Exception x )  {
+            } catch (Exception e) {
                 if (excallback != null && !asyncReply) {
-                    excallback.replyFailed(rmsg.message, reply, sender, x);
+                    excallback.replyFailed(rmsg.message, reply, sender, e);
                 } else {
-                    log.error(sm.getString("rpcChannel.replyFailed"),x);
+                    log.error(sm.getString("rpcChannel.replyFailed"), e);
                 }
             }
             if (finished && excallback != null && !asyncReply) {
                 excallback.replySucceeded(rmsg.message, reply, sender);
             }
-        }//end if
+        } // end if
     }
 
+    /**
+     * Remove this channel listener from the channel.
+     */
     public void breakdown() {
         channel.removeChannelListener(this);
     }
 
     @Override
-    protected void finalize() throws Throwable {
-        breakdown();
-        super.finalize();
-    }
-
-    @Override
     public boolean accept(Serializable msg, Member sender) {
-        if ( msg instanceof RpcMessage ) {
-            RpcMessage rmsg = (RpcMessage)msg;
-            return Arrays.equals(rmsg.rpcId,rpcId);
-        } else return false;
+        if (msg instanceof RpcMessage) {
+            RpcMessage rmsg = (RpcMessage) msg;
+            return Arrays.equals(rmsg.rpcId, rpcId);
+        } else {
+            return false;
+        }
     }
 
+    /**
+     * Get the underlying channel.
+     *
+     * @return the channel
+     */
     public Channel getChannel() {
         return channel;
     }
 
+    /**
+     * Get the RPC callback handler.
+     *
+     * @return the callback
+     */
     public RpcCallback getCallback() {
         return callback;
     }
 
+    /**
+     * Get the RPC identifier.
+     *
+     * @return the RPC ID
+     */
     public byte[] getRpcId() {
         return rpcId;
     }
 
+    /**
+     * Set the underlying channel.
+     *
+     * @param channel the channel
+     */
     public void setChannel(Channel channel) {
         this.channel = channel;
     }
 
+    /**
+     * Set the RPC callback handler.
+     *
+     * @param callback the callback
+     */
     public void setCallback(RpcCallback callback) {
         this.callback = callback;
     }
 
+    /**
+     * Set the RPC identifier.
+     *
+     * @param rpcId the RPC ID
+     */
     public void setRpcId(byte[] rpcId) {
         this.rpcId = rpcId;
     }
 
+    /**
+     * Get the reply message options.
+     *
+     * @return the reply message options
+     */
     public int getReplyMessageOptions() {
         return replyMessageOptions;
     }
 
+    /**
+     * Set the reply message options.
+     *
+     * @param replyMessageOptions the reply message options
+     */
     public void setReplyMessageOptions(int replyMessageOptions) {
         this.replyMessageOptions = replyMessageOptions;
     }
 
     /**
-     *
-     * Class that holds all response.
-     * @version 1.0
+     * Class that holds all responses.
      */
     public static class RpcCollector {
+        /**
+         * Collected responses.
+         */
         public final ArrayList<Response> responses = new ArrayList<>();
+
+        /**
+         * The collector key.
+         */
         public final RpcCollectorKey key;
+
+        /**
+         * The RPC options.
+         */
         public final int options;
+
+        /**
+         * The destination count.
+         */
         public int destcnt;
 
+        /**
+         * Create a new RpcCollector.
+         *
+         * @param key     The collector key
+         * @param options The RPC options
+         * @param destcnt The destination count
+         */
         public RpcCollector(RpcCollectorKey key, int options, int destcnt) {
             this.key = key;
             this.options = options;
             this.destcnt = destcnt;
         }
 
+        /**
+         * Add a response to the collector.
+         *
+         * @param message The response message
+         * @param sender  The sender of the response
+         */
         public void addResponse(Serializable message, Member sender) {
-            Response resp = new Response(sender,message);
+            Response resp = new Response(sender, message);
             responses.add(resp);
         }
 
+        /**
+         * Check if the collector has received enough responses.
+         *
+         * @return {@code true} if the collector is complete
+         */
         public boolean isComplete() {
-            if ( destcnt <= 0 ) return true;
+            if (destcnt <= 0) {
+                return true;
+            }
             switch (options) {
                 case ALL_REPLY:
                     return destcnt == responses.size();
                 case MAJORITY_REPLY:
-                    float perc = ((float)responses.size()) / ((float)destcnt);
+                    float perc = ((float) responses.size()) / ((float) destcnt);
                     return perc >= 0.50f;
                 case FIRST_REPLY:
-                    return responses.size()>0;
+                    return responses.size() > 0;
                 default:
                     return false;
             }
@@ -267,34 +419,55 @@ public class RpcChannel implements ChannelListener {
 
         @Override
         public boolean equals(Object o) {
-            if ( o instanceof RpcCollector ) {
-                RpcCollector r = (RpcCollector)o;
+            if (o instanceof RpcCollector) {
+                RpcCollector r = (RpcCollector) o;
                 return r.key.equals(this.key);
-            } else return false;
+            } else {
+                return false;
+            }
         }
 
+        /**
+         * Get the collected responses.
+         *
+         * @return the collected responses
+         */
         public Response[] getResponses() {
-            return responses.toArray(new Response[responses.size()]);
+            return responses.toArray(new Response[0]);
         }
     }
 
+    /**
+     * Key used to identify an RPC collector.
+     */
     public static class RpcCollectorKey {
+        /**
+         * The unique identifier.
+         */
         final byte[] id;
+
+        /**
+         * Create a new RpcCollectorKey.
+         *
+         * @param id The unique identifier
+         */
         public RpcCollectorKey(byte[] id) {
             this.id = id;
         }
 
         @Override
         public int hashCode() {
-            return id[0]+id[1]+id[2]+id[3];
+            return java.util.Arrays.hashCode(id);
         }
 
         @Override
         public boolean equals(Object o) {
-            if ( o instanceof RpcCollectorKey ) {
-                RpcCollectorKey r = (RpcCollectorKey)o;
-                return Arrays.equals(id,r.id);
-            } else return false;
+            if (o instanceof RpcCollectorKey) {
+                RpcCollectorKey r = (RpcCollectorKey) o;
+                return Arrays.equals(id, r.id);
+            } else {
+                return false;
+            }
         }
 
     }

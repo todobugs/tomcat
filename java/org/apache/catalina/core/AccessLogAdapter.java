@@ -30,25 +30,42 @@ public class AccessLogAdapter implements AccessLog {
 
     private AccessLog[] logs;
 
+    /**
+     * Constructs a new adapter wrapping a single access log.
+     *
+     * @param log The access log to wrap
+     */
     public AccessLogAdapter(AccessLog log) {
         Objects.requireNonNull(log);
         logs = new AccessLog[] { log };
     }
 
+    /**
+     * Adds an access log to this adapter.
+     *
+     * @param log The access log to add
+     */
     public void add(AccessLog log) {
         Objects.requireNonNull(log);
-        AccessLog newArray[] = Arrays.copyOf(logs, logs.length + 1);
+        AccessLog[] newArray = Arrays.copyOf(logs, logs.length + 1);
         newArray[newArray.length - 1] = log;
         logs = newArray;
     }
 
     @Override
     public void log(Request request, Response response, long time) {
-        for (AccessLog log: logs) {
+        for (AccessLog log : logs) {
             log.log(request, response, time);
         }
     }
 
+    /**
+     * This method is a NO-OP. Each wrapped AccessLog instance maintains its own
+     * <code>requestAttributesEnabled</code> setting, so a single value cannot be applied to all of the wrapped
+     * instances.
+     *
+     * @param requestAttributesEnabled Ignored
+     */
     @Override
     public void setRequestAttributesEnabled(boolean requestAttributesEnabled) {
         // NOOP
@@ -56,8 +73,12 @@ public class AccessLogAdapter implements AccessLog {
 
     @Override
     public boolean getRequestAttributesEnabled() {
-        // NOOP. Could return logs[0].getRequestAttributesEnabled(), but I do
-        // not see a use case for that.
+        for (AccessLog log : logs) {
+            // Return true if any AccessLog is going to use the attributes
+            if (log.getRequestAttributesEnabled()) {
+                return true;
+            }
+        }
         return false;
     }
 }

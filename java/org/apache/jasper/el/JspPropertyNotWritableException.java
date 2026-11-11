@@ -18,12 +18,20 @@ package org.apache.jasper.el;
 
 import javax.el.PropertyNotWritableException;
 
-public class JspPropertyNotWritableException extends
-        PropertyNotWritableException {
+/**
+ * Exception thrown when a JSP property is not writable.
+ */
+public class JspPropertyNotWritableException extends PropertyNotWritableException {
 
     private static final long serialVersionUID = 1L;
 
+    /**
+     * Constructs an instance with the given mark and cause.
+     *
+     * @param mark The mark string
+     * @param e The cause exception
+     */
     public JspPropertyNotWritableException(String mark, PropertyNotWritableException e) {
-        super(mark + " " + e.getMessage(), e.getCause());
+        super(mark + " " + e.getMessage(), e.getCause() == null ? e : e.getCause());
     }
 }

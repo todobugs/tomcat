@@ -17,8 +17,14 @@
 package org.apache.el.parser;
 
 /**
- * @author Jacob Hookom [jacob@hookom.net]
+ * Visitor interface for traversing EL expression AST nodes.
  */
 public interface NodeVisitor {
-    public void visit(Node node) throws Exception;
+    /**
+     * Visits the given node.
+     *
+     * @param node the node to visit
+     * @throws Exception if an error occurs during visitation
+     */
+    void visit(Node node) throws Exception;
 }

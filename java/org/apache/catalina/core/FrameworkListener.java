@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.catalina.core;
 
 import java.util.concurrent.ConcurrentHashMap;
@@ -32,18 +31,27 @@ import org.apache.catalina.Server;
 import org.apache.catalina.Service;
 
 /**
- * This listener must be declared in server.xml as a Server listener, possibly optional.
- * It will register a lifecycle listener on all contexts. This is an alternative to
- * adding a Listener in context.xml with more flexibility.
+ * This listener must be declared in server.xml as a Server listener, possibly optional. It will register a lifecycle
+ * listener on all contexts. This is an alternative to adding a Listener in context.xml with more flexibility.
  */
 public abstract class FrameworkListener implements LifecycleListener, ContainerListener {
+    /**
+     * Creates a new FrameworkListener instance.
+     */
+    public FrameworkListener() {
+        // Default constructor
+    }
 
-    protected final ConcurrentHashMap<Context, LifecycleListener> contextListeners =
-            new ConcurrentHashMap<>();
+    /**
+     * Map of context to their associated lifecycle listeners.
+     */
+    protected final ConcurrentHashMap<Context,LifecycleListener> contextListeners = new ConcurrentHashMap<>();
 
     /**
      * Create a lifecycle listener which will then be added to the specified context.
+     *
      * @param context the associated Context
+     *
      * @return the lifecycle listener
      */
     protected abstract LifecycleListener createLifecycleListener(Context context);
@@ -51,8 +59,7 @@ public abstract class FrameworkListener implements LifecycleListener, ContainerL
     @Override
     public void lifecycleEvent(LifecycleEvent event) {
         Lifecycle lifecycle = event.getLifecycle();
-        if (Lifecycle.BEFORE_START_EVENT.equals(event.getType()) &&
-                lifecycle instanceof Server) {
+        if (Lifecycle.BEFORE_START_EVENT.equals(event.getType()) && lifecycle instanceof Server) {
             Server server = (Server) lifecycle;
             registerListenersForServer(server);
         }
@@ -68,37 +75,87 @@ public abstract class FrameworkListener implements LifecycleListener, ContainerL
         }
     }
 
+    /**
+     * Registers listeners on all engines of the given server.
+     *
+     * @param server The server to register listeners for
+     */
     protected void registerListenersForServer(Server server) {
         for (Service service : server.findServices()) {
             Engine engine = service.getContainer();
             if (engine != null) {
-                engine.addContainerListener(this);
                 registerListenersForEngine(engine);
             }
         }
     }
 
+
+    /**
+     * Registers this as a container listener on the given container unless it is already registered, so that repeated
+     * Server start events do not result in duplicate registrations.
+     *
+     * @param container The container on which to register this listener
+     */
+    private void addContainerListenerIfAbsent(Container container) {
+        for (ContainerListener listener : container.findContainerListeners()) {
+            if (listener == this) {
+                return;
+            }
+        }
+        container.addContainerListener(this);
+    }
+
+
+    /**
+     * Registers listeners on all hosts of the given engine.
+     *
+     * @param engine The engine to register listeners for
+     */
     protected void registerListenersForEngine(Engine engine) {
+        addContainerListenerIfAbsent(engine);
         for (Container hostContainer : engine.findChildren()) {
             Host host = (Host) hostContainer;
-            host.addContainerListener(this);
             registerListenersForHost(host);
         }
     }
 
+
+    /**
+     * Registers listeners on all contexts of the given host.
+     *
+     * @param host The host to register listeners for
+     */
     protected void registerListenersForHost(Host host) {
+        addContainerListenerIfAbsent(host);
         for (Container contextContainer : host.findChildren()) {
             Context context = (Context) contextContainer;
             registerContextListener(context);
         }
     }
 
+
+    /**
+     * Creates and registers a lifecycle listener for the given context.
+     *
+     * @param context The context to register a listener for
+     */
     protected void registerContextListener(Context context) {
+        // Reuse an existing listener if one is already registered, so that
+        // repeated Server start events do not create duplicate listeners that
+        // stay attached to the context after the map reference is replaced
+        if (contextListeners.containsKey(context)) {
+            return;
+        }
         LifecycleListener listener = createLifecycleListener(context);
         contextListeners.put(context, listener);
         context.addLifecycleListener(listener);
     }
 
+    /**
+     * Processes the addition of a child container by registering appropriate listeners.
+     *
+     * @param child The child container that was added
+     */
     protected void processContainerAddChild(Container child) {
         if (child instanceof Context) {
             registerContextListener((Context) child);
@@ -109,6 +166,11 @@ public abstract class FrameworkListener implements LifecycleListener, ContainerL
         }
     }
 
+    /**
+     * Processes the removal of a child container by unregistering appropriate listeners.
+     *
+     * @param child The child container that was removed
+     */
     protected void processContainerRemoveChild(Container child) {
         if (child instanceof Context) {
             LifecycleListener listener = contextListeners.remove(child);
@@ -117,6 +179,10 @@ public abstract class FrameworkListener implements LifecycleListener, ContainerL
             }
         } else if (child instanceof Host || child instanceof Engine) {
             child.removeContainerListener(this);
+            Container[] children = child.findChildren();
+            for (Container current : children) {
+                processContainerRemoveChild(current);
+            }
         }
     }
 

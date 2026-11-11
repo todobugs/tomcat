@@ -27,74 +27,77 @@ import org.apache.tomcat.util.IntrospectionUtils;
 import org.apache.tomcat.util.res.StringManager;
 
 /**
- * <p>A <strong>ModelMBean</strong> implementation for the
- * <code>org.apache.coyote.tomcat5.CoyoteConnector</code> component.</p>
- *
- * @author Amy Roh
+ * A <strong>ModelMBean</strong> implementation for the <code>org.apache.catalina.connector.Connector</code> component.
  */
 public class ConnectorMBean extends ClassNameMBean<Connector> {
 
+    /**
+     * Creates a new ConnectorMBean instance.
+     */
+    public ConnectorMBean() {
+        super();
+    }
+
     private static final StringManager sm = StringManager.getManager(ConnectorMBean.class);
 
-    /**
-     * Obtain and return the value of a specific attribute of this MBean.
-     *
-     * @param name Name of the requested attribute
-     *
-     * @exception AttributeNotFoundException if this attribute is not
-     *  supported by this MBean
-     * @exception MBeanException if the initializer of an object
-     *  throws an exception
-     * @exception ReflectionException if a Java reflection exception
-     *  occurs when invoking the getter
-     */
     @Override
-    public Object getAttribute(String name) throws AttributeNotFoundException, MBeanException,
-            ReflectionException {
+    public Object getAttribute(String name) throws AttributeNotFoundException, MBeanException, ReflectionException {
 
         // Validate the input parameters
         if (name == null) {
-            throw new RuntimeOperationsException(
-                    new IllegalArgumentException(sm.getString("mBean.nullName")),
+            throw new RuntimeOperationsException(new IllegalArgumentException(sm.getString("mBean.nullName")),
                     sm.getString("mBean.nullName"));
         }
 
         Connector connector = doGetManagedResource();
-        return IntrospectionUtils.getProperty(connector, name);
+        Object value = IntrospectionUtils.getProperty(connector, name);
+        if (value == null) {
+            // An unset property has a null value, an unknown attribute has no
+            // getter. Only report an error for the latter. Protocol handler
+            // properties are read through the connector's getProperty.
+            String capitalized = IntrospectionUtils.capitalize(name);
+            if (!hasGetter(connector.getClass(), capitalized)) {
+                Object handler = connector.getProtocolHandler();
+                if (handler == null || !hasGetter(handler.getClass(), capitalized)) {
+                    throw new AttributeNotFoundException(sm.getString("mBean.attributeNotFound", name));
+                }
+            }
+        }
+        return value;
     }
 
 
-    /**
-     * Set the value of a specific attribute of this MBean.
-     *
-     * @param attribute The identification of the attribute to be set
-     *  and the new value
-     *
-     * @exception AttributeNotFoundException if this attribute is not
-     *  supported by this MBean
-     * @exception MBeanException if the initializer of an object
-     *  throws an exception
-     * @exception ReflectionException if a Java reflection exception
-     *  occurs when invoking the getter
-     */
-     @Override
-    public void setAttribute(Attribute attribute) throws AttributeNotFoundException, MBeanException,
-            ReflectionException {
+    private static boolean hasGetter(Class<?> clazz, String capitalizedProperty) {
+        return IntrospectionUtils.findMethod(clazz, "get" + capitalizedProperty, null) != null ||
+                IntrospectionUtils.findMethod(clazz, "is" + capitalizedProperty, null) != null;
+    }
+
+
+    @Override
+    public void setAttribute(Attribute attribute)
+            throws AttributeNotFoundException, MBeanException, ReflectionException {
 
         // Validate the input parameters
         if (attribute == null) {
-            throw new RuntimeOperationsException(new IllegalArgumentException(
-                    sm.getString("mBean.nullAttribute")), sm.getString("mBean.nullAttribute"));
+            throw new RuntimeOperationsException(new IllegalArgumentException(sm.getString("mBean.nullAttribute")),
+                    sm.getString("mBean.nullAttribute"));
         }
         String name = attribute.getName();
         Object value = attribute.getValue();
         if (name == null) {
-            throw new RuntimeOperationsException(
-                    new IllegalArgumentException(sm.getString("mBean.nullName")),
+            throw new RuntimeOperationsException(new IllegalArgumentException(sm.getString("mBean.nullName")),
                     sm.getString("mBean.nullName"));
         }
 
         Connector connector = doGetManagedResource();
-        IntrospectionUtils.setProperty(connector, name, String.valueOf(value));
+        boolean set;
+        if (value == null) {
+            set = IntrospectionUtils.setProperty(connector, name, null);
+        } else {
+            set = IntrospectionUtils.setProperty(connector, name, String.valueOf(value));
+        }
+        if (!set) {
+            throw new MBeanException(new IllegalArgumentException(sm.getString("mBean.setAttributeFail", name)));
+        }
     }
 }

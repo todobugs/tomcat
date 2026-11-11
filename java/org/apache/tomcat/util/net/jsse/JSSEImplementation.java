@@ -16,6 +16,9 @@
  */
 package org.apache.tomcat.util.net.jsse;
 
+import java.util.List;
+import java.util.Map;
+
 import javax.net.ssl.SSLSession;
 
 import org.apache.tomcat.util.compat.JreCompat;
@@ -24,15 +27,14 @@ import org.apache.tomcat.util.net.SSLImplementation;
 import org.apache.tomcat.util.net.SSLSupport;
 import org.apache.tomcat.util.net.SSLUtil;
 
-/* JSSEImplementation:
-
-   Concrete implementation class for JSSE
-
-   @author EKR
-*/
-
+/**
+ * JSSE-based SSL implementation.
+ */
 public class JSSEImplementation extends SSLImplementation {
 
+    /**
+     * Default constructor.
+     */
     public JSSEImplementation() {
         // Make sure the keySizeCache is loaded now as part of connector startup
         // else the cache will be populated on first use which will slow that
@@ -40,9 +42,15 @@ public class JSSEImplementation extends SSLImplementation {
         JSSESupport.init();
     }
 
+    @Deprecated
     @Override
     public SSLSupport getSSLSupport(SSLSession session) {
-        return new JSSESupport(session);
+        return getSSLSupport(session, null);
+    }
+
+    @Override
+    public SSLSupport getSSLSupport(SSLSession session, Map<String,List<String>> additionalAttributes) {
+        return new JSSESupport(session, additionalAttributes);
     }
 
     @Override
@@ -52,6 +60,6 @@ public class JSSEImplementation extends SSLImplementation {
 
     @Override
     public boolean isAlpnSupported() {
-        return JreCompat.isJre9Available();
+        return JreCompat.isAlpnSupported();
     }
 }

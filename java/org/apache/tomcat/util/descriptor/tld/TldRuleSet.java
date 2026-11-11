@@ -22,15 +22,22 @@ import javax.servlet.jsp.tagext.TagAttributeInfo;
 import javax.servlet.jsp.tagext.TagVariableInfo;
 import javax.servlet.jsp.tagext.VariableInfo;
 
+import org.apache.tomcat.util.compat.JreCompat;
 import org.apache.tomcat.util.digester.Digester;
 import org.apache.tomcat.util.digester.Rule;
 import org.apache.tomcat.util.digester.RuleSet;
 import org.xml.sax.Attributes;
 
 /**
- * RulesSet for digesting TLD files.
+ * Digester rule set for parsing Tag Library Descriptor files.
  */
 public class TldRuleSet implements RuleSet {
+
+    /**
+     * Constructs a new TldRuleSet.
+     */
+    public TldRuleSet() {
+    }
     private static final String PREFIX = "taglib";
     private static final String VALIDATOR_PREFIX = PREFIX + "/validator";
     private static final String TAG_PREFIX = PREFIX + "/tag";
@@ -50,6 +57,13 @@ public class TldRuleSet implements RuleSet {
             public void begin(String namespace, String name, Attributes attributes) {
                 TaglibXml taglibXml = (TaglibXml) digester.peek();
                 taglibXml.setJspVersion(attributes.getValue("version"));
+
+                StringBuilder code = digester.getGeneratedCode();
+                if (code != null) {
+                    code.append(digester.toVariableName(taglibXml)).append(".setJspVersion(\"");
+                    code.append(attributes.getValue("version")).append("\");");
+                    code.append(System.lineSeparator());
+                }
             }
         });
         digester.addCallMethod(PREFIX + "/shortname", "setShortName", 0);
@@ -83,29 +97,23 @@ public class TldRuleSet implements RuleSet {
 
         digester.addRule(TAG_PREFIX + "/variable", new ScriptVariableRule());
         digester.addCallMethod(TAG_PREFIX + "/variable/name-given", "setNameGiven", 0);
-        digester.addCallMethod(TAG_PREFIX + "/variable/name-from-attribute",
-                "setNameFromAttribute", 0);
+        digester.addCallMethod(TAG_PREFIX + "/variable/name-from-attribute", "setNameFromAttribute", 0);
         digester.addCallMethod(TAG_PREFIX + "/variable/variable-class", "setClassName", 0);
-        digester.addRule(TAG_PREFIX + "/variable/declare",
-                new GenericBooleanRule(Variable.class, "setDeclare"));
+        digester.addRule(TAG_PREFIX + "/variable/declare", new GenericBooleanRule(Variable.class, "setDeclare"));
         digester.addCallMethod(TAG_PREFIX + "/variable/scope", "setScope", 0);
 
         digester.addRule(TAG_PREFIX + "/attribute", new TagAttributeRule());
         digester.addCallMethod(TAG_PREFIX + "/attribute/description", "setDescription", 0);
         digester.addCallMethod(TAG_PREFIX + "/attribute/name", "setName", 0);
-        digester.addRule(TAG_PREFIX + "/attribute/required",
-                new GenericBooleanRule(Attribute.class, "setRequired"));
+        digester.addRule(TAG_PREFIX + "/attribute/required", new GenericBooleanRule(Attribute.class, "setRequired"));
         digester.addRule(TAG_PREFIX + "/attribute/rtexprvalue",
                 new GenericBooleanRule(Attribute.class, "setRequestTime"));
         digester.addCallMethod(TAG_PREFIX + "/attribute/type", "setType", 0);
         digester.addCallMethod(TAG_PREFIX + "/attribute/deferred-value", "setDeferredValue");
-        digester.addCallMethod(TAG_PREFIX + "/attribute/deferred-value/type",
-                "setExpectedTypeName", 0);
+        digester.addCallMethod(TAG_PREFIX + "/attribute/deferred-value/type", "setExpectedTypeName", 0);
         digester.addCallMethod(TAG_PREFIX + "/attribute/deferred-method", "setDeferredMethod");
-        digester.addCallMethod(TAG_PREFIX + "/attribute/deferred-method/method-signature",
-                "setMethodSignature", 0);
-        digester.addRule(TAG_PREFIX + "/attribute/fragment",
-                new GenericBooleanRule(Attribute.class, "setFragment"));
+        digester.addCallMethod(TAG_PREFIX + "/attribute/deferred-method/method-signature", "setMethodSignature", 0);
+        digester.addRule(TAG_PREFIX + "/attribute/fragment", new GenericBooleanRule(Attribute.class, "setFragment"));
 
         digester.addRule(TAG_PREFIX + "/dynamic-attributes",
                 new GenericBooleanRule(TagXml.class, "setDynamicAttributes"));
@@ -127,8 +135,8 @@ public class TldRuleSet implements RuleSet {
 
     private void addDescriptionGroup(Digester digester, String prefix) {
         digester.addCallMethod(prefix + "/info", "setInfo", 0);
-        digester.addCallMethod(prefix + "small-icon", "setSmallIcon", 0);
-        digester.addCallMethod(prefix + "large-icon", "setLargeIcon", 0);
+        digester.addCallMethod(prefix + "/small-icon", "setSmallIcon", 0);
+        digester.addCallMethod(prefix + "/large-icon", "setLargeIcon", 0);
 
         digester.addCallMethod(prefix + "/description", "setInfo", 0);
         digester.addCallMethod(prefix + "/display-name", "setDisplayName", 0);
@@ -140,7 +148,19 @@ public class TldRuleSet implements RuleSet {
         @Override
         public void begin(String namespace, String name, Attributes attributes) throws Exception {
             TaglibXml taglibXml = (TaglibXml) digester.peek(digester.getCount() - 1);
-            digester.push(new Attribute("1.2".equals(taglibXml.getJspVersion())));
+            boolean allowShortNames = "1.2".equals(taglibXml.getJspVersion());
+            Attribute attribute = new Attribute(allowShortNames);
+            digester.push(attribute);
+
+            StringBuilder code = digester.getGeneratedCode();
+            if (code != null) {
+                code.append(System.lineSeparator());
+                code.append(TldRuleSet.class.getName()).append(".Attribute ").append(digester.toVariableName(attribute))
+                        .append(" = new ");
+                code.append(TldRuleSet.class.getName()).append(".Attribute").append('(')
+                        .append(Boolean.toString(allowShortNames));
+                code.append(");").append(System.lineSeparator());
+            }
         }
 
         @Override
@@ -148,9 +168,19 @@ public class TldRuleSet implements RuleSet {
             Attribute attribute = (Attribute) digester.pop();
             TagXml tag = (TagXml) digester.peek();
             tag.getAttributes().add(attribute.toTagAttributeInfo());
+
+            StringBuilder code = digester.getGeneratedCode();
+            if (code != null) {
+                code.append(digester.toVariableName(tag)).append(".getAttributes().add(");
+                code.append(digester.toVariableName(attribute)).append(".toTagAttributeInfo());");
+                code.append(System.lineSeparator());
+            }
         }
     }
 
+    /**
+     * Intermediate representation of a tag attribute during TLD parsing.
+     */
     public static class Attribute {
         private final boolean allowShortNames;
         private String name;
@@ -168,14 +198,26 @@ public class TldRuleSet implements RuleSet {
             this.allowShortNames = allowShortNames;
         }
 
+        /**
+         * Sets the attribute name.
+         * @param name the attribute name
+         */
         public void setName(String name) {
             this.name = name;
         }
 
+        /**
+         * Sets whether the attribute is required.
+         * @param required true if required
+         */
         public void setRequired(boolean required) {
             this.required = required;
         }
 
+        /**
+         * Sets the attribute type, with short name resolution.
+         * @param type the type name
+         */
         public void setType(String type) {
             if (allowShortNames) {
                 switch (type) {
@@ -218,34 +260,64 @@ public class TldRuleSet implements RuleSet {
             }
         }
 
+        /**
+         * Sets whether the attribute is evaluated at request time.
+         * @param requestTime true if request-time
+         */
         public void setRequestTime(boolean requestTime) {
             this.requestTime = requestTime;
         }
 
+        /**
+         * Sets whether the attribute is a fragment type.
+         * @param fragment true if fragment
+         */
         public void setFragment(boolean fragment) {
             this.fragment = fragment;
         }
 
+        /**
+         * Sets the attribute description.
+         * @param description the description
+         */
         public void setDescription(String description) {
             this.description = description;
         }
 
+        /**
+         * Marks the attribute as a deferred value.
+         */
         public void setDeferredValue() {
             this.deferredValue = true;
         }
 
+        /**
+         * Marks the attribute as a deferred method.
+         */
         public void setDeferredMethod() {
             this.deferredMethod = true;
         }
 
+        /**
+         * Sets the expected type name for deferred attributes.
+         * @param expectedTypeName the expected type name
+         */
         public void setExpectedTypeName(String expectedTypeName) {
             this.expectedTypeName = expectedTypeName;
         }
 
+        /**
+         * Sets the method signature for deferred method attributes.
+         * @param methodSignature the method signature
+         */
         public void setMethodSignature(String methodSignature) {
             this.methodSignature = methodSignature;
         }
 
+        /**
+         * Converts this intermediate attribute representation to a TagAttributeInfo.
+         * @return the TagAttributeInfo
+         */
         public TagAttributeInfo toTagAttributeInfo() {
             if (fragment) {
                 // JSP8.5.2: for a fragment type is fixed and rexprvalue is true
@@ -269,24 +341,25 @@ public class TldRuleSet implements RuleSet {
                 type = "java.lang.String";
             }
 
-            return new TagAttributeInfo(
-                    name,
-                    required,
-                    type,
-                    requestTime,
-                    fragment,
-                    description,
-                    deferredValue,
-                    deferredMethod,
-                    expectedTypeName,
-                    methodSignature);
+            return new TagAttributeInfo(name, required, type, requestTime, fragment, description, deferredValue,
+                    deferredMethod, expectedTypeName, methodSignature);
         }
     }
 
     private static class ScriptVariableRule extends Rule {
         @Override
         public void begin(String namespace, String name, Attributes attributes) throws Exception {
-            digester.push(new Variable());
+            Variable variable = new Variable();
+            digester.push(variable);
+
+            StringBuilder code = digester.getGeneratedCode();
+            if (code != null) {
+                code.append(System.lineSeparator());
+                code.append(TldRuleSet.class.getName()).append(".Variable ").append(digester.toVariableName(variable))
+                        .append(" = new ");
+                code.append(TldRuleSet.class.getName()).append(".Variable").append("();")
+                        .append(System.lineSeparator());
+            }
         }
 
         @Override
@@ -294,32 +367,87 @@ public class TldRuleSet implements RuleSet {
             Variable variable = (Variable) digester.pop();
             TagXml tag = (TagXml) digester.peek();
             tag.getVariables().add(variable.toTagVariableInfo());
+
+            StringBuilder code = digester.getGeneratedCode();
+            if (code != null) {
+                code.append(digester.toVariableName(tag)).append(".getVariables().add(");
+                code.append(digester.toVariableName(variable)).append(".toTagVariableInfo());");
+                code.append(System.lineSeparator());
+            }
         }
     }
 
+    /**
+     * Intermediate representation of a tag variable during TLD parsing.
+     */
     public static class Variable {
+        /**
+         * Constructs a new Variable.
+         */
+        public Variable() {
+        }
+
+        /**
+         * The explicitly given variable name.
+         */
         private String nameGiven;
+
+        /**
+         * The attribute name from which to derive the variable name.
+         */
         private String nameFromAttribute;
+
+        /**
+         * The variable type class name.
+         */
         private String className = "java.lang.String";
+
+        /**
+         * Whether to declare the variable.
+         */
         private boolean declare = true;
+
+        /**
+         * The variable scope.
+         */
         private int scope = VariableInfo.NESTED;
 
+        /**
+         * Sets the explicit variable name.
+         * @param nameGiven the variable name
+         */
         public void setNameGiven(String nameGiven) {
             this.nameGiven = nameGiven;
         }
 
+        /**
+         * Sets the attribute name from which to derive the variable name.
+         * @param nameFromAttribute the attribute name
+         */
         public void setNameFromAttribute(String nameFromAttribute) {
             this.nameFromAttribute = nameFromAttribute;
         }
 
+        /**
+         * Sets the variable type class name.
+         * @param className the class name
+         */
         public void setClassName(String className) {
             this.className = className;
         }
 
+        /**
+         * Sets whether to declare the variable.
+         * @param declare true to declare
+         */
         public void setDeclare(boolean declare) {
             this.declare = declare;
         }
 
+        /**
+         * Sets the variable scope.
+         * @param scopeName the scope name
+         */
         public void setScope(String scopeName) {
             switch (scopeName) {
                 case "NESTED":
@@ -334,6 +462,10 @@ public class TldRuleSet implements RuleSet {
             }
         }
 
+        /**
+         * Converts this intermediate variable representation to a TagVariableInfo.
+         * @return the TagVariableInfo
+         */
         public TagVariableInfo toTagVariableInfo() {
             return new TagVariableInfo(nameGiven, nameFromAttribute, className, declare, scope);
         }
@@ -352,10 +484,18 @@ public class TldRuleSet implements RuleSet {
 
         @Override
         public void body(String namespace, String name, String text) throws Exception {
-            if(null != text)
-                text = text.trim();
+            if (null != text) {
+                text = JreCompat.getInstance().strip(text);
+            }
             boolean value = "true".equalsIgnoreCase(text) || "yes".equalsIgnoreCase(text);
             setter.invoke(digester.peek(), Boolean.valueOf(value));
+
+            StringBuilder code = digester.getGeneratedCode();
+            if (code != null) {
+                code.append(digester.toVariableName(digester.peek())).append('.').append(setter.getName());
+                code.append('(').append(Boolean.valueOf(value)).append(");");
+                code.append(System.lineSeparator());
+            }
         }
     }
 }

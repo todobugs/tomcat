@@ -17,9 +17,16 @@
 package org.apache.tomcat.websocket;
 
 import java.io.IOException;
+import java.nio.ByteBuffer;
+
+import javax.websocket.RemoteEndpoint;
 
 import org.junit.Assert;
 import org.junit.Test;
+
+import org.apache.juli.logging.Log;
+import org.apache.juli.logging.LogFactory;
+import org.easymock.EasyMock;
 
 public class TestWsFrame {
 
@@ -28,10 +35,16 @@ public class TestWsFrame {
         Assert.assertEquals(0L, WsFrameBase.byteArrayToLong(new byte[] { 0 }, 0, 1));
         Assert.assertEquals(1L, WsFrameBase.byteArrayToLong(new byte[] { 1 }, 0, 1));
         Assert.assertEquals(0xFF, WsFrameBase.byteArrayToLong(new byte[] { -1 }, 0, 1));
-        Assert.assertEquals(0xFFFF,
-                WsFrameBase.byteArrayToLong(new byte[] { -1, -1 }, 0, 2));
-        Assert.assertEquals(0xFFFFFF,
-                WsFrameBase.byteArrayToLong(new byte[] { -1, -1, -1 }, 0, 3));
+        Assert.assertEquals(0xFFFF, WsFrameBase.byteArrayToLong(new byte[] { -1, -1 }, 0, 2));
+        Assert.assertEquals(0xFFFFFF, WsFrameBase.byteArrayToLong(new byte[] { -1, -1, -1 }, 0, 3));
+        Assert.assertEquals(0xFFFFFFFFL, WsFrameBase.byteArrayToLong(new byte[] { -1, -1, -1, -1 }, 0, 4));
+        Assert.assertEquals(0xFFFFFFFFFFL, WsFrameBase.byteArrayToLong(new byte[] { -1, -1, -1, -1, -1 }, 0, 5));
+        Assert.assertEquals(0xFFFFFFFFFFFFL, WsFrameBase.byteArrayToLong(new byte[] { -1, -1, -1, -1, -1, -1 }, 0, 6));
+        Assert.assertEquals(0xFFFFFFFFFFFFFFL,
+                WsFrameBase.byteArrayToLong(new byte[] { -1, -1, -1, -1, -1, -1, -1 }, 0, 7));
+        Assert.assertEquals(0x7FFFFFFFFFFFFFFFL,
+                WsFrameBase.byteArrayToLong(new byte[] { 127, -1, -1, -1, -1, -1, -1, -1 }, 0, 8));
+        Assert.assertEquals(-1, WsFrameBase.byteArrayToLong(new byte[] { -1, -1, -1, -1, -1, -1, -1, -1 }, 0, 8));
     }
 
 
@@ -40,10 +53,86 @@ public class TestWsFrame {
         Assert.assertEquals(0L, WsFrameBase.byteArrayToLong(new byte[] { 20, 0 }, 1, 1));
         Assert.assertEquals(1L, WsFrameBase.byteArrayToLong(new byte[] { 20, 1 }, 1, 1));
         Assert.assertEquals(0xFF, WsFrameBase.byteArrayToLong(new byte[] { 20, -1 }, 1, 1));
-        Assert.assertEquals(0xFFFF,
-                WsFrameBase.byteArrayToLong(new byte[] { 20, -1, -1 }, 1, 2));
-        Assert.assertEquals(0xFFFFFF,
-                WsFrameBase.byteArrayToLong(new byte[] { 20, -1, -1, -1 }, 1, 3));
+        Assert.assertEquals(0xFFFF, WsFrameBase.byteArrayToLong(new byte[] { 20, -1, -1 }, 1, 2));
+        Assert.assertEquals(0xFFFFFF, WsFrameBase.byteArrayToLong(new byte[] { 20, -1, -1, -1 }, 1, 3));
+        Assert.assertEquals(0xFFFFFFFFL, WsFrameBase.byteArrayToLong(new byte[] { 20, -1, -1, -1, -1 }, 1, 4));
+        Assert.assertEquals(0xFFFFFFFFFFL, WsFrameBase.byteArrayToLong(new byte[] { 20, -1, -1, -1, -1, -1 }, 1, 5));
+        Assert.assertEquals(0xFFFFFFFFFFFFL,
+                WsFrameBase.byteArrayToLong(new byte[] { 20, -1, -1, -1, -1, -1, -1 }, 1, 6));
+        Assert.assertEquals(0xFFFFFFFFFFFFFFL,
+                WsFrameBase.byteArrayToLong(new byte[] { 20, -1, -1, -1, -1, -1, -1, -1 }, 1, 7));
+        Assert.assertEquals(0x7FFFFFFFFFFFFFFFL,
+                WsFrameBase.byteArrayToLong(new byte[] { 20, 127, -1, -1, -1, -1, -1, -1, -1 }, 1, 8));
+        Assert.assertEquals(-1, WsFrameBase.byteArrayToLong(new byte[] { 20, -1, -1, -1, -1, -1, -1, -1, -1 }, 1, 8));
     }
 
+
+    @Test
+    public void testAutomaticPongAfterCloseStarted() throws Exception {
+        doTestAutomaticPongFailure(new IllegalStateException(), true, true);
+    }
+
+
+    @Test
+    public void testAutomaticPongISEWhileOpen() throws Exception {
+        doTestAutomaticPongFailure(new IllegalStateException(), false, false);
+    }
+
+
+    private static void doTestAutomaticPongFailure(Exception failure, boolean closing, boolean swallowed)
+            throws Exception {
+        WsSession wsSession = EasyMock.createNiceMock(WsSession.class);
+        RemoteEndpoint.Basic basicRemote = EasyMock.createMock(RemoteEndpoint.Basic.class);
+        EasyMock.expect(Boolean.valueOf(wsSession.isOpen())).andReturn(Boolean.TRUE);
+        EasyMock.expect(wsSession.getBasicRemote()).andReturn(basicRemote);
+        basicRemote.sendPong(EasyMock.anyObject(ByteBuffer.class));
+        EasyMock.expectLastCall().andThrow(failure);
+        EasyMock.expect(Boolean.valueOf(wsSession.isClosing())).andStubReturn(Boolean.valueOf(closing));
+        EasyMock.replay(wsSession, basicRemote);
+
+        TestFrame frame = new TestFrame(wsSession);
+        if (swallowed) {
+            frame.processPing();
+        } else {
+            try {
+                frame.processPing();
+                Assert.fail();
+            } catch (Exception actual) {
+                Assert.assertSame(failure, actual);
+            }
+        }
+
+        EasyMock.verify(wsSession, basicRemote);
+    }
+
+
+    private static class TestFrame extends WsFrameBase {
+
+        TestFrame(WsSession wsSession) {
+            super(wsSession, null);
+        }
+
+        void processPing() throws IOException {
+            inputBuffer.clear();
+            inputBuffer.put((byte) 0x89);
+            inputBuffer.put((byte) 0x00);
+            inputBuffer.flip();
+            processInputBuffer();
+        }
+
+        @Override
+        protected boolean isMasked() {
+            return false;
+        }
+
+        @Override
+        protected Log getLog() {
+            return LogFactory.getLog(TestFrame.class);
+        }
+
+        @Override
+        protected void resumeProcessing() {
+            // NO-OP
+        }
+    }
 }

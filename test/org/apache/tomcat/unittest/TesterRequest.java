@@ -31,22 +31,39 @@ import javax.servlet.SessionTrackingMode;
 import org.apache.catalina.Context;
 import org.apache.catalina.connector.Request;
 import org.apache.catalina.session.StandardSession;
+import org.apache.tomcat.util.buf.MessageBytes;
 
 public class TesterRequest extends Request {
 
     private final TesterContext context;
     private final TesterServletContext servletContext;
+    private final String requestUri;
 
 
     public TesterRequest() {
-        this(false);
+        this(false, "/level1/level2/foo.html");
     }
 
 
     public TesterRequest(boolean withSession) {
+        this(withSession, "/level1/level2/foo.html");
+    }
+
+
+    public TesterRequest(String requestUri) {
+        this(false, requestUri);
+    }
+
+
+    public TesterRequest(boolean withSession, String requestUri) {
+        this(withSession, requestUri, "");
+    }
+
+
+    public TesterRequest(boolean withSession, String requestUri, String reqContextPath) {
         super(null);
         context = new TesterContext();
-        servletContext = new TesterServletContext();
+        servletContext = new TesterServletContext(reqContextPath);
         context.setServletContext(servletContext);
         if (withSession) {
             Set<SessionTrackingMode> modes = new HashSet<>();
@@ -57,6 +74,7 @@ public class TesterRequest extends Request {
             session.setId("1234", false);
             session.setValid(true);
         }
+        this.requestUri = requestUri;
     }
 
 
@@ -65,10 +83,12 @@ public class TesterRequest extends Request {
         return "http";
     }
 
+
     @Override
     public String getServerName() {
         return "localhost";
     }
+
 
     @Override
     public int getServerPort() {
@@ -78,8 +98,17 @@ public class TesterRequest extends Request {
 
     @Override
     public String getRequestURI() {
-        return "/level1/level2/foo.html";
+        return requestUri;
     }
+
+
+    @Override
+    public MessageBytes getRequestPathMB() {
+        MessageBytes result = MessageBytes.newInstance();
+        result.setString(getRequestURI());
+        return result;
+    }
+
 
     @Override
     public String getDecodedRequestURI() {
@@ -101,23 +130,22 @@ public class TesterRequest extends Request {
 
 
     private String method;
+
     public void setMethod(String method) {
         this.method = method;
     }
+
     @Override
     public String getMethod() {
         return method;
     }
 
     private final Map<String,List<String>> headers = new HashMap<>();
+
     public void addHeader(String name, String value) {
-        List<String> values = headers.get(name);
-        if (values == null) {
-            values = new ArrayList<>();
-            headers.put(name, values);
-        }
-        values.add(value);
+        headers.computeIfAbsent(name, k -> new ArrayList<>()).add(value);
     }
+
     @Override
     public String getHeader(String name) {
         List<String> values = headers.get(name);
@@ -126,6 +154,7 @@ public class TesterRequest extends Request {
         }
         return values.get(0);
     }
+
     @Override
     public Enumeration<String> getHeaders(String name) {
         List<String> values = headers.get(name);

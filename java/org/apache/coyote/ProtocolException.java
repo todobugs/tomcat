@@ -17,25 +17,43 @@
 package org.apache.coyote;
 
 /**
- * Used when we need to indicate failure but the (Servlet) API doesn't declare
- * any appropriate exceptions.
+ * Used when we need to indicate failure but the (Servlet) API doesn't declare any appropriate exceptions.
  */
 public class ProtocolException extends RuntimeException {
 
     private static final long serialVersionUID = 1L;
 
+    /**
+     * Construct a {@code ProtocolException} with no detail message or cause.
+     */
     public ProtocolException() {
         super();
     }
 
+    /**
+     * Construct a {@code ProtocolException} with the given detail message and cause.
+     *
+     * @param message the detail message
+     * @param cause the cause
+     */
     public ProtocolException(String message, Throwable cause) {
         super(message, cause);
     }
 
+    /**
+     * Construct a {@code ProtocolException} with the given detail message.
+     *
+     * @param message the detail message
+     */
     public ProtocolException(String message) {
         super(message);
     }
 
+    /**
+     * Construct a {@code ProtocolException} with the given cause.
+     *
+     * @param cause the cause
+     */
     public ProtocolException(Throwable cause) {
         super(cause);
     }

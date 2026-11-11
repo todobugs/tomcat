@@ -19,17 +19,37 @@ package org.apache.naming;
 
 /**
  * Represents a binding in a NamingContext.
- *
- * @author Remy Maucherat
  */
 public class NamingEntry {
 
+    /**
+     * Entry type for a regular binding.
+     */
     public static final int ENTRY = 0;
+
+    /**
+     * Entry type for a link reference.
+     */
     public static final int LINK_REF = 1;
+
+    /**
+     * Entry type for a reference.
+     */
     public static final int REFERENCE = 2;
+
+    /**
+     * Entry type for a sub-context.
+     */
     public static final int CONTEXT = 10;
 
 
+    /**
+     * Creates a new naming entry.
+     *
+     * @param name The binding name
+     * @param value The bound object
+     * @param type The entry type
+     */
     public NamingEntry(String name, Object value, int type) {
         this.name = name;
         this.value = value;
@@ -38,12 +58,19 @@ public class NamingEntry {
 
 
     /**
-     * The type instance variable is used to avoid using RTTI when doing
-     * lookups.
+     * The type instance variable is used to avoid using RTTI when doing lookups.
      */
-    public int type;
+    public volatile int type;
+
+    /**
+     * The binding name.
+     */
     public final String name;
-    public Object value;
+
+    /**
+     * The bound object value.
+     */
+    public volatile Object value;
 
 
     @Override

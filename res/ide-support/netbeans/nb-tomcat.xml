@@ -19,7 +19,7 @@
   Supplementary build targets for the Tomcat project under NetBeans.
   Use the project root as basedir to be consistent with standard build.
 -->
-<project basedir=".." name="Tomcat_8.0">
+<project basedir=".." name="Tomcat_@VERSION_MAJOR_MINOR@">
 
   <!--
        load the standard and user Tomcat build properties now,
@@ -75,7 +75,7 @@
            includes="${files}"
            debug="true"
            deprecation="${compile.deprecation}"
-           source="${compile.source}"
+           source="${compile.release}"
            encoding="ISO-8859-1"
            includeantruntime="false">
       <classpath path="${nb-test.classpath}"/>
@@ -123,7 +123,6 @@
       <jvmarg value="-Xrunjdwp:transport=dt_socket,address=${jpda.address}"/>
       <jvmarg value="-Djava.compiler=none"/>
 
-      <jvmarg value="${test.jvmarg.egd}"/>
       <jvmarg value="-Djava.library.path=${test.apr.loc}"/>
       <jvmarg value="${nb-junit.formatter}"/>
 

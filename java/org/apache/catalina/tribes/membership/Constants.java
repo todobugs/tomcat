@@ -19,14 +19,28 @@ package org.apache.catalina.tribes.membership;
 import org.apache.catalina.tribes.util.Arrays;
 
 /**
- * Manifest constants for the <code>org.apache.catalina.tribes.membership</code>
- * package.
- *
- * @author Peter Rossbach
+ * Constants for the <code>org.apache.catalina.tribes.membership</code> package.
  */
 public class Constants {
 
+    /**
+     * Prevents instantiation.
+     */
+    private Constants() {
+    }
+
+    /**
+     * The fully qualified name of this package.
+     */
     public static final String Package = "org.apache.catalina.tribes.membership";
+
+    /**
+     * Prints debug output for TRIBES byte arrays.
+     *
+     * @param args Command line arguments (not used)
+     *
+     * @throws Exception if an error occurs during output
+     */
     public static void main(String[] args) throws Exception {
         System.out.println(Arrays.toString("TRIBES-B".getBytes()));
         System.out.println(Arrays.toString("TRIBES-E".getBytes()));

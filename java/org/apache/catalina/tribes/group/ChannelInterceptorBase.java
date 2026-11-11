@@ -33,7 +33,10 @@ public abstract class ChannelInterceptorBase implements ChannelInterceptor {
     private ChannelInterceptor next;
     private ChannelInterceptor previous;
     private Channel channel;
-    //default value, always process
+    // default value, always process
+    /**
+     * The option flag used to determine if this interceptor should process a message.
+     */
     protected int optionFlag = 0;
 
     /**
@@ -41,13 +44,25 @@ public abstract class ChannelInterceptorBase implements ChannelInterceptor {
      */
     private ObjectName oname = null;
 
+    /**
+     * Creates a new ChannelInterceptorBase.
+     */
     public ChannelInterceptorBase() {
 
     }
 
+    /**
+     * Checks if it is OK to process a message with the given flags.
+     *
+     * @param messageFlags the message flags
+     *
+     * @return true if the interceptor should process the message
+     */
     public boolean okToProcess(int messageFlags) {
-        if (this.optionFlag == 0 ) return true;
-        return ((optionFlag&messageFlags) == optionFlag);
+        if (this.optionFlag == 0) {
+            return true;
+        }
+        return ((optionFlag & messageFlags) == optionFlag);
     }
 
     @Override
@@ -81,133 +96,137 @@ public abstract class ChannelInterceptorBase implements ChannelInterceptor {
     }
 
     @Override
-    public void sendMessage(Member[] destination, ChannelMessage msg, InterceptorPayload payload) throws
-        ChannelException {
-        if (getNext() != null) getNext().sendMessage(destination, msg, payload);
+    public void sendMessage(Member[] destination, ChannelMessage msg, InterceptorPayload payload)
+            throws ChannelException {
+        if (getNext() != null) {
+            getNext().sendMessage(destination, msg, payload);
+        }
     }
 
     @Override
     public void messageReceived(ChannelMessage msg) {
-        if (getPrevious() != null) getPrevious().messageReceived(msg);
+        if (getPrevious() != null) {
+            getPrevious().messageReceived(msg);
+        }
     }
 
     @Override
     public void memberAdded(Member member) {
-        //notify upwards
-        if (getPrevious() != null) getPrevious().memberAdded(member);
+        // notify upwards
+        if (getPrevious() != null) {
+            getPrevious().memberAdded(member);
+        }
     }
 
     @Override
     public void memberDisappeared(Member member) {
-        //notify upwards
-        if (getPrevious() != null) getPrevious().memberDisappeared(member);
+        // notify upwards
+        if (getPrevious() != null) {
+            getPrevious().memberDisappeared(member);
+        }
     }
 
     @Override
     public void heartbeat() {
-        if (getNext() != null) getNext().heartbeat();
+        if (getNext() != null) {
+            getNext().heartbeat();
+        }
     }
 
-    /**
-     * has members
-     */
     @Override
     public boolean hasMembers() {
-        if ( getNext()!=null )return getNext().hasMembers();
-        else return false;
+        if (getNext() != null) {
+            return getNext().hasMembers();
+        } else {
+            return false;
+        }
     }
 
-    /**
-     * Get all current cluster members
-     * @return all members or empty array
-     */
     @Override
     public Member[] getMembers() {
-        if ( getNext()!=null ) return getNext().getMembers();
-        else return null;
+        if (getNext() != null) {
+            return getNext().getMembers();
+        } else {
+            return null;
+        }
     }
 
-    /**
-     *
-     * @param mbr Member
-     * @return Member
-     */
     @Override
     public Member getMember(Member mbr) {
-        if ( getNext()!=null) return getNext().getMember(mbr);
-        else return null;
+        if (getNext() != null) {
+            return getNext().getMember(mbr);
+        } else {
+            return null;
+        }
     }
 
-    /**
-     * Return the member that represents this node.
-     *
-     * @return Member
-     */
     @Override
     public Member getLocalMember(boolean incAlive) {
-        if ( getNext()!=null ) return getNext().getLocalMember(incAlive);
-        else return null;
+        if (getNext() != null) {
+            return getNext().getLocalMember(incAlive);
+        } else {
+            return null;
+        }
     }
 
-    /**
-     * Starts up the channel. This can be called multiple times for individual services to start
-     * The svc parameter can be the logical or value of any constants
-     * @param svc int value of <BR>
-     * DEFAULT - will start all services <BR>
-     * MBR_RX_SEQ - starts the membership receiver <BR>
-     * MBR_TX_SEQ - starts the membership broadcaster <BR>
-     * SND_TX_SEQ - starts the replication transmitter<BR>
-     * SND_RX_SEQ - starts the replication receiver<BR>
-     * @throws ChannelException if a startup error occurs or the service is already started.
-     */
     @Override
     public void start(int svc) throws ChannelException {
-        if ( getNext()!=null ) getNext().start(svc);
+        if (getNext() != null) {
+            getNext().start(svc);
+        }
         // register jmx
         JmxRegistry jmxRegistry = JmxRegistry.getRegistry(channel);
-        if (jmxRegistry != null) this.oname = jmxRegistry.registerJmx(
-                ",component=Interceptor,interceptorName=" + getClass().getSimpleName(), this);
+        if (jmxRegistry != null) {
+            this.oname = jmxRegistry.registerJmx(",component=Interceptor,interceptorName=" + getClass().getSimpleName(),
+                    this);
+        }
+    }
+
+    @Override
+    public void stop(int svc) throws ChannelException {
+        if (getNext() != null) {
+            getNext().stop(svc);
+        }
+        // Only release the channel and the JMX registration once all services have been stopped. A partial stop leaves
+        // services running that still use them.
+        if (isFullyStopped()) {
+            if (oname != null) {
+                JmxRegistry jmxRegistry = JmxRegistry.getRegistry(channel);
+                if (jmxRegistry != null) {
+                    jmxRegistry.unregisterJmx(oname);
+                }
+                oname = null;
+            }
+            channel = null;
+        }
     }
 
     /**
-     * Shuts down the channel. This can be called multiple times for individual services to shutdown
-     * The svc parameter can be the logical or value of any constants
-     * @param svc int value of <BR>
-     * DEFAULT - will shutdown all services <BR>
-     * MBR_RX_SEQ - stops the membership receiver <BR>
-     * MBR_TX_SEQ - stops the membership broadcaster <BR>
-     * SND_TX_SEQ - stops the replication transmitter<BR>
-     * SND_RX_SEQ - stops the replication receiver<BR>
-     * @throws ChannelException if a startup error occurs or the service is already started.
+     * Determine if all services of the coordinator at the end of the interceptor stack have been stopped.
+     *
+     * @return {@code true} if no service is started, or if there is no coordinator after this interceptor
      */
-    @Override
-    public void stop(int svc) throws ChannelException {
-        if (getNext() != null) getNext().stop(svc);
-        if (oname != null) {
-            JmxRegistry.getRegistry(channel).unregisterJmx(oname);
-            oname = null;
+    private boolean isFullyStopped() {
+        ChannelInterceptor interceptor = getNext();
+        while (interceptor != null) {
+            if (interceptor instanceof ChannelCoordinator) {
+                return ((ChannelCoordinator) interceptor).getStartLevel() == 0;
+            }
+            interceptor = interceptor.getNext();
         }
-        channel = null;
+        return true;
     }
 
     @Override
     public void fireInterceptorEvent(InterceptorEvent event) {
-        //empty operation
+        // empty operation
     }
 
-    /**
-     * Return the channel that is related to this interceptor
-     * @return Channel
-     */
     @Override
     public Channel getChannel() {
         return channel;
     }
 
-    /**
-     * Set the channel that is related to this interceptor
-     * @param channel The channel
-     */
     @Override
     public void setChannel(Channel channel) {
         this.channel = channel;

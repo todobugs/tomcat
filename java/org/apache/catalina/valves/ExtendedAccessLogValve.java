@@ -19,9 +19,8 @@ package org.apache.catalina.valves;
 import java.io.CharArrayWriter;
 import java.io.IOException;
 import java.io.StringReader;
-import java.io.UnsupportedEncodingException;
 import java.net.InetAddress;
-import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Date;
@@ -33,165 +32,109 @@ import java.util.TimeZone;
 import javax.servlet.http.Cookie;
 import javax.servlet.http.HttpSession;
 
+import org.apache.catalina.Context;
 import org.apache.catalina.connector.Request;
 import org.apache.catalina.connector.Response;
 import org.apache.catalina.util.ServerInfo;
+import org.apache.catalina.util.URLEncoder;
 import org.apache.juli.logging.Log;
 import org.apache.juli.logging.LogFactory;
 import org.apache.tomcat.util.ExceptionUtils;
 
 /**
  * An implementation of the W3c Extended Log File Format. See
- * http://www.w3.org/TR/WD-logfile.html for more information about the format.
- *
- * The following fields are supported:
+ * <a href="http://www.w3.org/TR/WD-logfile.html">WD-logfile-960323</a> for more information about the format. The
+ * following fields are supported:
  * <ul>
- * <li><code>c-dns</code>:  Client hostname (or ip address if
- * <code>enableLookups</code> for the connector is false)</li>
- * <li><code>c-ip</code>:  Client ip address</li>
- * <li><code>bytes</code>:  bytes served</li>
- * <li><code>cs-method</code>:  request method</li>
- * <li><code>cs-uri</code>:  The full uri requested</li>
- * <li><code>cs-uri-query</code>:  The query string</li>
- * <li><code>cs-uri-stem</code>:  The uri without query string</li>
- * <li><code>date</code>:  The date in yyyy-mm-dd  format for GMT</li>
- * <li><code>s-dns</code>: The server dns entry </li>
- * <li><code>s-ip</code>:  The server ip address</li>
- * <li><code>cs(XXX)</code>:  The value of header XXX from client to server</li>
- * <li><code>sc(XXX)</code>: The value of header XXX from server to client </li>
- * <li><code>sc-status</code>:  The status code</li>
- * <li><code>time</code>:  Time the request was served</li>
- * <li><code>time-taken</code>:  Time (in seconds) taken to serve the request</li>
+ * <li><code>c-dns</code>: Client hostname (or ip address if <code>enableLookups</code> for the connector is false)</li>
+ * <li><code>c-ip</code>: Client ip address</li>
+ * <li><code>bytes</code>: bytes served</li>
+ * <li><code>cs-method</code>: request method</li>
+ * <li><code>cs-uri</code>: The full uri requested</li>
+ * <li><code>cs-uri-query</code>: The query string</li>
+ * <li><code>cs-uri-stem</code>: The uri without query string</li>
+ * <li><code>date</code>: The date in yyyy-mm-dd format for GMT</li>
+ * <li><code>s-dns</code>: The server dns entry</li>
+ * <li><code>s-ip</code>: The server ip address</li>
+ * <li><code>cs(xxx)</code>: The value of header xxx from client to server</li>
+ * <li><code>sc(xxx)</code>: The value of header xxx from server to client</li>
+ * <li><code>sc-status</code>: The status code</li>
+ * <li><code>time</code>: Time the request was served</li>
+ * <li><code>time-taken</code>: Time taken to serve the request. In seconds by default; one of the suffixes
+ * <code>-ms</code>, <code>-us</code>, <code>-ns</code> or <code>-fracsec</code> may be appended to select the unit
+ * (unknown suffixes default to seconds)</li>
  * <li><code>x-threadname</code>: Current request thread name (can compare later with stacktraces)</li>
- * <li><code>x-A(XXX)</code>: Pull XXX attribute from the servlet context </li>
- * <li><code>x-C(XXX)</code>: Pull the first cookie of the name XXX </li>
- * <li><code>x-O(XXX)</code>: Pull the all response header values XXX </li>
- * <li><code>x-R(XXX)</code>: Pull XXX attribute from the servlet request </li>
- * <li><code>x-S(XXX)</code>: Pull XXX attribute from the session </li>
- * <li><code>x-P(...)</code>:  Call request.getParameter(...)
- *                             and URLencode it. Helpful to capture
- *                             certain POST parameters.
- * </li>
- * <li>For any of the x-H(...) the following method will be called from the
- *                HttpServletRequest object </li>
- * <li><code>x-H(authType)</code>: getAuthType </li>
- * <li><code>x-H(characterEncoding)</code>: getCharacterEncoding </li>
- * <li><code>x-H(contentLength)</code>: getContentLength </li>
- * <li><code>x-H(locale)</code>:  getLocale</li>
- * <li><code>x-H(protocol)</code>: getProtocol </li>
- * <li><code>x-H(remoteUser)</code>:  getRemoteUser</li>
+ * <li><code>x-A(xxx)</code>: Pull xxx attribute from the servlet context</li>
+ * <li><code>x-C(xxx)</code>: Pull the cookie(s) of the name xxx</li>
+ * <li><code>x-O(xxx)</code>: Pull the all response header values xxx</li>
+ * <li><code>x-R(xxx)</code>: Pull xxx attribute from the servlet request</li>
+ * <li><code>x-S(xxx)</code>: Pull xxx attribute from the session</li>
+ * <li><code>x-P(...)</code>: Call request.getParameter(...) and URLencode it. Helpful to capture certain POST
+ * parameters.</li>
+ * <li>For any of the x-H(...) the following method will be called from the HttpServletRequest object</li>
+ * <li><code>x-H(authType)</code>: getAuthType</li>
+ * <li><code>x-H(characterEncoding)</code>: getCharacterEncoding</li>
+ * <li><code>x-H(contentLength)</code>: getContentLength</li>
+ * <li><code>x-H(locale)</code>: getLocale</li>
+ * <li><code>x-H(protocol)</code>: getProtocol</li>
+ * <li><code>x-H(remoteUser)</code>: getRemoteUser</li>
  * <li><code>x-H(requestedSessionId)</code>: getRequestedSessionId</li>
- * <li><code>x-H(requestedSessionIdFromCookie)</code>:
- *                  isRequestedSessionIdFromCookie </li>
- * <li><code>x-H(requestedSessionIdValid)</code>:
- *                  isRequestedSessionIdValid</li>
- * <li><code>x-H(scheme)</code>:  getScheme</li>
- * <li><code>x-H(secure)</code>:  isSecure</li>
+ * <li><code>x-H(requestedSessionIdFromCookie)</code>: isRequestedSessionIdFromCookie</li>
+ * <li><code>x-H(requestedSessionIdValid)</code>: isRequestedSessionIdValid</li>
+ * <li><code>x-H(scheme)</code>: getScheme</li>
+ * <li><code>x-H(secure)</code>: isSecure</li>
  * </ul>
- *
- *
- *
- * <p>
- * Log rotation can be on or off. This is dictated by the
- * <code>rotatable</code> property.
- * </p>
- *
- * <p>
- * For UNIX users, another field called <code>checkExists</code> is also
- * available. If set to true, the log file's existence will be checked before
- * each logging. This way an external log rotator can move the file
- * somewhere and Tomcat will start with a new file.
- * </p>
- *
- * <p>
- * For JMX junkies, a public method called <code>rotate</code> has
- * been made available to allow you to tell this instance to move
- * the existing log file to somewhere else and start writing a new log file.
- * </p>
- *
- * <p>
- * Conditional logging is also supported. This can be done with the
- * <code>condition</code> property.
- * If the value returned from ServletRequest.getAttribute(condition)
- * yields a non-null value, the logging will be skipped.
- * </p>
- *
- * <p>
- * For extended attributes coming from a getAttribute() call,
- * it is you responsibility to ensure there are no newline or
- * control characters.
- * </p>
- *
- * @author Peter Rossbach
  */
 public class ExtendedAccessLogValve extends AccessLogValve {
 
-    private static final Log log = LogFactory.getLog(ExtendedAccessLogValve.class);
-
-    // ----------------------------------------------------- Instance Variables
-
-
     /**
-     * The descriptive information about this implementation.
+     * Creates a new ExtendedAccessLogValve instance.
      */
-    protected static final String extendedAccessLogInfo =
-        "org.apache.catalina.valves.ExtendedAccessLogValve/2.1";
+    public ExtendedAccessLogValve() {
+    }
 
+    private static final Log log = LogFactory.getLog(ExtendedAccessLogValve.class);
 
     // -------------------------------------------------------- Private Methods
 
     /**
-     * Wrap the incoming value with double quotes (") and escape any double
-     * quotes appearing in the value using two double quotes ("").
+     * Calls toString() on the object, wraps the result with double quotes (") and writes the result to the buffer. Any
+     * double quotes appearing in the value are escaped using two double quotes (""). If the value is null or if
+     * toString() fails, '-' will be written to the buffer.
      *
-     *  @param value - The value to wrap
-     *  @return '-' if null. Otherwise, toString() will
-     *     be called on the object and the value will be wrapped
-     *     in quotes and any quotes will be escaped with 2
-     *     sets of quotes.
+     * @param value - The value to wrap
+     * @param buf   the buffer to write to
      */
-    static String wrap(Object value) {
+    static void wrap(Object value, CharArrayWriter buf) {
         String svalue;
-        // Does the value contain a " ? If so must encode it
         if (value == null || "-".equals(value)) {
-            return "-";
+            buf.append('-');
+            return;
         }
 
         try {
             svalue = value.toString();
-        } catch (Throwable e) {
-            ExceptionUtils.handleThrowable(e);
+        } catch (Throwable t) {
+            ExceptionUtils.handleThrowable(t);
             /* Log error */
-            return "-";
+            buf.append('-');
+            return;
         }
 
-        /* Wrap all values in double quotes. */
-        StringBuilder buffer = new StringBuilder(svalue.length() + 2);
-        buffer.append('\"');
-        int i = 0;
-        while (i < svalue.length()) {
-            int j = svalue.indexOf('\"', i);
-            if (j == -1) {
-                buffer.append(svalue.substring(i));
-                i = svalue.length();
-            } else {
-                buffer.append(svalue.substring(i, j + 1));
-                buffer.append('"');
-                i = j + 1;
-            }
+        buf.append('\"');
+        if (!svalue.isEmpty()) {
+            // Does the value contain a " ? If so must encode it
+            escapeAndAppend(svalue, buf, true);
         }
-
-        buffer.append('\"');
-        return buffer.toString();
+        buf.append('\"');
     }
 
-    /**
-     * Open the new log file for the date specified by <code>dateStamp</code>.
-     */
     @Override
     protected synchronized void open() {
         super.open();
-        if (currentLogFile.length()==0) {
+        // The base class tolerates a failed open and leaves the writer null
+        // in which case there is nothing to write the header to
+        if (writer != null && currentLogFile.length() == 0) {
             writer.println("#Fields: " + pattern);
             writer.println("#Version: 2.0");
             writer.println("#Software: " + ServerInfo.getServerInfo());
@@ -202,117 +145,151 @@ public class ExtendedAccessLogValve extends AccessLogValve {
     // ------------------------------------------------------ Lifecycle Methods
 
 
+    /**
+     * Log element that outputs the date in yyyy-MM-dd format for GMT.
+     */
     protected static class DateElement implements AccessLogElement {
         // Milli-seconds in 24 hours
         private static final long INTERVAL = (1000 * 60 * 60 * 24);
 
         private static final ThreadLocal<ElementTimestampStruct> currentDate =
-                new ThreadLocal<ElementTimestampStruct>() {
-            @Override
-            protected ElementTimestampStruct initialValue() {
-                return new ElementTimestampStruct("yyyy-MM-dd");
-            }
-        };
+                ThreadLocal.withInitial(() -> new ElementTimestampStruct("yyyy-MM-dd"));
 
         @Override
-        public void addElement(CharArrayWriter buf, Date date, Request request,
-                Response response, long time) {
+        public void addElement(CharArrayWriter buf, Date date, Request request, Response response, long time) {
             ElementTimestampStruct eds = currentDate.get();
             long millis = eds.currentTimestamp.getTime();
-            if (date.getTime() > (millis + INTERVAL -1) ||
-                    date.getTime() < millis) {
-                eds.currentTimestamp.setTime(
-                        date.getTime() - (date.getTime() % INTERVAL));
-                eds.currentTimestampString =
-                    eds.currentTimestampFormat.format(eds.currentTimestamp);
+            if (date.getTime() > (millis + INTERVAL - 1) || date.getTime() < millis) {
+                eds.currentTimestamp.setTime(date.getTime() - (date.getTime() % INTERVAL));
+                eds.currentTimestampString = eds.currentTimestampFormat.format(eds.currentTimestamp);
             }
             buf.append(eds.currentTimestampString);
         }
     }
 
+    /**
+     * Log element that outputs the time in HH:mm:ss format.
+     */
     protected static class TimeElement implements AccessLogElement {
         // Milli-seconds in a second
         private static final long INTERVAL = 1000;
 
         private static final ThreadLocal<ElementTimestampStruct> currentTime =
-                new ThreadLocal<ElementTimestampStruct>() {
-            @Override
-            protected ElementTimestampStruct initialValue() {
-                return new ElementTimestampStruct("HH:mm:ss");
-            }
-        };
+                ThreadLocal.withInitial(() -> new ElementTimestampStruct("HH:mm:ss"));
 
         @Override
-        public void addElement(CharArrayWriter buf, Date date, Request request,
-                Response response, long time) {
+        public void addElement(CharArrayWriter buf, Date date, Request request, Response response, long time) {
             ElementTimestampStruct eds = currentTime.get();
             long millis = eds.currentTimestamp.getTime();
-            if (date.getTime() > (millis + INTERVAL -1) ||
-                    date.getTime() < millis) {
-                eds.currentTimestamp.setTime(
-                        date.getTime() - (date.getTime() % INTERVAL));
-                eds.currentTimestampString =
-                    eds.currentTimestampFormat.format(eds.currentTimestamp);
+            if (date.getTime() > (millis + INTERVAL - 1) || date.getTime() < millis) {
+                eds.currentTimestamp.setTime(date.getTime() - (date.getTime() % INTERVAL));
+                eds.currentTimestampString = eds.currentTimestampFormat.format(eds.currentTimestamp);
             }
             buf.append(eds.currentTimestampString);
         }
     }
 
+    /**
+     * Log element that outputs a specific request header value.
+     */
     protected static class RequestHeaderElement implements AccessLogElement {
         private final String header;
 
+        /**
+         * Creates a new RequestHeaderElement for the specified header.
+         *
+         * @param header the name of the request header
+         */
         public RequestHeaderElement(String header) {
             this.header = header;
         }
+
         @Override
-        public void addElement(CharArrayWriter buf, Date date, Request request,
-                Response response, long time) {
-            buf.append(wrap(request.getHeader(header)));
+        public void addElement(CharArrayWriter buf, Date date, Request request, Response response, long time) {
+            wrap(request.getHeader(header), buf);
         }
     }
 
+    /**
+     * Log element that outputs a specific response header value.
+     */
     protected static class ResponseHeaderElement implements AccessLogElement {
         private final String header;
 
+        /**
+         * Creates a new ResponseHeaderElement for the specified header.
+         *
+         * @param header the name of the response header
+         */
         public ResponseHeaderElement(String header) {
             this.header = header;
         }
 
         @Override
-        public void addElement(CharArrayWriter buf, Date date, Request request,
-                Response response, long time) {
-            buf.append(wrap(response.getHeader(header)));
+        public void addElement(CharArrayWriter buf, Date date, Request request, Response response, long time) {
+            wrap(response.getHeader(header), buf);
         }
     }
 
+    /**
+     * Log element that outputs a servlet context attribute value.
+     */
     protected static class ServletContextElement implements AccessLogElement {
         private final String attribute;
 
+        /**
+         * Creates a new ServletContextElement for the specified attribute.
+         *
+         * @param attribute the name of the servlet context attribute
+         */
         public ServletContextElement(String attribute) {
             this.attribute = attribute;
         }
+
         @Override
-        public void addElement(CharArrayWriter buf, Date date, Request request,
-                Response response, long time) {
-            buf.append(wrap(request.getContext().getServletContext()
-                    .getAttribute(attribute)));
+        public void addElement(CharArrayWriter buf, Date date, Request request, Response response, long time) {
+            // The request may not have mapped to a context, for example when a
+            // valve attached to a Host or Engine logs requests that matched no
+            // context
+            Context context = request.getContext();
+            wrap(context == null ? null : context.getServletContext().getAttribute(attribute), buf);
         }
     }
 
+    /**
+     * Log element that outputs the value(s) of a named cookie.
+     */
     protected static class CookieElement implements AccessLogElement {
         private final String name;
 
+        /**
+         * Creates a new CookieElement for the specified cookie name.
+         *
+         * @param name the name of the cookie
+         */
         public CookieElement(String name) {
             this.name = name;
         }
+
         @Override
-        public void addElement(CharArrayWriter buf, Date date, Request request,
-                Response response, long time) {
+        public void addElement(CharArrayWriter buf, Date date, Request request, Response response, long time) {
+            StringBuilder value = new StringBuilder();
+            boolean first = true;
             Cookie[] c = request.getCookies();
             for (int i = 0; c != null && i < c.length; i++) {
                 if (name.equals(c[i].getName())) {
-                    buf.append(wrap(c[i].getValue()));
+                    if (first) {
+                        first = false;
+                    } else {
+                        value.append(',');
+                    }
+                    value.append(c[i].getValue());
                 }
+            }
+            if (value.length() == 0) {
+                buf.append('-');
+            } else {
+                wrap(value, buf);
             }
         }
     }
@@ -323,13 +300,17 @@ public class ExtendedAccessLogValve extends AccessLogValve {
     protected static class ResponseAllHeaderElement implements AccessLogElement {
         private final String header;
 
+        /**
+         * Creates a new ResponseAllHeaderElement for the specified header.
+         *
+         * @param header the name of the response header
+         */
         public ResponseAllHeaderElement(String header) {
             this.header = header;
         }
 
         @Override
-        public void addElement(CharArrayWriter buf, Date date, Request request,
-                Response response, long time) {
+        public void addElement(CharArrayWriter buf, Date date, Request request, Response response, long time) {
             if (null != response) {
                 Iterator<String> iter = response.getHeaders(header).iterator();
                 if (iter.hasNext()) {
@@ -339,79 +320,113 @@ public class ExtendedAccessLogValve extends AccessLogValve {
                         if (first) {
                             first = false;
                         } else {
-                            buffer.append(",");
+                            buffer.append(',');
                         }
                         buffer.append(iter.next());
                     }
-                    buf.append(wrap(buffer.toString()));
+                    wrap(buffer, buf);
+                } else {
+                    buf.append('-');
                 }
-                return ;
+                return;
             }
-            buf.append("-");
+            buf.append('-');
         }
     }
 
+    /**
+     * Log element that outputs a servlet request attribute value.
+     */
     protected static class RequestAttributeElement implements AccessLogElement {
         private final String attribute;
 
+        /**
+         * Creates a new RequestAttributeElement for the specified attribute.
+         *
+         * @param attribute the name of the request attribute
+         */
         public RequestAttributeElement(String attribute) {
             this.attribute = attribute;
         }
 
         @Override
-        public void addElement(CharArrayWriter buf, Date date, Request request,
-                Response response, long time) {
-            buf.append(wrap(request.getAttribute(attribute)));
+        public void addElement(CharArrayWriter buf, Date date, Request request, Response response, long time) {
+            wrap(request == null ? "??" : request.getAttribute(attribute), buf);
         }
     }
 
+    /**
+     * Log element that outputs a session attribute value.
+     */
     protected static class SessionAttributeElement implements AccessLogElement {
         private final String attribute;
 
+        /**
+         * Creates a new SessionAttributeElement for the specified attribute.
+         *
+         * @param attribute the name of the session attribute
+         */
         public SessionAttributeElement(String attribute) {
             this.attribute = attribute;
         }
+
         @Override
-        public void addElement(CharArrayWriter buf, Date date, Request request,
-                Response response, long time) {
+        public void addElement(CharArrayWriter buf, Date date, Request request, Response response, long time) {
             HttpSession session = null;
             if (request != null) {
                 session = request.getSession(false);
                 if (session != null) {
-                    buf.append(wrap(session.getAttribute(attribute)));
+                    wrap(session.getAttribute(attribute), buf);
+                    return;
+                } else {
+                    buf.append('-');
                 }
+            } else {
+                buf.append("??");
             }
         }
     }
 
+    /**
+     * Log element that outputs a URL-encoded request parameter value.
+     */
     protected static class RequestParameterElement implements AccessLogElement {
         private final String parameter;
 
+        /**
+         * Creates a new RequestParameterElement for the specified parameter.
+         *
+         * @param parameter the name of the request parameter
+         */
         public RequestParameterElement(String parameter) {
             this.parameter = parameter;
         }
+
         /**
-         *  urlEncode the given string. If null or empty, return null.
+         * urlEncode the given string. If null or empty, return null.
          */
         private String urlEncode(String value) {
-            if (null==value || value.length()==0) {
+            if (null == value || value.length() == 0) {
                 return null;
             }
-            try {
-                return URLEncoder.encode(value, "UTF-8");
-            } catch (UnsupportedEncodingException e) {
-                // Should never happen - all JVMs are required to support UTF-8
-                return null;
-            }
+            return URLEncoder.QUERY.encode(value, StandardCharsets.UTF_8);
         }
 
         @Override
-        public void addElement(CharArrayWriter buf, Date date, Request request,
-                Response response, long time) {
-            buf.append(wrap(urlEncode(request.getParameter(parameter))));
+        public void addElement(CharArrayWriter buf, Date date, Request request, Response response, long time) {
+            String parameterValue;
+            try {
+                parameterValue = request.getParameter(parameter);
+            } catch (IllegalStateException ise) {
+                parameterValue = null;
+            }
+            wrap(urlEncode(parameterValue), buf);
         }
     }
 
+    /**
+     * Tokenizer for parsing the log pattern string.
+     */
     protected static class PatternTokenizer {
         private final StringReader sr;
         private StringBuilder buf = new StringBuilder();
@@ -419,21 +434,43 @@ public class ExtendedAccessLogValve extends AccessLogValve {
         private boolean subToken;
         private boolean parameter;
 
+        /**
+         * Creates a new tokenizer for the given pattern string.
+         *
+         * @param str the pattern string to tokenize
+         */
         public PatternTokenizer(String str) {
             sr = new StringReader(str);
         }
 
+        /**
+         * Returns whether the last token was followed by a sub-token indicator.
+         *
+         * @return {@code true} if the last token had a sub-token
+         */
         public boolean hasSubToken() {
             return subToken;
         }
 
+        /**
+         * Returns whether the last token was followed by a parameter indicator.
+         *
+         * @return {@code true} if the last token had a parameter
+         */
         public boolean hasParameter() {
             return parameter;
         }
 
+        /**
+         * Returns the next token from the pattern string.
+         *
+         * @return the next token, or {@code null} if no more tokens are available
+         *
+         * @throws IOException if an I/O error occurs
+         */
         public String getToken() throws IOException {
-            if(ended) {
-                return null ;
+            if (ended) {
+                return null;
             }
 
             String result = null;
@@ -443,27 +480,25 @@ public class ExtendedAccessLogValve extends AccessLogValve {
             int c = sr.read();
             while (c != -1) {
                 switch (c) {
-                case ' ':
-                    result = buf.toString();
-                    buf = new StringBuilder();
-                    buf.append((char) c);
-                    return result;
-                case '-':
-                    result = buf.toString();
-                    buf = new StringBuilder();
-                    subToken = true;
-                    return result;
-                case '(':
-                    result = buf.toString();
-                    buf = new StringBuilder();
-                    parameter = true;
-                    return result;
-                case ')':
-                    result = buf.toString();
-                    buf = new StringBuilder();
-                    break;
-                default:
-                    buf.append((char) c);
+                    case ' ':
+                        result = buf.toString();
+                        buf.setLength(0);
+                        buf.append((char) c);
+                        return result;
+                    case '-':
+                        result = buf.toString();
+                        buf.setLength(0);
+                        subToken = true;
+                        return result;
+                    case '(':
+                        result = buf.toString();
+                        buf.setLength(0);
+                        parameter = true;
+                        return result;
+                    case ')':
+                        throw new IOException(sm.getString("patternTokenizer.unexpectedParenthesis"));
+                    default:
+                        buf.append((char) c);
                 }
                 c = sr.read();
             }
@@ -475,7 +510,14 @@ public class ExtendedAccessLogValve extends AccessLogValve {
             }
         }
 
-        public String getParameter()throws IOException {
+        /**
+         * Returns the parameter value from the most recent parameter token.
+         *
+         * @return the parameter value, or {@code null} if no parameter is available
+         *
+         * @throws IOException if an I/O error occurs
+         */
+        public String getParameter() throws IOException {
             String result;
             if (!parameter) {
                 return null;
@@ -494,9 +536,16 @@ public class ExtendedAccessLogValve extends AccessLogValve {
             return null;
         }
 
+        /**
+         * Returns any whitespace following the current position.
+         *
+         * @return the whitespace characters, or an empty string if none
+         *
+         * @throws IOException if an I/O error occurs
+         */
         public String getWhiteSpaces() throws IOException {
-            if(isEnded()) {
-                return "" ;
+            if (isEnded()) {
+                return "";
             }
             StringBuilder whiteSpaces = new StringBuilder();
             if (buf.length() > 0) {
@@ -516,13 +565,25 @@ public class ExtendedAccessLogValve extends AccessLogValve {
             return whiteSpaces.toString();
         }
 
+        /**
+         * Returns whether the tokenizer has reached the end of the pattern string.
+         *
+         * @return {@code true} if the end has been reached
+         */
         public boolean isEnded() {
             return ended;
         }
 
+        /**
+         * Returns the remaining unparsed portion of the pattern string.
+         *
+         * @return the remaining characters in the pattern
+         *
+         * @throws IOException if an I/O error occurs
+         */
         public String getRemains() throws IOException {
             StringBuilder remains = new StringBuilder();
-            for(int c = sr.read(); c != -1; c = sr.read()) {
+            for (int c = sr.read(); c != -1; c = sr.read()) {
                 remains.append((char) c);
             }
             return remains.toString();
@@ -532,8 +593,8 @@ public class ExtendedAccessLogValve extends AccessLogValve {
 
     @Override
     protected AccessLogElement[] createLogElements() {
-        if (log.isDebugEnabled()) {
-            log.debug("decodePattern, pattern =" + pattern);
+        if (log.isTraceEnabled()) {
+            log.trace("decodePattern, pattern =" + pattern);
         }
         List<AccessLogElement> list = new ArrayList<>();
 
@@ -550,8 +611,8 @@ public class ExtendedAccessLogValve extends AccessLogValve {
 
             String token = tokenizer.getToken();
             while (token != null) {
-                if (log.isDebugEnabled()) {
-                    log.debug("token = " + token);
+                if (log.isTraceEnabled()) {
+                    log.trace("token = " + token);
                 }
                 AccessLogElement element = getLogElement(token, tokenizer);
                 if (element == null) {
@@ -567,16 +628,26 @@ public class ExtendedAccessLogValve extends AccessLogValve {
                 }
                 token = tokenizer.getToken();
             }
-            if (log.isDebugEnabled()) {
-                log.debug("finished decoding with element size of: " + list.size());
+            if (log.isTraceEnabled()) {
+                log.trace("finished decoding with element size of: " + list.size());
             }
             return list.toArray(new AccessLogElement[0]);
-        } catch (IOException e) {
-            log.error(sm.getString("extendedAccessLogValve.patternParseError", pattern), e);
+        } catch (IOException ioe) {
+            log.error(sm.getString("extendedAccessLogValve.patternParseError", pattern), ioe);
             return null;
         }
     }
 
+    /**
+     * Returns the appropriate log element for the given token.
+     *
+     * @param token     the pattern token
+     * @param tokenizer the pattern tokenizer
+     *
+     * @return the log element, or {@code null} if the token is unrecognized
+     *
+     * @throws IOException if an I/O error occurs while reading the pattern
+     */
     protected AccessLogElement getLogElement(String token, PatternTokenizer tokenizer) throws IOException {
         if ("date".equals(token)) {
             return new DateElement();
@@ -608,13 +679,13 @@ public class ExtendedAccessLogValve extends AccessLogValve {
             } else if ("dns".equals(nextToken)) {
                 return new AccessLogElement() {
                     @Override
-                    public void addElement(CharArrayWriter buf, Date date,
-                            Request request, Response response, long time) {
+                    public void addElement(CharArrayWriter buf, Date date, Request request, Response response,
+                            long time) {
                         String value;
                         try {
                             value = InetAddress.getLocalHost().getHostName();
-                        } catch (Throwable e) {
-                            ExceptionUtils.handleThrowable(e);
+                        } catch (Throwable t) {
+                            ExceptionUtils.handleThrowable(t);
                             value = "localhost";
                         }
                         buf.append(value);
@@ -634,8 +705,16 @@ public class ExtendedAccessLogValve extends AccessLogValve {
         return null;
     }
 
-    protected AccessLogElement getClientToServerElement(
-            PatternTokenizer tokenizer) throws IOException {
+    /**
+     * Returns the appropriate log element for a client-to-server token.
+     *
+     * @param tokenizer the pattern tokenizer
+     *
+     * @return the log element, or {@code null} if unrecognized
+     *
+     * @throws IOException if an I/O error occurs while reading the pattern
+     */
+    protected AccessLogElement getClientToServerElement(PatternTokenizer tokenizer) throws IOException {
         if (tokenizer.hasSubToken()) {
             String token = tokenizer.getToken();
             if ("method".equals(token)) {
@@ -648,30 +727,26 @@ public class ExtendedAccessLogValve extends AccessLogValve {
                     } else if ("query".equals(token)) {
                         return new AccessLogElement() {
                             @Override
-                            public void addElement(CharArrayWriter buf,
-                                    Date date, Request request,
-                                    Response response, long time) {
-                                String query = request.getQueryString();
-                                if (query != null) {
-                                    buf.append(query);
-                                } else {
-                                    buf.append('-');
+                            public void addElement(CharArrayWriter buf, Date date, Request request, Response response,
+                                    long time) {
+                                String query = null;
+                                if (request != null) {
+                                    query = request.getQueryString();
                                 }
+                                appendQueryString(query, buf, false, true, true);
                             }
                         };
                     }
                 } else {
                     return new AccessLogElement() {
                         @Override
-                        public void addElement(CharArrayWriter buf, Date date,
-                                Request request, Response response, long time) {
-                            String query = request.getQueryString();
-                            if (query == null) {
-                                buf.append(request.getRequestURI());
+                        public void addElement(CharArrayWriter buf, Date date, Request request, Response response,
+                                long time) {
+                            if (request != null) {
+                                escapeAndAppend(request.getRequestURI(), buf);
+                                appendQueryString(request.getQueryString(), buf, true, true, false);
                             } else {
-                                buf.append(request.getRequestURI());
-                                buf.append('?');
-                                buf.append(request.getQueryString());
+                                buf.append('-');
                             }
                         }
                     };
@@ -689,8 +764,16 @@ public class ExtendedAccessLogValve extends AccessLogValve {
         return null;
     }
 
-    protected AccessLogElement getServerToClientElement(
-            PatternTokenizer tokenizer) throws IOException {
+    /**
+     * Returns the appropriate log element for a server-to-client token.
+     *
+     * @param tokenizer the pattern tokenizer
+     *
+     * @return the log element, or {@code null} if unrecognized
+     *
+     * @throws IOException if an I/O error occurs while reading the pattern
+     */
+    protected AccessLogElement getServerToClientElement(PatternTokenizer tokenizer) throws IOException {
         if (tokenizer.hasSubToken()) {
             String token = tokenizer.getToken();
             if ("status".equals(token)) {
@@ -710,9 +793,16 @@ public class ExtendedAccessLogValve extends AccessLogValve {
         return null;
     }
 
-    protected AccessLogElement getProxyElement(PatternTokenizer tokenizer)
-        throws IOException {
-        String token = null;
+    /**
+     * Returns the appropriate log element for a proxy token.
+     *
+     * @param tokenizer the pattern tokenizer
+     *
+     * @return the log element, or {@code null} if unrecognized
+     *
+     * @throws IOException if an I/O error occurs while reading the pattern
+     */
+    protected AccessLogElement getProxyElement(PatternTokenizer tokenizer) throws IOException {
         if (tokenizer.hasSubToken()) {
             tokenizer.getToken();
             return new StringElement("-");
@@ -720,12 +810,20 @@ public class ExtendedAccessLogValve extends AccessLogValve {
             tokenizer.getParameter();
             return new StringElement("-");
         }
-        log.error(sm.getString("extendedAccessLogValve.decodeError", token));
+        log.error(sm.getString("extendedAccessLogValve.decodeError", tokenizer.getRemains()));
         return null;
     }
 
-    protected AccessLogElement getXParameterElement(PatternTokenizer tokenizer)
-            throws IOException {
+    /**
+     * Returns the appropriate log element for an x-parameter token.
+     *
+     * @param tokenizer the pattern tokenizer
+     *
+     * @return the log element, or {@code null} if unrecognized
+     *
+     * @throws IOException if an I/O error occurs while reading the pattern
+     */
+    protected AccessLogElement getXParameterElement(PatternTokenizer tokenizer) throws IOException {
         if (!tokenizer.hasSubToken()) {
             log.error(sm.getString("extendedAccessLogValve.badXParam"));
             return null;
@@ -763,94 +861,89 @@ public class ExtendedAccessLogValve extends AccessLogValve {
         return null;
     }
 
+    /**
+     * Returns the appropriate log element for a servlet request method parameter.
+     *
+     * @param parameter the parameter name mapping to a request method
+     *
+     * @return the log element, or {@code null} if the parameter is unrecognized
+     */
     protected AccessLogElement getServletRequestElement(String parameter) {
         if ("authType".equals(parameter)) {
             return new AccessLogElement() {
                 @Override
-                public void addElement(CharArrayWriter buf, Date date,
-                        Request request, Response response, long time) {
-                    buf.append(wrap(request.getAuthType()));
+                public void addElement(CharArrayWriter buf, Date date, Request request, Response response, long time) {
+                    wrap(request.getAuthType(), buf);
                 }
             };
         } else if ("remoteUser".equals(parameter)) {
             return new AccessLogElement() {
                 @Override
-                public void addElement(CharArrayWriter buf, Date date,
-                        Request request, Response response, long time) {
-                    buf.append(wrap(request.getRemoteUser()));
+                public void addElement(CharArrayWriter buf, Date date, Request request, Response response, long time) {
+                    wrap(request.getRemoteUser(), buf);
                 }
             };
         } else if ("requestedSessionId".equals(parameter)) {
             return new AccessLogElement() {
                 @Override
-                public void addElement(CharArrayWriter buf, Date date,
-                        Request request, Response response, long time) {
-                    buf.append(wrap(request.getRequestedSessionId()));
+                public void addElement(CharArrayWriter buf, Date date, Request request, Response response, long time) {
+                    wrap(request.getRequestedSessionId(), buf);
                 }
             };
         } else if ("requestedSessionIdFromCookie".equals(parameter)) {
             return new AccessLogElement() {
                 @Override
-                public void addElement(CharArrayWriter buf, Date date,
-                        Request request, Response response, long time) {
-                    buf.append(wrap(""
-                            + request.isRequestedSessionIdFromCookie()));
+                public void addElement(CharArrayWriter buf, Date date, Request request, Response response, long time) {
+                    wrap(String.valueOf(request.isRequestedSessionIdFromCookie()), buf);
                 }
             };
         } else if ("requestedSessionIdValid".equals(parameter)) {
             return new AccessLogElement() {
                 @Override
-                public void addElement(CharArrayWriter buf, Date date,
-                        Request request, Response response, long time) {
-                    buf.append(wrap("" + request.isRequestedSessionIdValid()));
+                public void addElement(CharArrayWriter buf, Date date, Request request, Response response, long time) {
+                    wrap(String.valueOf(request.isRequestedSessionIdValid()), buf);
                 }
             };
         } else if ("contentLength".equals(parameter)) {
             return new AccessLogElement() {
                 @Override
-                public void addElement(CharArrayWriter buf, Date date,
-                        Request request, Response response, long time) {
-                    buf.append(wrap("" + request.getContentLengthLong()));
+                public void addElement(CharArrayWriter buf, Date date, Request request, Response response, long time) {
+                    wrap(String.valueOf(request.getContentLengthLong()), buf);
                 }
             };
         } else if ("characterEncoding".equals(parameter)) {
             return new AccessLogElement() {
                 @Override
-                public void addElement(CharArrayWriter buf, Date date,
-                        Request request, Response response, long time) {
-                    buf.append(wrap(request.getCharacterEncoding()));
+                public void addElement(CharArrayWriter buf, Date date, Request request, Response response, long time) {
+                    wrap(request.getCharacterEncoding(), buf);
                 }
             };
         } else if ("locale".equals(parameter)) {
             return new AccessLogElement() {
                 @Override
-                public void addElement(CharArrayWriter buf, Date date,
-                        Request request, Response response, long time) {
-                    buf.append(wrap(request.getLocale()));
+                public void addElement(CharArrayWriter buf, Date date, Request request, Response response, long time) {
+                    wrap(request.getLocale(), buf);
                 }
             };
         } else if ("protocol".equals(parameter)) {
             return new AccessLogElement() {
                 @Override
-                public void addElement(CharArrayWriter buf, Date date,
-                        Request request, Response response, long time) {
-                    buf.append(wrap(request.getProtocol()));
+                public void addElement(CharArrayWriter buf, Date date, Request request, Response response, long time) {
+                    wrap(request.getProtocol(), buf);
                 }
             };
         } else if ("scheme".equals(parameter)) {
             return new AccessLogElement() {
                 @Override
-                public void addElement(CharArrayWriter buf, Date date,
-                        Request request, Response response, long time) {
+                public void addElement(CharArrayWriter buf, Date date, Request request, Response response, long time) {
                     buf.append(request.getScheme());
                 }
             };
         } else if ("secure".equals(parameter)) {
             return new AccessLogElement() {
                 @Override
-                public void addElement(CharArrayWriter buf, Date date,
-                        Request request, Response response, long time) {
-                    buf.append(wrap("" + request.isSecure()));
+                public void addElement(CharArrayWriter buf, Date date, Request request, Response response, long time) {
+                    wrap(Boolean.valueOf(request.isSecure()), buf);
                 }
             };
         }

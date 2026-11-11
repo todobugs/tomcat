@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.el;
 
 import java.util.ArrayList;
@@ -25,6 +24,8 @@ import java.util.Map;
 
 import javax.el.ELContext;
 import javax.el.ExpressionFactory;
+import javax.el.PropertyNotFoundException;
+import javax.el.StandardELContext;
 import javax.el.ValueExpression;
 import javax.el.ValueReference;
 
@@ -36,18 +37,58 @@ import org.apache.jasper.el.ELContextImpl;
 public class TestValueExpressionImpl {
 
     @Test
+    public void testFunctionMappingEquality() throws Exception {
+        ExpressionFactory factory = ExpressionFactory.newInstance();
+        ELContext context = new StandardELContext(factory);
+        context.getFunctionMapper().mapFunction("one", "convert", Integer.class.getMethod("toString", int.class));
+        context.getFunctionMapper().mapFunction("two", "convert", Integer.class.getMethod("toString", int.class));
+        context.getFunctionMapper().mapFunction("one", "alias", Integer.class.getMethod("toString", int.class));
+
+        ValueExpression ve1 = factory.createValueExpression(context, "${one:convert(10)}", String.class);
+        ValueExpression ve2 = factory.createValueExpression(context, "${two:convert(10)}", String.class);
+        ValueExpression ve3 = factory.createValueExpression(context, "${one:alias(10)}", String.class);
+
+        Assert.assertEquals(ve1, ve2);
+        Assert.assertEquals(ve1, ve3);
+        Assert.assertEquals(ve1.hashCode(), ve2.hashCode());
+        Assert.assertEquals(ve1.hashCode(), ve3.hashCode());
+
+        context.getFunctionMapper().mapFunction("one", "convert", Integer.class.getMethod("toHexString", int.class));
+        ValueExpression ve4 = factory.createValueExpression(context, "${one:convert(10)}", String.class);
+
+        Assert.assertEquals("10", ve1.getValue(context));
+        Assert.assertEquals("a", ve4.getValue(context));
+        Assert.assertNotEquals(ve1, ve4);
+    }
+
+
+    @Test
+    public void testImportedFunctionEquality() {
+        ExpressionFactory factory = ExpressionFactory.newInstance();
+        ELContext context = new StandardELContext(factory);
+        ValueExpression ve1 = factory.createValueExpression(context, "${Integer(10)}", Object.class);
+        ValueExpression ve2 = factory.createValueExpression(context, "${ Integer(10) }", Object.class);
+        ValueExpression ve3 = factory.createValueExpression(context, "${Long(10)}", Object.class);
+
+        Assert.assertEquals(Integer.valueOf(10), ve1.getValue(context));
+        Assert.assertEquals(Long.valueOf(10), ve3.getValue(context));
+        Assert.assertEquals(ve1, ve2);
+        Assert.assertEquals(ve1.hashCode(), ve2.hashCode());
+        Assert.assertNotEquals(ve1, ve3);
+    }
+
+
+    @Test
     public void testGetValueReference() {
         ExpressionFactory factory = ExpressionFactory.newInstance();
         ELContext context = new ELContextImpl(factory);
 
         TesterBeanB beanB = new TesterBeanB();
         beanB.setName("Tomcat");
-        ValueExpression var =
-            factory.createValueExpression(beanB, TesterBeanB.class);
+        ValueExpression var = factory.createValueExpression(beanB, TesterBeanB.class);
         context.getVariableMapper().setVariable("beanB", var);
 
-        ValueExpression ve = factory.createValueExpression(
-                context, "${beanB.name}", String.class);
+        ValueExpression ve = factory.createValueExpression(context, "${beanB.name}", String.class);
 
         // First check the basics work
         String result = (String) ve.getValue(context);
@@ -68,17 +109,14 @@ public class TestValueExpressionImpl {
 
         TesterBeanB beanB = new TesterBeanB();
         beanB.setName("Tomcat");
-        ValueExpression var =
-            factory.createValueExpression(beanB, TesterBeanB.class);
+        ValueExpression var = factory.createValueExpression(beanB, TesterBeanB.class);
         context.getVariableMapper().setVariable("beanB", var);
 
-        ValueExpression var2 = factory.createValueExpression(
-                context, "${beanB.name}", String.class);
+        ValueExpression var2 = factory.createValueExpression(context, "${beanB.name}", String.class);
 
         context.getVariableMapper().setVariable("foo", var2);
 
-        ValueExpression ve = factory.createValueExpression(
-                context, "${foo}", ValueExpression.class);
+        ValueExpression ve = factory.createValueExpression(context, "${foo}", ValueExpression.class);
 
 
         // Now check the value reference
@@ -87,6 +125,59 @@ public class TestValueExpressionImpl {
 
         Assert.assertEquals(beanB, vr.getBase());
         Assert.assertEquals("name", vr.getProperty());
+    }
+
+    @Test
+    public void testGetValueReferenceMethodCall() {
+        ExpressionFactory factory = ExpressionFactory.newInstance();
+        ELContext context = new ELContextImpl(factory);
+
+        TesterBeanM beanM = new TesterBeanM();
+        ValueExpression var = factory.createValueExpression(beanM, TesterBeanM.class);
+        context.getVariableMapper().setVariable("beanM", var);
+
+        ValueExpression ve = factory.createValueExpression(context, "${beanM.select('Tomcat')}", String.class);
+
+        // A method call is not a reference to a base and a property
+        ValueReference vr = ve.getValueReference(context);
+        Assert.assertNull(vr);
+    }
+
+    @Test
+    public void testGetValueReferenceMethodCallResult() {
+        ExpressionFactory factory = ExpressionFactory.newInstance();
+        ELContext context = new ELContextImpl(factory);
+
+        TesterBeanM beanM = new TesterBeanM();
+        ValueExpression var = factory.createValueExpression(beanM, TesterBeanM.class);
+        context.getVariableMapper().setVariable("beanM", var);
+
+        ValueExpression ve = factory.createValueExpression(context, "${beanM.select('Tomcat').name}", String.class);
+
+        // The result of the method call is the base of the property
+        // reference, so this is a reference to a base and a property
+        ValueReference vr = ve.getValueReference(context);
+        Assert.assertNotNull(vr);
+
+        Assert.assertEquals(beanM.getTarget(), vr.getBase());
+        Assert.assertEquals("name", vr.getProperty());
+    }
+
+    @Test
+    public void testGetValueReferencePropertyThenMethodCall() {
+        ExpressionFactory factory = ExpressionFactory.newInstance();
+        ELContext context = new ELContextImpl(factory);
+
+        TesterBeanM beanM = new TesterBeanM();
+        ValueExpression var = factory.createValueExpression(beanM, TesterBeanM.class);
+        context.getVariableMapper().setVariable("beanM", var);
+
+        ValueExpression ve = factory.createValueExpression(context, "${beanM.target.select('Tomcat')}", String.class);
+
+        // A method call is not a reference to a base and a property, even
+        // when the base of the method call is itself a property
+        ValueReference vr = ve.getValueReference(context);
+        Assert.assertNull(vr);
     }
 
     @Test
@@ -99,12 +190,10 @@ public class TestValueExpressionImpl {
         beanB.setName("Tomcat");
         beanA.setBean(beanB);
 
-        ValueExpression var =
-            factory.createValueExpression(beanA, TesterBeanA.class);
+        ValueExpression var = factory.createValueExpression(beanA, TesterBeanA.class);
         context.getVariableMapper().setVariable("beanA", var);
 
-        ValueExpression ve = factory.createValueExpression(
-                context, "${beanA.bean.name}", String.class);
+        ValueExpression ve = factory.createValueExpression(context, "${beanA.bean.name}", String.class);
 
         // First check the basics work
         String result = (String) ve.getValue(context);
@@ -125,18 +214,15 @@ public class TestValueExpressionImpl {
 
         TesterEnum testEnum = TesterEnum.APPLE;
 
-        ValueExpression var =
-            factory.createValueExpression(testEnum, TesterEnum.class);
+        ValueExpression var = factory.createValueExpression(testEnum, TesterEnum.class);
         context.getVariableMapper().setVariable("testEnum", var);
 
         // When coercing an Enum to a String, name() should always be used.
-        ValueExpression ve1 = factory.createValueExpression(
-                context, "${testEnum}", String.class);
+        ValueExpression ve1 = factory.createValueExpression(context, "${testEnum}", String.class);
         String result1 = (String) ve1.getValue(context);
         Assert.assertEquals("APPLE", result1);
 
-        ValueExpression ve2 = factory.createValueExpression(
-                context, "foo${testEnum}bar", String.class);
+        ValueExpression ve2 = factory.createValueExpression(context, "foo${testEnum}bar", String.class);
         String result2 = (String) ve2.getValue(context);
         Assert.assertEquals("fooAPPLEbar", result2);
     }
@@ -149,21 +235,18 @@ public class TestValueExpressionImpl {
         Object o1 = "String value";
         Object o2 = Integer.valueOf(32);
 
-        Map<Object,Object> map = new HashMap<>();
+        Map<Object, Object> map = new HashMap<>();
         map.put("key1", o1);
         map.put("key2", o2);
 
-        ValueExpression var =
-            factory.createValueExpression(map, Map.class);
+        ValueExpression var = factory.createValueExpression(map, Map.class);
         context.getVariableMapper().setVariable("map", var);
 
-        ValueExpression ve1 = factory.createValueExpression(
-                context, "${map.key1}", Object.class);
+        ValueExpression ve1 = factory.createValueExpression(context, "${map.key1}", Object.class);
         ve1.setValue(context, o2);
         Assert.assertEquals(o2, ve1.getValue(context));
 
-        ValueExpression ve2 = factory.createValueExpression(
-                context, "${map.key2}", Object.class);
+        ValueExpression ve2 = factory.createValueExpression(context, "${map.key2}", Object.class);
         ve2.setValue(context, o1);
         Assert.assertEquals(o1, ve2.getValue(context));
     }
@@ -180,17 +263,14 @@ public class TestValueExpressionImpl {
         list.add(0, o1);
         list.add(1, o2);
 
-        ValueExpression var =
-            factory.createValueExpression(list, List.class);
+        ValueExpression var = factory.createValueExpression(list, List.class);
         context.getVariableMapper().setVariable("list", var);
 
-        ValueExpression ve1 = factory.createValueExpression(
-                context, "${list[0]}", Object.class);
+        ValueExpression ve1 = factory.createValueExpression(context, "${list[0]}", Object.class);
         ve1.setValue(context, o2);
         Assert.assertEquals(o2, ve1.getValue(context));
 
-        ValueExpression ve2 = factory.createValueExpression(
-                context, "${list[1]}", Object.class);
+        ValueExpression ve2 = factory.createValueExpression(context, "${list[1]}", Object.class);
         ve2.setValue(context, o1);
         Assert.assertEquals(o1, ve2.getValue(context));
     }
@@ -207,12 +287,10 @@ public class TestValueExpressionImpl {
         TesterBeanA beanA = new TesterBeanA();
         beanA.setValList(Collections.emptyList());
 
-        ValueExpression var =
-            factory.createValueExpression(beanA, TesterBeanA.class);
+        ValueExpression var = factory.createValueExpression(beanA, TesterBeanA.class);
         context.getVariableMapper().setVariable("beanA", var);
 
-        ValueExpression ve = factory.createValueExpression(
-                context, "${beanA.valList.size()}", Integer.class);
+        ValueExpression ve = factory.createValueExpression(context, "${beanA.valList.size()}", Integer.class);
 
         Integer result = (Integer) ve.getValue(context);
         Assert.assertEquals(Integer.valueOf(0), result);
@@ -229,12 +307,10 @@ public class TestValueExpressionImpl {
 
         List<?> list = Collections.emptyList();
 
-        ValueExpression var =
-            factory.createValueExpression(list, List.class);
+        ValueExpression var = factory.createValueExpression(list, List.class);
         context.getVariableMapper().setVariable("list", var);
 
-        ValueExpression ve = factory.createValueExpression(
-                context, "${list.size()}", Integer.class);
+        ValueExpression ve = factory.createValueExpression(context, "${list.size()}", Integer.class);
 
         Integer result = (Integer) ve.getValue(context);
         Assert.assertEquals(Integer.valueOf(0), result);
@@ -248,12 +324,10 @@ public class TestValueExpressionImpl {
 
         TesterBeanB beanB = new TesterBeanB();
         beanB.setName("Tomcat");
-        ValueExpression var =
-            factory.createValueExpression(beanB, TesterBeanB.class);
+        ValueExpression var = factory.createValueExpression(beanB, TesterBeanB.class);
         context.getVariableMapper().setVariable("beanB", var);
 
-        ValueExpression ve = factory.createValueExpression(
-                context, "${beanB.name}", String.class);
+        ValueExpression ve = factory.createValueExpression(context, "${beanB.name}", String.class);
 
         // First check the basics work
         String result = (String) ve.getValue(context);
@@ -263,5 +337,34 @@ public class TestValueExpressionImpl {
         ve.setValue(context, null);
 
         Assert.assertEquals("", beanB.getName());
+    }
+
+
+    @Test
+    public void testBug69948() {
+        ExpressionFactory factory = ExpressionFactory.newInstance();
+        ELContext context = new ELContextImpl(factory);
+
+        TesterBeanEmptyMap beanEmptyMap = new TesterBeanEmptyMap();
+        TesterBeanA beanA = new TesterBeanA();
+        beanA.setName(null);
+
+        ValueExpression var = factory.createValueExpression(beanEmptyMap, TesterBeanEmptyMap.class);
+        context.getVariableMapper().setVariable("beanEmptyMap", var);
+        var = factory.createValueExpression(beanA, TesterBeanA.class);
+        context.getVariableMapper().setVariable("beanA", var);
+
+
+        ValueExpression ve = factory.createValueExpression(context, "${beanEmptyMap[beanA.name][beanA.name]}", Object.class);
+
+        Assert.assertThrows(PropertyNotFoundException.class, () -> ve.getValueReference(context));
+    }
+
+    public static class TesterBeanEmptyMap extends HashMap<Object, Map<String, Object>> {
+        private static final long serialVersionUID = 1L;
+        @Override
+        public Map<String, Object> get(Object key) {
+            return Collections.emptyMap();
+        }
     }
 }

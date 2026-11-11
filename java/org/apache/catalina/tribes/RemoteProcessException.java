@@ -17,30 +17,47 @@
 package org.apache.catalina.tribes;
 
 /**
- * <p>Title: RemoteProcessException</p>
+ * Message thrown by a sender when USE_SYNC_ACK receives a FAIL_ACK_COMMAND.
+ * <p>
+ * This means that the message was received on the remote node but the processing of the message failed. This message
+ * will be embedded in a ChannelException.FaultyMember
  *
- * <p>Description: Message thrown by a sender when USE_SYNC_ACK receives a FAIL_ACK_COMMAND.<br>
- * This means that the message was received on the remote node but the processing of the message failed.
- * This message will be embedded in a ChannelException.FaultyMember
- * </p>
  * @see ChannelException
- * @version 1.0
  */
 public class RemoteProcessException extends RuntimeException {
     private static final long serialVersionUID = 1L;
 
+    /**
+     * Default constructor.
+     */
     public RemoteProcessException() {
         super();
     }
 
+    /**
+     * Construct an exception with the specified message.
+     *
+     * @param message the detail message
+     */
     public RemoteProcessException(String message) {
         super(message);
     }
 
+    /**
+     * Construct an exception with the specified message and cause.
+     *
+     * @param message the detail message
+     * @param cause the cause
+     */
     public RemoteProcessException(String message, Throwable cause) {
         super(message, cause);
     }
 
+    /**
+     * Construct an exception with the specified cause.
+     *
+     * @param cause the cause
+     */
     public RemoteProcessException(Throwable cause) {
         super(cause);
     }

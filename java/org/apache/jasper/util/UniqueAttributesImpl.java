@@ -24,8 +24,8 @@ import org.xml.sax.Attributes;
 import org.xml.sax.helpers.AttributesImpl;
 
 /**
- * Wraps the default attributes implementation and ensures that each attribute
- * has a unique qname as required by the JSP specification.
+ * Wraps the default attributes implementation and ensures that each attribute has a unique qname as required by the JSP
+ * specification.
  */
 public class UniqueAttributesImpl extends AttributesImpl {
 
@@ -35,10 +35,18 @@ public class UniqueAttributesImpl extends AttributesImpl {
     private final boolean pageDirective;
     private final Set<String> qNames = new HashSet<>();
 
+    /**
+     * Constructs a new UniqueAttributesImpl for non-page directives.
+     */
     public UniqueAttributesImpl() {
         this.pageDirective = false;
     }
 
+    /**
+     * Constructs a new UniqueAttributesImpl.
+     *
+     * @param pageDirective true if processing a page directive
+     */
     public UniqueAttributesImpl(boolean pageDirective) {
         this.pageDirective = pageDirective;
     }
@@ -51,17 +59,30 @@ public class UniqueAttributesImpl extends AttributesImpl {
 
     @Override
     public void setAttributes(Attributes atts) {
+        // Build the replacement store separately so that the incoming
+        // attributes are validated and merged against each other rather than
+        // against the attributes being replaced, and so that a rejected
+        // duplicate leaves this instance untouched
+        AttributesImpl merged = new AttributesImpl();
+        Set<String> names = new HashSet<>();
         for (int i = 0; i < atts.getLength(); i++) {
-            if (!qNames.add(atts.getQName(i))) {
-                handleDuplicate(atts.getQName(i), atts.getValue(i));
+            String qName = atts.getQName(i);
+            String value = atts.getValue(i);
+            if (names.add(qName)) {
+                merged.addAttribute(atts.getURI(i), atts.getLocalName(i), qName,
+                        atts.getType(i), value);
+            } else {
+                handleDuplicate(qName, value, merged);
             }
         }
-        super.setAttributes(atts);
+
+        super.setAttributes(merged);
+        qNames.clear();
+        qNames.addAll(names);
     }
 
     @Override
-    public void addAttribute(String uri, String localName, String qName,
-            String type, String value) {
+    public void addAttribute(String uri, String localName, String qName, String type, String value) {
         if (qNames.add(qName)) {
             super.addAttribute(uri, localName, qName, type, value);
         } else {
@@ -70,12 +91,17 @@ public class UniqueAttributesImpl extends AttributesImpl {
     }
 
     @Override
-    public void setAttribute(int index, String uri, String localName,
-            String qName, String type, String value) {
-        qNames.remove(super.getQName(index));
+    public void setAttribute(int index, String uri, String localName, String qName, String type, String value) {
+        checkIndex(index);
+        String oldQName = super.getQName(index);
+        qNames.remove(oldQName);
         if (qNames.add(qName)) {
             super.setAttribute(index, uri, localName, qName, type, value);
         } else {
+            // A duplicate, whether it is tolerated by the rules below or
+            // rejected with an exception, leaves this attribute unchanged, so
+            // restore its name in the tracking set
+            qNames.add(oldQName);
             handleDuplicate(qName, value);
         }
     }
@@ -88,25 +114,50 @@ public class UniqueAttributesImpl extends AttributesImpl {
 
     @Override
     public void setQName(int index, String qName) {
-        qNames.remove(super.getQName(index));
-        super.setQName(index, qName);
+        checkIndex(index);
+        String oldQName = super.getQName(index);
+        qNames.remove(oldQName);
+        if (qNames.add(qName)) {
+            super.setQName(index, qName);
+        } else {
+            // A duplicate, whether it is tolerated by the rules below or
+            // rejected with an exception, leaves this attribute unchanged, so
+            // restore its name in the tracking set
+            qNames.add(oldQName);
+            handleDuplicate(qName, super.getValue(index));
+        }
+    }
+
+    private void checkIndex(int index) {
+        // Reject a bad index before touching the tracking set, so that a
+        // failed call leaves it in step with the attributes
+        if (index < 0 || index >= getLength()) {
+            throw new ArrayIndexOutOfBoundsException("Attempt to modify attribute at illegal index: " + index);
+        }
     }
 
     private void handleDuplicate(String qName, String value) {
+        handleDuplicate(qName, value, this);
+    }
+
+    private void handleDuplicate(String qName, String value, AttributesImpl store) {
+        // Duplicates are tracked by exact qname, so act on the exact qnames
+        // here too; a differently cased repeat of import or pageEncoding is a
+        // different attribute and follows the ordinary rules below
         if (pageDirective) {
-            if (IMPORT.equalsIgnoreCase(qName)) {
+            if (IMPORT.equals(qName)) {
                 // Always merge imports
-                int i = super.getIndex(IMPORT);
-                String v = super.getValue(i);
-                super.setValue(i, v + "," + value);
+                int i = store.getIndex(IMPORT);
+                String v = store.getValue(i);
+                store.setValue(i, v + "," + value);
                 return;
-            } else if (PAGE_ENCODING.equalsIgnoreCase(qName)) {
+            } else if (PAGE_ENCODING.equals(qName)) {
                 // Page encoding can only occur once per file so a second
                 // attribute - even one with a duplicate value - is an error
             } else {
                 // Other attributes can be repeated if and only if the values
                 // are identical
-                String v = super.getValue(qName);
+                String v = store.getValue(qName);
                 if (v.equals(value)) {
                     return;
                 }
@@ -114,7 +165,6 @@ public class UniqueAttributesImpl extends AttributesImpl {
         }
 
         // Ordinary tag attributes can't be repeated, even with identical values
-        throw new IllegalArgumentException(
-                    Localizer.getMessage("jsp.error.duplicateqname", qName));
+        throw new IllegalArgumentException(Localizer.getMessage("jsp.error.duplicateqname", qName));
     }
 }

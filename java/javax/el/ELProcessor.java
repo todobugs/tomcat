@@ -56,15 +56,13 @@ public class ELProcessor {
 
 
     public Object getValue(String expression, Class<?> expectedType) {
-        ValueExpression ve = factory.createValueExpression(
-                context, bracket(expression), expectedType);
+        ValueExpression ve = factory.createValueExpression(context, bracket(expression), expectedType);
         return ve.getValue(context);
     }
 
 
     public void setValue(String expression, Object value) {
-        ValueExpression ve = factory.createValueExpression(
-                context, bracket(expression), Object.class);
+        ValueExpression ve = factory.createValueExpression(context, bracket(expression), Object.class);
         ve.setValue(context, value);
     }
 
@@ -73,21 +71,17 @@ public class ELProcessor {
         if (expression == null) {
             manager.setVariable(variable, null);
         } else {
-            ValueExpression ve = factory.createValueExpression(
-                    context, bracket(expression), Object.class);
+            ValueExpression ve = factory.createValueExpression(context, bracket(expression), Object.class);
             manager.setVariable(variable, ve);
         }
     }
 
 
-    public void defineFunction(String prefix, String function, String className,
-            String methodName) throws ClassNotFoundException,
-            NoSuchMethodException {
+    public void defineFunction(String prefix, String function, String className, String methodName)
+            throws ClassNotFoundException, NoSuchMethodException {
 
-        if (prefix == null || function == null || className == null ||
-                methodName == null) {
-            throw new NullPointerException(Util.message(
-                    context, "elProcessor.defineFunctionNullParams"));
+        if (prefix == null || function == null || className == null || methodName == null) {
+            throw new NullPointerException(Util.message(context, "elProcessor.defineFunctionNullParams"));
         }
 
         // Check the imports
@@ -98,12 +92,11 @@ public class ELProcessor {
         }
 
         if (!Modifier.isPublic(clazz.getModifiers())) {
-            throw new ClassNotFoundException(Util.message(context,
-                    "elProcessor.defineFunctionInvalidClass", className));
+            throw new ClassNotFoundException(
+                    Util.message(context, "elProcessor.defineFunctionInvalidClass", className));
         }
 
-        MethodSignature sig =
-                new MethodSignature(context, methodName, className);
+        MethodSignature sig = new MethodSignature(context, methodName, className);
 
         if (function.length() == 0) {
             function = sig.getName();
@@ -117,7 +110,7 @@ public class ELProcessor {
             if (!Modifier.isStatic(method.getModifiers())) {
                 continue;
             }
-            if (!jreCompat.canAcccess(null, method)) {
+            if (!jreCompat.canAccess(null, method)) {
                 continue;
             }
             if (method.getName().equals(sig.getName())) {
@@ -139,7 +132,7 @@ public class ELProcessor {
                     if (types.length == typeNames.length) {
                         boolean match = true;
                         for (int i = 0; i < types.length; i++) {
-                            if (i == types.length -1 && method.isVarArgs()) {
+                            if (i == types.length - 1 && method.isVarArgs()) {
                                 String typeName = typeNames[i];
                                 if (typeName.endsWith("...")) {
                                     typeName = typeName.substring(0, typeName.length() - 3);
@@ -163,39 +156,34 @@ public class ELProcessor {
             }
         }
 
-        throw new NoSuchMethodException(Util.message(context,
-                "elProcessor.defineFunctionNoMethod", methodName, className));
+        throw new NoSuchMethodException(
+                Util.message(context, "elProcessor.defineFunctionNoMethod", methodName, className));
     }
 
 
     /**
      * Map a method to a function name.
      *
-     * @param prefix    Function prefix
-     * @param function  Function name
-     * @param method    Method
+     * @param prefix   Function prefix
+     * @param function Function name
+     * @param method   Method
      *
-     * @throws NullPointerException
-     *              If any of the arguments are null
-     * @throws NoSuchMethodException
-     *              If the method is not static
+     * @throws NullPointerException  If any of the arguments are null
+     * @throws NoSuchMethodException If the method is not static
      */
-    public void defineFunction(String prefix, String function, Method method)
-            throws java.lang.NoSuchMethodException {
+    public void defineFunction(String prefix, String function, Method method) throws NoSuchMethodException {
 
         if (prefix == null || function == null || method == null) {
-            throw new NullPointerException(Util.message(
-                    context, "elProcessor.defineFunctionNullParams"));
+            throw new NullPointerException(Util.message(context, "elProcessor.defineFunctionNullParams"));
         }
 
         int modifiers = method.getModifiers();
 
         // Check for static, public method and module access for Java 9+
         JreCompat jreCompat = JreCompat.getInstance();
-        if (!Modifier.isStatic(modifiers) || !jreCompat.canAcccess(null, method)) {
-            throw new NoSuchMethodException(Util.message(context,
-                    "elProcessor.defineFunctionInvalidMethod", method.getName(),
-                    method.getDeclaringClass().getName()));
+        if (!Modifier.isStatic(modifiers) || !jreCompat.canAccess(null, method)) {
+            throw new NoSuchMethodException(Util.message(context, "elProcessor.defineFunctionInvalidMethod",
+                    method.getName(), method.getDeclaringClass().getName()));
         }
 
         manager.mapFunction(prefix, function, method);
@@ -216,16 +204,15 @@ public class ELProcessor {
         private final String name;
         private final String[] parameterTypeNames;
 
-        public MethodSignature(ELContext context, String methodName,
-                String className) throws NoSuchMethodException {
+        MethodSignature(ELContext context, String methodName, String className) throws NoSuchMethodException {
 
             int paramIndex = methodName.indexOf('(');
 
             if (paramIndex == -1) {
-                name = methodName.trim();
+                name = JreCompat.getInstance().strip(methodName);
                 parameterTypeNames = null;
             } else {
-                String returnTypeAndName = methodName.substring(0, paramIndex).trim();
+                String returnTypeAndName = JreCompat.getInstance().strip(methodName.substring(0, paramIndex));
                 // Assume that the return type and the name are separated by
                 // whitespace. Given the use of trim() above, there should only
                 // be one sequence of whitespace characters.
@@ -239,32 +226,31 @@ public class ELProcessor {
                 if (wsPos == -1) {
                     throw new NoSuchMethodException();
                 }
-                name = returnTypeAndName.substring(wsPos).trim();
+                name = JreCompat.getInstance().strip(returnTypeAndName.substring(wsPos));
 
-                String paramString = methodName.substring(paramIndex).trim();
+                String paramString = JreCompat.getInstance().strip(methodName.substring(paramIndex));
                 // We know the params start with '(', check they end with ')'
                 if (!paramString.endsWith(")")) {
                     throw new NoSuchMethodException(Util.message(context,
-                            "elProcessor.defineFunctionInvalidParameterList",
-                            paramString, methodName, className));
+                            "elProcessor.defineFunctionInvalidParameterList", paramString, methodName, className));
                 }
                 // Trim '(' and ')'
-                paramString = paramString.substring(1, paramString.length() - 1).trim();
+                paramString = JreCompat.getInstance().strip(paramString.substring(1, paramString.length() - 1));
                 if (paramString.length() == 0) {
                     parameterTypeNames = EMPTY_STRING_ARRAY;
                 } else {
-                    parameterTypeNames = paramString.split(",");
+                    parameterTypeNames = paramString.split(",", -1);
                     ImportHandler importHandler = context.getImportHandler();
                     for (int i = 0; i < parameterTypeNames.length; i++) {
-                        String parameterTypeName = parameterTypeNames[i].trim();
+                        String parameterTypeName = JreCompat.getInstance().strip(parameterTypeNames[i]);
                         int dimension = 0;
                         int bracketPos = parameterTypeName.indexOf('[');
                         if (bracketPos > -1) {
-                            String parameterTypeNameOnly =
-                                    parameterTypeName.substring(0, bracketPos).trim();
+                            String parameterTypeNameOnly = JreCompat.getInstance().strip(
+                                    parameterTypeName.substring(0, bracketPos));
                             while (bracketPos > -1) {
                                 dimension++;
-                                bracketPos = parameterTypeName.indexOf('[', bracketPos+ 1);
+                                bracketPos = parameterTypeName.indexOf('[', bracketPos + 1);
                             }
                             parameterTypeName = parameterTypeNameOnly;
                         }
@@ -272,14 +258,13 @@ public class ELProcessor {
                         if (parameterTypeName.endsWith("...")) {
                             varArgs = true;
                             dimension = 1;
-                            parameterTypeName = parameterTypeName.substring(
-                                    0, parameterTypeName.length() -3).trim();
+                            parameterTypeName = JreCompat.getInstance()
+                                    .strip(parameterTypeName.substring(0, parameterTypeName.length() - 3));
                         }
                         boolean isPrimitive = PRIMITIVES.contains(parameterTypeName);
                         if (isPrimitive && dimension > 0) {
                             // When in an array, class name changes for primitive
-                            switch(parameterTypeName)
-                            {
+                            switch (parameterTypeName) {
                                 case "boolean":
                                     parameterTypeName = "Z";
                                     break;
@@ -308,16 +293,12 @@ public class ELProcessor {
                                     // Should never happen
                                     break;
                             }
-                        } else  if (!isPrimitive &&
-                                !parameterTypeName.contains(".")) {
-                            Class<?> clazz = importHandler.resolveClass(
-                                    parameterTypeName);
+                        } else if (!isPrimitive && !parameterTypeName.contains(".")) {
+                            Class<?> clazz = importHandler.resolveClass(parameterTypeName);
                             if (clazz == null) {
-                                throw new NoSuchMethodException(Util.message(
-                                        context,
-                                        "elProcessor.defineFunctionInvalidParameterTypeName",
-                                        parameterTypeNames[i], methodName,
-                                        className));
+                                throw new NoSuchMethodException(
+                                        Util.message(context, "elProcessor.defineFunctionInvalidParameterTypeName",
+                                                parameterTypeNames[i], methodName, className));
                             }
                             parameterTypeName = clazz.getName();
                         }
@@ -351,9 +332,8 @@ public class ELProcessor {
         }
 
         /**
-         * @return <code>null</code> if just the method name was specified, an
-         *         empty List if an empty parameter list was specified - i.e. ()
-         *         - otherwise an ordered list of parameter type names
+         * @return <code>null</code> if just the method name was specified, an empty List if an empty parameter list was
+         *             specified - i.e. () - otherwise an ordered list of parameter type names
          */
         public String[] getParamTypeNames() {
             return parameterTypeNames;

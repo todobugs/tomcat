@@ -26,15 +26,24 @@ import org.apache.coyote.http11.HttpOutputBuffer;
 import org.apache.coyote.http11.OutputFilter;
 import org.apache.juli.logging.Log;
 import org.apache.juli.logging.LogFactory;
+import org.apache.tomcat.util.res.StringManager;
 
 /**
- * Gzip output filter.
- *
- * @author Remy Maucherat
+ * Gzip output filter that compresses response data using the GZIP algorithm.
  */
 public class GzipOutputFilter implements OutputFilter {
 
+    /**
+     * Logger for this filter.
+     */
     protected static final Log log = LogFactory.getLog(GzipOutputFilter.class);
+    private static final StringManager sm = StringManager.getManager(GzipOutputFilter.class);
+
+    /**
+     * Constructs a new GzipOutputFilter.
+     */
+    public GzipOutputFilter() {
+    }
 
 
     // ----------------------------------------------------- Instance Variables
@@ -67,9 +76,10 @@ public class GzipOutputFilter implements OutputFilter {
         int len = chunk.remaining();
         if (chunk.hasArray()) {
             compressionStream.write(chunk.array(), chunk.arrayOffset() + chunk.position(), len);
+            chunk.position(chunk.position() + len);
         } else {
             byte[] bytes = new byte[len];
-            chunk.put(bytes);
+            chunk.get(bytes);
             compressionStream.write(bytes, 0, len);
         }
         return len;
@@ -85,19 +95,19 @@ public class GzipOutputFilter implements OutputFilter {
     // --------------------------------------------------- OutputFilter Methods
 
     /**
-     * Added to allow flushing to happen for the gzip'ed outputstream
+     * {@inheritDoc} Added to allow flushing to happen for the gzip'ed outputstream.
      */
     @Override
     public void flush() throws IOException {
         if (compressionStream != null) {
             try {
-                if (log.isDebugEnabled()) {
-                    log.debug("Flushing the compression stream!");
+                if (log.isTraceEnabled()) {
+                    log.trace("Flushing the compression stream!");
                 }
                 compressionStream.flush();
-            } catch (IOException e) {
+            } catch (IOException ioe) {
                 if (log.isDebugEnabled()) {
-                    log.debug("Ignored exception while flushing gzip filter", e);
+                    log.debug(sm.getString("gzipOutputFilter.flushFail"), ioe);
                 }
             }
         }
@@ -128,9 +138,6 @@ public class GzipOutputFilter implements OutputFilter {
     }
 
 
-    /**
-     * Make the filter ready to process the next request.
-     */
     @Override
     public void recycle() {
         // Set compression stream to null
@@ -141,26 +148,45 @@ public class GzipOutputFilter implements OutputFilter {
     // ------------------------------------------- FakeOutputStream Inner Class
 
 
-    protected class FakeOutputStream
-        extends OutputStream {
+    /**
+     * Internal output stream that writes data to the underlying buffer.
+     */
+    protected class FakeOutputStream extends OutputStream {
+        /**
+         * Single-byte buffer used for writing individual bytes.
+         */
         protected final ByteBuffer outputChunk = ByteBuffer.allocate(1);
+
+        /**
+         * Constructs a new FakeOutputStream.
+         */
+        public FakeOutputStream() {
+        }
+
         @Override
-        public void write(int b)
-            throws IOException {
+        public void write(int b) throws IOException {
             // Shouldn't get used for good performance, but is needed for
             // compatibility with Sun JDK 1.4.0
-            outputChunk.put(0, (byte) (b & 0xff));
+            outputChunk.clear();
+            outputChunk.put((byte) (b & 0xff));
+            outputChunk.flip();
             buffer.doWrite(outputChunk);
         }
+
         @Override
-        public void write(byte[] b, int off, int len)
-            throws IOException {
+        public void write(byte[] b, int off, int len) throws IOException {
             buffer.doWrite(ByteBuffer.wrap(b, off, len));
         }
+
         @Override
-        public void flush() throws IOException {/*NOOP*/}
+        public void flush() throws IOException {
+            // NOOP
+        }
+
         @Override
-        public void close() throws IOException {/*NOOP*/}
+        public void close() throws IOException {
+            // NOOP
+        }
     }
 
 

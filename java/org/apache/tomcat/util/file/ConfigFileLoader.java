@@ -22,21 +22,32 @@ import java.io.InputStream;
 import java.net.URI;
 
 /**
- * This class is used to obtain {@link InputStream}s for configuration files
- * from a given location String. This allows greater flexibility than these
- * files having to be loaded directly from a file system.
+ * This class is used to obtain {@link InputStream}s for configuration files from a given location String. This allows
+ * greater flexibility than these files having to be loaded directly from a file system.
  */
 public class ConfigFileLoader {
 
     private static ConfigurationSource source;
 
+    /**
+     * Get the configured configuration source. If none has been configured, a default source based on the JVM working
+     * directory will be used.
+     *
+     * @return the configuration source in use
+     */
     public static final ConfigurationSource getSource() {
-        if (ConfigFileLoader.source == null) {
+        if (source == null) {
             return ConfigurationSource.DEFAULT;
         }
         return source;
     }
 
+    /**
+     * Set the configuration source used by Tomcat to locate various configuration resources. Only the first call has
+     * an effect; subsequent calls are ignored.
+     *
+     * @param source The source
+     */
     public static final void setSource(ConfigurationSource source) {
         if (ConfigFileLoader.source == null) {
             ConfigFileLoader.source = source;
@@ -51,15 +62,13 @@ public class ConfigFileLoader {
     /**
      * Load the resource from the specified location.
      *
-     * @param location The location for the resource of interest. The location
-     *                 may be a URL or a file path. Relative paths will be
-     *                 resolved against CATALINA_BASE.
+     * @param location The location for the resource of interest. The location may be a URL or a file path. Relative
+     *                     paths will be resolved against CATALINA_BASE.
      *
-     * @return The InputStream for the given resource. The caller is responsible
-     *         for closing this stream when it is no longer used.
+     * @return The InputStream for the given resource. The caller is responsible for closing this stream when it is no
+     *             longer used.
      *
-     * @throws IOException If an InputStream cannot be created using the
-     *                     provided location
+     * @throws IOException If an InputStream cannot be created using the provided location
      */
     @Deprecated
     public static InputStream getInputStream(String location) throws IOException {

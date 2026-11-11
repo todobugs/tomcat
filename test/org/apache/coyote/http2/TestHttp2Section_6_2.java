@@ -22,11 +22,8 @@ import org.junit.Assert;
 import org.junit.Test;
 
 /**
- * Unit tests for Section 6.2 of
- * <a href="https://tools.ietf.org/html/rfc7540">RFC 7540</a>.
- * <br>
- * The order of tests in this class is aligned with the order of the
- * requirements in the RFC.
+ * Unit tests for Section 6.2 of <a href="https://tools.ietf.org/html/rfc7540">RFC 7540</a>. <br>
+ * The order of tests in this class is aligned with the order of the requirements in the RFC.
  */
 public class TestHttp2Section_6_2 extends Http2TestBase {
 
@@ -49,7 +46,7 @@ public class TestHttp2Section_6_2 extends Http2TestBase {
     public void testHeaderFrameWithPadding() throws Exception {
         http2Connect();
 
-        byte[] padding= new byte[8];
+        byte[] padding = new byte[8];
 
         sendSimpleGetRequest(3, padding);
         readSimpleGetResponse();
@@ -61,12 +58,12 @@ public class TestHttp2Section_6_2 extends Http2TestBase {
     public void testHeaderFrameWithNonZeroPadding() throws Exception {
         http2Connect();
 
-        byte[] padding= new byte[8];
+        byte[] padding = new byte[8];
         padding[4] = 1;
 
         sendSimpleGetRequest(3, padding);
 
-        handleGoAwayResponse(1);
+        handleGoAwayResponse(3);
     }
 
 
@@ -90,7 +87,41 @@ public class TestHttp2Section_6_2 extends Http2TestBase {
         os.write(headerFrame);
         os.flush();
 
-        handleGoAwayResponse(1);
+        handleGoAwayResponse(3);
+    }
+
+
+    @Test
+    public void testHeaderFrameTooMuchPaddingWithPriority() throws Exception {
+        // Tests the case where both PADDED and PRIORITY flags are set and the
+        // padding length is too large relative to the payload after accounting
+        // for the optional bytes (1 byte pad length + 5 bytes priority = 6 bytes).
+        // With payloadSize=8 and padLength=3, the actual available payload
+        // after optional bytes is only 2, so padLength >= available triggers
+        // a PROTOCOL_ERROR and a GOAWAY frame must be sent.
+        http2Connect();
+
+        // 9 bytes frame header + 8 bytes payload
+        byte[] headerFrame = new byte[17];
+
+        // Header
+        // length = 8
+        ByteUtil.setThreeBytes(headerFrame, 0, 8);
+        headerFrame[3] = FrameType.HEADERS.getIdByte();
+        // flags: PADDED (0x08) | PRIORITY (0x20)
+        headerFrame[4] = 0x28;
+        // stream 3
+        ByteUtil.set31Bits(headerFrame, 5, 3);
+        // payload:
+        // pad length = 3 (too large: only 2 bytes remain after 6 optional bytes)
+        headerFrame[9] = 3;
+        // priority: 5 bytes (bytes 10-14, all zero)
+        // remaining 2 bytes: bytes 15-16 (all zero)
+
+        os.write(headerFrame);
+        os.flush();
+
+        handleGoAwayResponse(3);
     }
 
 
@@ -98,10 +129,74 @@ public class TestHttp2Section_6_2 extends Http2TestBase {
     public void testHeaderFrameWithZeroLengthPadding() throws Exception {
         http2Connect();
 
-        byte[] padding= new byte[0];
+        byte[] padding = new byte[0];
 
         sendSimpleGetRequest(3, padding);
         readSimpleGetResponse();
         Assert.assertEquals(getSimpleResponseTrace(3), output.getTrace());
+    }
+
+
+    @Test
+    public void testContinuationFrameOnWrongStream() throws Exception {
+        // RFC 9113, section 6.2: a HEADERS frame without the END_HEADERS flag set MUST be
+        // followed by a CONTINUATION frame on the same stream. A CONTINUATION frame on a
+        // different stream MUST be treated as a connection error of type PROTOCOL_ERROR.
+        http2Connect();
+
+        // Send HEADERS on stream 3 without END_HEADERS
+        byte[] frameHeader = new byte[9];
+        ByteBuffer headersPayload = ByteBuffer.allocate(128);
+        buildSimpleGetRequestPart1(frameHeader, headersPayload, 3);
+        writeFrame(frameHeader, headersPayload);
+
+        // Send CONTINUATION on stream 5 instead of stream 3
+        byte[] frameHeader2 = new byte[9];
+        ByteBuffer headersPayload2 = ByteBuffer.allocate(128);
+        buildSimpleGetRequestPart2(frameHeader2, headersPayload2, 5);
+        writeFrame(frameHeader2, headersPayload2);
+
+        handleGoAwayResponse(3, Http2Error.PROTOCOL_ERROR);
+    }
+
+
+    @Test
+    public void testRstStreamOnDifferentStreamDuringHeaderBlock() throws Exception {
+        // RFC 9113, section 6.2: a HEADERS frame without the END_HEADERS flag set MUST be
+        // followed by a CONTINUATION frame on the same stream. A RST_STREAM frame on a
+        // different stream MUST be treated as a connection error of type PROTOCOL_ERROR.
+        http2Connect();
+
+        // Send HEADERS on stream 3 without END_HEADERS
+        byte[] frameHeader = new byte[9];
+        ByteBuffer headersPayload = ByteBuffer.allocate(128);
+        buildSimpleGetRequestPart1(frameHeader, headersPayload, 3);
+        writeFrame(frameHeader, headersPayload);
+
+        // Send RST_STREAM for stream 5 instead of CONTINUATION for stream 3
+        sendRst(5, Http2Error.CANCEL.getCode());
+
+        handleGoAwayResponse(3, Http2Error.PROTOCOL_ERROR);
+    }
+
+
+    @Test
+    public void testRstStreamDuringHeaderBlock() throws Exception {
+        // RFC 9113, section 6.2: a HEADERS frame without the END_HEADERS flag
+        // set MUST be followed by a CONTINUATION frame for the same stream.
+        // The receipt of any other frame type, including RST_STREAM, MUST be
+        // treated as a connection error of type PROTOCOL_ERROR.
+        http2Connect();
+
+        // Send HEADERS on stream 3 without the END_HEADERS flag
+        byte[] frameHeader = new byte[9];
+        ByteBuffer headersPayload = ByteBuffer.allocate(128);
+        buildSimpleGetRequestPart1(frameHeader, headersPayload, 3);
+        writeFrame(frameHeader, headersPayload);
+
+        // Send RST_STREAM for stream 3 instead of the required CONTINUATION
+        sendRst(3, Http2Error.CANCEL.getCode());
+
+        handleGoAwayResponse(3, Http2Error.PROTOCOL_ERROR);
     }
 }
